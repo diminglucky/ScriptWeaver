@@ -9,6 +9,5 @@ def main() -> None:
 	load_dotenv()
 	App().mainloop()
 
-
 if __name__ == "__main__":
 	main()
