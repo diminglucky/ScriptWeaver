@@ -39,6 +39,23 @@ def _try_chat(key: str, base_url: str, model: str) -> tuple[bool, str]:
 		return False, str(e)
 
 
+def _try_image(key: str, base_url: str, model: str) -> tuple[bool, str]:
+	"""测试图片生成API是否可用"""
+	try:
+		client = OpenAI(api_key=key, base_url=base_url, timeout=30)
+		# 尝试生成一个简单的测试图片
+		resp = client.images.generate(
+			model=model,
+			prompt="test image",
+			n=1,
+			size="1024x1024"
+		)
+		_ok = bool(resp.data and len(resp.data) > 0)
+		return True, "图片API测试成功"
+	except Exception as e:
+		return False, str(e)
+
+
 class App(tk.Tk):
 	def __init__(self) -> None:
 		super().__init__()
@@ -218,7 +235,7 @@ class App(tk.Tk):
 		grp_api = ttk.LabelFrame(self.story_tab_setup, text="API 配置")
 		grp_api.pack(fill="x", padx=10, pady=5)
 		grp_api.columnconfigure(1, weight=1)
-		grp_api.columnconfigure(3, weight=1)
+		grp_api.columnconfigure(5, weight=1)
 		
 		# API预设下拉框
 		tk.Label(grp_api, text="API预设:").grid(row=0, column=0, sticky="e", padx=6, pady=4)
@@ -276,23 +293,30 @@ class App(tk.Tk):
 		self.combo_api_preset.bind("<<ComboboxSelected>>", self._on_api_preset_selected)
 		
 		# 添加保存自定义API按钮
-		tk.Button(grp_api, text="💾 保存为自定义预设", command=self._save_custom_preset, 
-				  font=("", 9), bg="#607D8B", fg="white", relief=tk.FLAT, padx=8, pady=3, cursor="hand2").grid(row=0, column=2, padx=6)
+		btn_save_preset = tk.Button(grp_api, text="💾 保存为自定义预设", command=self._save_custom_preset, 
+				  font=("", 9), bg="#607D8B", fg="white", relief=tk.FLAT, padx=8, pady=3, cursor="hand2")
+		btn_save_preset.grid(row=0, column=2, padx=(6, 2))
 		
-		tk.Label(grp_api, text="提示: 可保存当前配置为自定义预设", fg="gray", font=("", 9)).grid(row=0, column=3, sticky="w", padx=6)
+		# 添加删除自定义API按钮
+		btn_delete_preset = tk.Button(grp_api, text="🗑️", command=self._delete_custom_preset, 
+				  font=("", 9), bg="#d32f2f", fg="white", relief=tk.FLAT, padx=8, pady=3, cursor="hand2")
+		btn_delete_preset.grid(row=0, column=3, padx=(2, 6), sticky="w")
+		
+		tk.Label(grp_api, text="提示: 可保存/删除自定义预设", fg="gray", font=("", 9)).grid(row=0, column=4, sticky="w", padx=6)
 
 		tk.Label(grp_api, text="API Key:").grid(row=1, column=0, sticky="e", padx=6, pady=4)
 		self.entry_api = tk.Entry(grp_api, textvariable=self.api_key, show="*")
-		self.entry_api.grid(row=1, column=1, sticky="we", padx=6)
-		tk.Label(grp_api, text="Base URL:").grid(row=1, column=2, sticky="e", padx=6)
-		self.entry_base = tk.Entry(grp_api, textvariable=self.base_url)
-		self.entry_base.grid(row=1, column=3, sticky="we", padx=6)
+		self.entry_api.grid(row=1, column=1, columnspan=4, sticky="we", padx=6)
 		
-		tk.Label(grp_api, text="Model:").grid(row=2, column=0, sticky="e", padx=6, pady=4)
+		tk.Label(grp_api, text="Base URL:").grid(row=2, column=0, sticky="e", padx=6, pady=4)
+		self.entry_base = tk.Entry(grp_api, textvariable=self.base_url)
+		self.entry_base.grid(row=2, column=1, columnspan=4, sticky="we", padx=6)
+		
+		tk.Label(grp_api, text="Model:").grid(row=3, column=0, sticky="e", padx=6, pady=4)
 		self.entry_model = tk.Entry(grp_api, textvariable=self.model)
-		self.entry_model.grid(row=2, column=1, sticky="we", padx=6)
-		tk.Button(grp_api, text="保存配置", command=self.save_api_config).grid(row=2, column=2, padx=6)
-		tk.Button(grp_api, text="加载配置", command=self.load_api_config).grid(row=2, column=3, padx=6, sticky="w")
+		self.entry_model.grid(row=3, column=1, sticky="we", padx=6)
+		tk.Button(grp_api, text="保存配置", command=self.save_api_config).grid(row=3, column=2, padx=6)
+		tk.Button(grp_api, text="加载配置", command=self.load_api_config).grid(row=3, column=3, padx=6, sticky="w")
 	
 	def _build_story_create_tab(self) -> None:
 		"""构建创作标签页"""
@@ -535,6 +559,57 @@ class App(tk.Tk):
 		except Exception as e:
 			messagebox.showerror("错误", f"保存失败: {str(e)}")
 	
+	def _delete_custom_preset(self) -> None:
+		"""删除自定义API预设"""
+		current_preset = self.api_preset.get()
+		
+		# 检查是否是内置预设
+		built_in_presets = ["DeepSeek", "OpenAI", "Azure OpenAI", "Moonshot (月之暗面)", 
+							"智谱AI (GLM)", "百度文心", "阿里通义", "自定义"]
+		
+		if current_preset in built_in_presets:
+			messagebox.showwarning("无法删除", "不能删除内置预设，只能删除自定义预设")
+			return
+		
+		if not current_preset:
+			messagebox.showwarning("提示", "请先选择要删除的自定义预设")
+			return
+		
+		# 确认删除
+		result = messagebox.askyesno("确认删除", f"确定要删除自定义预设 '{current_preset}' 吗？")
+		if not result:
+			return
+		
+		try:
+			import json
+			# 从内存中删除
+			if current_preset in self.api_presets:
+				del self.api_presets[current_preset]
+			
+			# 更新文件
+			custom_presets_file = Path("custom_api_presets.json")
+			custom_presets = {k: v for k, v in self.api_presets.items() if k not in built_in_presets}
+			
+			if custom_presets:
+				with open(custom_presets_file, 'w', encoding='utf-8') as f:
+					json.dump(custom_presets, f, ensure_ascii=False, indent=2)
+			else:
+				# 如果没有自定义预设了，删除文件
+				if custom_presets_file.exists():
+					custom_presets_file.unlink()
+			
+			# 更新下拉框
+			self.combo_api_preset['values'] = list(self.api_presets.keys())
+			# 切换到自定义预设
+			self.api_preset.set("自定义")
+			self._on_api_preset_selected(None)
+			
+			messagebox.showinfo("成功", f"已删除自定义预设: {current_preset}")
+			if hasattr(self, 'status'):
+				self.status.set(f"已删除自定义预设: {current_preset}")
+		except Exception as e:
+			messagebox.showerror("错误", f"删除失败: {str(e)}")
+	
 	def _load_custom_image_presets(self) -> None:
 		"""加载用户自定义的图片API预设"""
 		custom_presets_file = Path("custom_image_api_presets.json")
@@ -560,7 +635,7 @@ class App(tk.Tk):
 			return
 		
 		# 检查是否覆盖内置预设
-		built_in_presets = ["OpenAI (DALL-E)", "Azure OpenAI", "Stability AI", "Midjourney API", "自定义"]
+		built_in_presets = ["OpenAI (DALL-E)", "腾讯混元", "Azure OpenAI", "Stability AI", "Midjourney API", "自定义"]
 		if preset_name in built_in_presets:
 			messagebox.showwarning("警告", "不能覆盖内置预设，请使用其他名称")
 			return
@@ -589,19 +664,80 @@ class App(tk.Tk):
 		except Exception as e:
 			messagebox.showerror("错误", f"保存失败: {str(e)}")
 	
+	def _delete_custom_image_preset(self) -> None:
+		"""删除自定义图片API预设"""
+		current_preset = self.img_api_preset.get()
+		
+		# 检查是否是内置预设
+		built_in_presets = ["OpenAI (DALL-E)", "腾讯混元", "Azure OpenAI", "Stability AI", "Midjourney API", "自定义"]
+		
+		if current_preset in built_in_presets:
+			messagebox.showwarning("无法删除", "不能删除内置预设，只能删除自定义预设")
+			return
+		
+		if not current_preset:
+			messagebox.showwarning("提示", "请先选择要删除的自定义预设")
+			return
+		
+		# 确认删除
+		result = messagebox.askyesno("确认删除", f"确定要删除自定义图片API预设 '{current_preset}' 吗？")
+		if not result:
+			return
+		
+		try:
+			import json
+			# 从内存中删除
+			if current_preset in self.img_api_presets:
+				del self.img_api_presets[current_preset]
+			
+			# 更新文件
+			custom_presets_file = Path("custom_image_api_presets.json")
+			custom_presets = {k: v for k, v in self.img_api_presets.items() if k not in built_in_presets}
+			
+			if custom_presets:
+				with open(custom_presets_file, 'w', encoding='utf-8') as f:
+					json.dump(custom_presets, f, ensure_ascii=False, indent=2)
+			else:
+				# 如果没有自定义预设了，删除文件
+				if custom_presets_file.exists():
+					custom_presets_file.unlink()
+			
+			# 更新下拉框
+			self.combo_img_api_preset['values'] = list(self.img_api_presets.keys())
+			# 切换到自定义预设
+			self.img_api_preset.set("自定义")
+			self._on_img_api_preset_selected(None)
+			
+			messagebox.showinfo("成功", f"已删除自定义图片API预设: {current_preset}")
+		except Exception as e:
+			messagebox.showerror("错误", f"删除失败: {str(e)}")
+	
 	def _on_img_api_preset_selected(self, event=None) -> None:
-		"""当选择图片API预设时，自动填充配置"""
+		"""当选择图片API预设时，自动填充配置（包括已保存的API Key）"""
 		preset_name = self.img_api_preset.get()
 		if preset_name in self.img_api_presets:
 			preset = self.img_api_presets[preset_name]
-			self.img_base_url.set(preset["base_url"])
-			self.img_model.set(preset["model"])
-			# 不覆盖已有的API Key，只在为空时填充
-			if not self.img_api_key.get() and preset["key"]:
+			
+			# 填充Base URL（如果预设有配置或已保存）
+			if preset.get("base_url"):
+				self.img_base_url.set(preset["base_url"])
+			
+			# 填充Model（如果预设有配置或已保存）
+			if preset.get("model"):
+				self.img_model.set(preset["model"])
+			
+			# 填充API Key（如果已保存）
+			if preset.get("key"):
 				self.img_api_key.set(preset["key"])
+			
+			# 填充SecretKey（仅腾讯混元）
+			if preset.get("secret_key"):
+				self.img_secret_key.set(preset["secret_key"])
+			else:
+				self.img_secret_key.set("")  # 清空SecretKey字段
 	
 	def _save_image_api_config(self) -> None:
-		"""保存图片API配置到.env文件"""
+		"""保存图片API配置到.env文件，包括当前预设的API Key"""
 		try:
 			load_dotenv()
 			env_path = Path(".env")
@@ -613,24 +749,50 @@ class App(tk.Tk):
 			else:
 				lines = []
 			
-			# 更新或添加图片API配置
+			# 获取当前预设名称，用于保存该预设的API Key
+			current_preset = self.img_api_preset.get()
+			# 将预设名称转换为安全的环境变量名（移除特殊字符和空格）
+			safe_preset_name = current_preset.replace(" ", "_").replace("(", "").replace(")", "").replace("-", "_")
+			
+			# 保存当前预设的API配置到预设字典中
+			if current_preset in self.img_api_presets:
+				self.img_api_presets[current_preset]["key"] = self.img_api_key.get()
+				self.img_api_presets[current_preset]["base_url"] = self.img_base_url.get()
+				self.img_api_presets[current_preset]["model"] = self.img_model.get()
+				# 保存SecretKey（仅腾讯混元）
+				if current_preset == "腾讯混元":
+					self.img_api_presets[current_preset]["secret_key"] = self.img_secret_key.get()
+			
+			# 准备要保存的配置
 			config_keys = {
-				'IMG_API_PRESET': self.img_api_preset.get(),
-				'IMG_API_KEY': self.img_api_key.get(),
-				'IMG_BASE_URL': self.img_base_url.get(),
-				'IMG_MODEL': self.img_model.get(),
-				'IMG_SIZE': self.img_size.get()
+				'IMG_API_PRESET': current_preset,
+				'IMG_SIZE': self.img_size.get(),
+				f'IMG_{safe_preset_name}_KEY': self.img_api_key.get(),
+				f'IMG_{safe_preset_name}_BASE_URL': self.img_base_url.get(),
+				f'IMG_{safe_preset_name}_MODEL': self.img_model.get()
 			}
+			
+			# 如果是腾讯混元，还要保存SecretKey
+			if current_preset == "腾讯混元":
+				config_keys[f'IMG_{safe_preset_name}_SECRET_KEY'] = self.img_secret_key.get()
 			
 			# 更新配置
 			new_lines = []
 			keys_found = set()
 			
 			for line in lines:
-				key = line.split('=')[0].strip()
-				if key in config_keys:
-					new_lines.append(f"{key}={config_keys[key]}\n")
-					keys_found.add(key)
+				stripped_line = line.strip()
+				if not stripped_line or stripped_line.startswith('#'):
+					new_lines.append(line)
+					continue
+				
+				if '=' in line:
+					key = line.split('=')[0].strip()
+					if key in config_keys:
+						new_lines.append(f"{key}={config_keys[key]}\n")
+						keys_found.add(key)
+					else:
+						new_lines.append(line)
 				else:
 					new_lines.append(line)
 			
@@ -643,55 +805,106 @@ class App(tk.Tk):
 			with open(env_path, 'w', encoding='utf-8') as f:
 				f.writelines(new_lines)
 			
-			messagebox.showinfo("成功", "图片API配置已保存")
-			self.status.set("图片API配置已保存")
+			messagebox.showinfo("成功", f"已保存 {current_preset} 的API配置")
+			self.status.set(f"已保存 {current_preset} 的API配置")
 		except Exception as e:
 			messagebox.showerror("错误", f"保存失败: {str(e)}")
 	
+	def save_img_api_config(self) -> None:
+		"""保存图片API配置（公开方法，供按钮调用）"""
+		self._save_image_api_config()
+	
+	def load_img_api_config(self) -> None:
+		"""加载图片API配置（公开方法，供按钮调用）"""
+		try:
+			load_dotenv(override=True)
+			# 加载上次使用的预设
+			last_preset = os.getenv("IMG_API_PRESET", "OpenAI (DALL-E)")
+			if last_preset in self.img_api_presets:
+				self.img_api_preset.set(last_preset)
+				self._on_img_api_preset_selected(None)
+			
+			# 加载图片尺寸
+			img_size = os.getenv("IMG_SIZE", "1024x1024")
+			self.img_size.set(img_size)
+			
+			messagebox.showinfo("成功", "已从 .env 加载图片API配置")
+		except Exception as e:
+			messagebox.showerror("错误", str(e))
+	
 	def _auto_load_image_api_config(self) -> None:
-		"""自动加载图片API配置"""
+		"""自动加载所有预设的图片API配置"""
 		try:
 			load_dotenv()
 			
-			# 加载预设
-			preset = os.getenv("IMG_API_PRESET")
-			if preset and preset in self.img_api_presets:
-				self.img_api_preset.set(preset)
+			# 加载所有预设的API配置
+			for preset_name in self.img_api_presets.keys():
+				safe_preset_name = preset_name.replace(" ", "_").replace("(", "").replace(")", "").replace("-", "_")
+				
+				# 加载该预设的API Key
+				key = os.getenv(f"IMG_{safe_preset_name}_KEY")
+				if key:
+					self.img_api_presets[preset_name]["key"] = key
+				
+				# 加载该预设的Base URL
+				base_url = os.getenv(f"IMG_{safe_preset_name}_BASE_URL")
+				if base_url:
+					self.img_api_presets[preset_name]["base_url"] = base_url
+				
+				# 加载该预设的Model
+				model = os.getenv(f"IMG_{safe_preset_name}_MODEL")
+				if model:
+					self.img_api_presets[preset_name]["model"] = model
+				
+				# 加载该预设的SecretKey（仅腾讯混元）
+				if preset_name == "腾讯混元":
+					secret_key = os.getenv(f"IMG_{safe_preset_name}_SECRET_KEY")
+					if secret_key:
+						self.img_api_presets[preset_name]["secret_key"] = secret_key
 			
-			# 加载API Key
-			api_key = os.getenv("IMG_API_KEY")
-			if api_key:
-				self.img_api_key.set(api_key)
-			
-			# 加载Base URL
-			base_url = os.getenv("IMG_BASE_URL")
-			if base_url:
-				self.img_base_url.set(base_url)
-			
-			# 加载模型
-			model = os.getenv("IMG_MODEL")
-			if model:
-				self.img_model.set(model)
+			# 加载上次使用的预设
+			last_preset = os.getenv("IMG_API_PRESET")
+			if last_preset and last_preset in self.img_api_presets:
+				self.img_api_preset.set(last_preset)
+				# 自动填充该预设的配置
+				preset_config = self.img_api_presets[last_preset]
+				if preset_config.get("key"):
+					self.img_api_key.set(preset_config["key"])
+				if preset_config.get("base_url"):
+					self.img_base_url.set(preset_config["base_url"])
+				if preset_config.get("model"):
+					self.img_model.set(preset_config["model"])
+				# 填充SecretKey（仅腾讯混元）
+				if preset_config.get("secret_key"):
+					self.img_secret_key.set(preset_config["secret_key"])
 			
 			# 加载尺寸
 			size = os.getenv("IMG_SIZE")
 			if size:
 				self.img_size.set(size)
 			
-			print(f"已自动加载图片API配置: {preset or 'OpenAI (DALL-E)'}")
+			print(f"已自动加载图片API配置: {last_preset or 'OpenAI (DALL-E)'}")
 		except Exception as e:
 			print(f"加载图片API配置失败: {e}")
 	
 	def _on_api_preset_selected(self, event=None) -> None:
-		"""当选择API预设时，自动填充配置"""
+		"""当选择API预设时，自动填充配置（包括已保存的API Key）"""
 		preset_name = self.api_preset.get()
 		if preset_name in self.api_presets:
 			preset = self.api_presets[preset_name]
-			self.base_url.set(preset["base_url"])
-			self.model.set(preset["model"])
-			# 不覆盖已有的API Key，只在为空时填充
-			if not self.api_key.get() and preset["key"]:
+			
+			# 填充Base URL（如果预设有配置或已保存）
+			if preset.get("base_url"):
+				self.base_url.set(preset["base_url"])
+			
+			# 填充Model（如果预设有配置或已保存）
+			if preset.get("model"):
+				self.model.set(preset["model"])
+			
+			# 填充API Key（如果已保存）
+			if preset.get("key"):
 				self.api_key.set(preset["key"])
+			
 			if hasattr(self, 'status'):
 				self.status.set(f"已选择 {preset_name} API预设")
 	
@@ -734,6 +947,58 @@ class App(tk.Tk):
 			self.output.insert(END, "API 测试异常:\n" + traceback.format_exc() + "\n")
 			messagebox.showerror("API 错误", str(e))
 			self.status.set("API 测试失败")
+		finally:
+			self.set_busy(False)
+
+	def on_test_image_api(self) -> None:
+		"""测试图片生成API"""
+		try:
+			self.set_busy(True)
+			self.status.set("测试图片生成 API 中...")
+			
+			key = _sanitize(self.img_api_key.get())
+			base = _sanitize(self.img_base_url.get())
+			model = _sanitize(self.img_model.get()) or "dall-e-3"
+			
+			if not key:
+				messagebox.showwarning("警告", "请先填写API Key")
+				self.status.set("测试失败：缺少API Key")
+				return
+			
+			if not base:
+				messagebox.showwarning("警告", "请先填写Base URL")
+				self.status.set("测试失败：缺少Base URL")
+				return
+			
+			candidates = []
+			# try user-provided
+			candidates.append(base.rstrip("/"))
+			# also try toggling /v1 suffix
+			if base.rstrip("/").endswith("/v1"):
+				candidates.append(base.rstrip("/")[:-3])
+			else:
+				candidates.append(base.rstrip("/") + "/v1")
+			
+			tried_msgs: list[str] = []
+			for b in candidates:
+				ok, msg = _try_image(key, b, model)
+				tried_msgs.append(f"base_url={b} -> {'SUCCESS' if ok else 'FAIL'}: {msg}")
+				if ok:
+					self.img_base_url.set(b)
+					messagebox.showinfo("测试成功", f"图片生成 API 可用\n{b}\n\n注意：实际生成了一张测试图片，可能会消耗少量费用")
+					self.status.set("图片API可用")
+					return
+			
+			# all failed
+			full_msg = "\n".join(tried_msgs)
+			self.output.insert(END, "图片API测试失败（已尝试多种 base_url）:\n" + full_msg + "\n")
+			messagebox.showerror("API 错误", "图片API鉴权失败，请检查密钥/额度/网络/模型。详情见下方输出日志。")
+			self.status.set("图片API测试失败")
+		except Exception as e:
+			import traceback
+			self.output.insert(END, "图片API测试异常:\n" + traceback.format_exc() + "\n")
+			messagebox.showerror("API 错误", str(e))
+			self.status.set("图片API测试失败")
 		finally:
 			self.set_busy(False)
 
@@ -782,6 +1047,8 @@ class App(tk.Tk):
 		self.btn_outline.configure(state=state)
 		if hasattr(self, 'btn_test_api'):
 			self.btn_test_api.configure(state=state)
+		if hasattr(self, 'btn_test_img_api'):
+			self.btn_test_img_api.configure(state=state)
 		if hasattr(self, 'btn_clear'):
 			self.btn_clear.configure(state=state)
 		if hasattr(self, 'btn_copy'):
@@ -1137,6 +1404,7 @@ class App(tk.Tk):
 			messagebox.showerror("错误", str(e))
 
 	def save_api_config(self) -> None:
+		"""保存故事API配置，每个预设保存各自的API Key"""
 		try:
 			# Determine .env path
 			env_path_str = find_dotenv(usecwd=True)
@@ -1145,12 +1413,33 @@ class App(tk.Tk):
 			else:
 				env_path = Path(env_path_str)
 			env_path.touch(exist_ok=True)
-			set_key(str(env_path), "DEEPSEEK_API_KEY", self.api_key.get().strip())
-			set_key(str(env_path), "DEEPSEEK_BASE_URL", self.base_url.get().strip())
-			set_key(str(env_path), "DEEPSEEK_MODEL", self.model.get().strip())
-			set_key(str(env_path), "API_PRESET", self.api_preset.get().strip())
+			
+			# 获取当前预设
+			current_preset = self.api_preset.get().strip()
+			# 将中文和特殊字符转换为安全的环境变量名
+			import hashlib
+			# 对于中文或特殊字符，使用哈希值
+			if any(ord(c) > 127 for c in current_preset):
+				# 包含非ASCII字符，使用短哈希
+				hash_suffix = hashlib.md5(current_preset.encode()).hexdigest()[:8]
+				safe_preset_name = f"CUSTOM_{hash_suffix}"
+			else:
+				safe_preset_name = current_preset.replace(" ", "_").replace("(", "").replace(")", "").replace("-", "_")
+			
+			# 保存当前预设的配置到预设字典
+			if current_preset in self.api_presets:
+				self.api_presets[current_preset]["key"] = self.api_key.get().strip()
+				self.api_presets[current_preset]["base_url"] = self.base_url.get().strip()
+				self.api_presets[current_preset]["model"] = self.model.get().strip()
+			
+			# 保存到.env文件（使用安全的环境变量名）
+			set_key(str(env_path), f"STORY_{safe_preset_name}_KEY", self.api_key.get().strip())
+			set_key(str(env_path), f"STORY_{safe_preset_name}_BASE_URL", self.base_url.get().strip())
+			set_key(str(env_path), f"STORY_{safe_preset_name}_MODEL", self.model.get().strip())
+			set_key(str(env_path), "API_PRESET", current_preset)
+			
 			load_dotenv(override=True)
-			messagebox.showinfo("成功", f"配置已保存到: {env_path}")
+			messagebox.showinfo("成功", f"已保存 {current_preset} 的配置到: {env_path}")
 		except Exception as e:
 			messagebox.showerror("错误", str(e))
 
@@ -1168,18 +1457,66 @@ class App(tk.Tk):
 			messagebox.showerror("错误", str(e))
 	
 	def _auto_load_api_config(self) -> None:
-		"""启动时自动加载上次使用的API配置"""
+		"""启动时自动加载所有预设的API配置"""
 		try:
 			load_dotenv(override=True)
-			self.api_key.set(os.getenv("DEEPSEEK_API_KEY", ""))
-			self.base_url.set(os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com/v1"))
-			self.model.set(os.getenv("DEEPSEEK_MODEL", "deepseek-chat"))
+			import hashlib
+			
+			# 加载所有预设的API配置
+			for preset_name in self.api_presets.keys():
+				# 生成安全的环境变量名（与保存时保持一致）
+				if any(ord(c) > 127 for c in preset_name):
+					hash_suffix = hashlib.md5(preset_name.encode()).hexdigest()[:8]
+					safe_preset_name = f"CUSTOM_{hash_suffix}"
+				else:
+					safe_preset_name = preset_name.replace(" ", "_").replace("(", "").replace(")", "").replace("-", "_")
+				
+				# 加载该预设的配置
+				key = os.getenv(f"STORY_{safe_preset_name}_KEY")
+				if key:
+					self.api_presets[preset_name]["key"] = key
+				
+				base_url = os.getenv(f"STORY_{safe_preset_name}_BASE_URL")
+				if base_url:
+					self.api_presets[preset_name]["base_url"] = base_url
+				
+				model = os.getenv(f"STORY_{safe_preset_name}_MODEL")
+				if model:
+					self.api_presets[preset_name]["model"] = model
+			
+			# 加载上次使用的预设
 			preset = os.getenv("API_PRESET", "DeepSeek")
+			# 如果preset不在现有列表中，添加它（可能是自定义的）
+			if preset not in self.api_presets and preset:
+				# 生成安全名称并加载配置
+				if any(ord(c) > 127 for c in preset):
+					hash_suffix = hashlib.md5(preset.encode()).hexdigest()[:8]
+					safe_preset_name = f"CUSTOM_{hash_suffix}"
+				else:
+					safe_preset_name = preset.replace(" ", "_").replace("(", "").replace(")", "").replace("-", "_")
+				
+				key = os.getenv(f"STORY_{safe_preset_name}_KEY", "")
+				base_url = os.getenv(f"STORY_{safe_preset_name}_BASE_URL", "")
+				model = os.getenv(f"STORY_{safe_preset_name}_MODEL", "")
+				
+				self.api_presets[preset] = {
+					"key": key,
+					"base_url": base_url,
+					"model": model
+				}
+			
 			if preset in self.api_presets:
 				self.api_preset.set(preset)
+				# 自动填充该预设的配置
+				preset_config = self.api_presets[preset]
+				self.api_key.set(preset_config.get("key", ""))
+				self.base_url.set(preset_config.get("base_url", ""))
+				self.model.set(preset_config.get("model", ""))
+			
 			if hasattr(self, 'status'):
 				self.status.set(f"已自动加载配置: {preset}")
-		except Exception:
+		except Exception as e:
+			print(f"加载配置失败: {e}")
 			pass  # 静默失败，使用默认值
 
 	def _build_outline_prompt(self, requirement: str, contexts: list[str], category: str) -> str:
@@ -1420,16 +1757,24 @@ class App(tk.Tk):
 		self.shot_selector.pack(side=LEFT, fill="x", expand=True)
 		self.shot_selector.bind("<<ComboboxSelected>>", self._on_shot_selected)
 
-		# Left: 场景/角色补充
-		grp_ctx_add = ttk.LabelFrame(left, text="✨ 场景与角色补充（可选）", padding=(8, 5))
+		# Left: 图片类型与场景补充
+		grp_ctx_add = ttk.LabelFrame(left, text="✨ 图片类型与场景补充", padding=(8, 5))
 		grp_ctx_add.pack(fill="x", padx=0, pady=(0, 8))
 		grp_ctx_add.columnconfigure(1, weight=1)
-		tk.Label(grp_ctx_add, text="场景描述:", font=("", 10)).grid(row=0, column=0, sticky="e", padx=(0, 8), pady=6)
+		
+		# 图片类型选择
+		tk.Label(grp_ctx_add, text="图片类型:", font=("", 10)).grid(row=0, column=0, sticky="e", padx=(0, 8), pady=6)
+		self.img_type = tk.StringVar(value="写实照片")
+		self.combo_img_type = ttk.Combobox(grp_ctx_add, textvariable=self.img_type, font=("", 10), width=20, state="readonly",
+										   values=("写实照片", "日系动漫", "3D渲染", "水彩画", "油画", "素描", "赛博朋克", "蒸汽朋克", "像素风", "中国风"))
+		self.combo_img_type.grid(row=0, column=1, sticky="w", padx=(0, 6), pady=6)
+		
+		tk.Label(grp_ctx_add, text="场景描述:", font=("", 10)).grid(row=1, column=0, sticky="e", padx=(0, 8), pady=6)
 		self.img_entry_scene = ttk.Entry(grp_ctx_add, font=("", 10))
-		self.img_entry_scene.grid(row=0, column=1, sticky="we", padx=(0, 6), pady=6)
-		tk.Label(grp_ctx_add, text="角色特征:", font=("", 10)).grid(row=1, column=0, sticky="ne", padx=(0, 8), pady=(0, 6))
+		self.img_entry_scene.grid(row=1, column=1, sticky="we", padx=(0, 6), pady=6)
+		tk.Label(grp_ctx_add, text="角色特征:", font=("", 10)).grid(row=2, column=0, sticky="ne", padx=(0, 8), pady=(0, 6))
 		self.img_txt_roles = tk.Text(grp_ctx_add, height=3, font=("", 10), wrap=tk.WORD, relief=tk.SOLID, borderwidth=1)
-		self.img_txt_roles.grid(row=1, column=1, sticky="we", padx=(0, 6), pady=(0, 6))
+		self.img_txt_roles.grid(row=2, column=1, sticky="we", padx=(0, 6), pady=(0, 6))
 
 		# Left: 提示词（中文）
 		grp_prompt = ttk.LabelFrame(left, text="💬 图片描述（中文，可编辑）", padding=(8, 5))
@@ -1476,38 +1821,51 @@ class App(tk.Tk):
 	def _build_image_setup_tab(self) -> None:
 		"""构建图片API配置页面"""
 		# API 配置组
-		grp_api = ttk.LabelFrame(self.image_tab_setup, text="🔑 图片生成 API 配置", padding=(10, 10))
-		grp_api.pack(fill="x", padx=10, pady=10)
+		grp_api = ttk.LabelFrame(self.image_tab_setup, text="图片生成 API 配置")
+		grp_api.pack(fill="x", padx=10, pady=5)
 		grp_api.columnconfigure(1, weight=1)
+		grp_api.columnconfigure(5, weight=1)
 		
 		# API预设下拉框
-		tk.Label(grp_api, text="API预设:", font=("", 10)).grid(row=0, column=0, sticky="e", padx=6, pady=4)
+		tk.Label(grp_api, text="API预设:").grid(row=0, column=0, sticky="e", padx=6, pady=4)
 		self.img_api_preset = tk.StringVar(value="OpenAI (DALL-E)")
 		self.img_api_presets = {
 			"OpenAI (DALL-E)": {
 				"base_url": "https://api.openai.com/v1",
 				"model": "dall-e-3",
-				"key": ""
+				"key": "",
+				"provider": "openai"
+			},
+			"腾讯混元": {
+				"base_url": "https://hunyuan.tencentcloudapi.com",
+				"model": "hunyuan-turbo",
+				"key": "",
+				"provider": "hunyuan",
+				"secret_key": ""
 			},
 			"Azure OpenAI": {
 				"base_url": "https://YOUR_RESOURCE.openai.azure.com",
 				"model": "dall-e-3",
-				"key": ""
+				"key": "",
+				"provider": "openai"
 			},
 			"Stability AI": {
 				"base_url": "https://api.stability.ai/v1",
 				"model": "stable-diffusion-xl-1024-v1-0",
-				"key": ""
+				"key": "",
+				"provider": "openai"
 			},
 			"Midjourney API": {
 				"base_url": "https://api.midjourneyapi.io/v1",
 				"model": "midjourney",
-				"key": ""
+				"key": "",
+				"provider": "openai"
 			},
 			"自定义": {
 				"base_url": "",
 				"model": "",
-				"key": ""
+				"key": "",
+				"provider": "openai"
 			}
 		}
 		
@@ -1516,49 +1874,62 @@ class App(tk.Tk):
 		
 		self.combo_img_api_preset = ttk.Combobox(grp_api, textvariable=self.img_api_preset, 
 												  values=list(self.img_api_presets.keys()),
-												  state="readonly", width=30, font=("", 11))
-		self.combo_img_api_preset.grid(row=0, column=1, sticky="w", padx=6, pady=4)
+												  state="readonly", width=20)
+		self.combo_img_api_preset.grid(row=0, column=1, sticky="w", padx=6)
 		self.combo_img_api_preset.bind("<<ComboboxSelected>>", self._on_img_api_preset_selected)
 		
 		# 添加保存自定义API按钮
-		tk.Button(grp_api, text="💾 保存为自定义预设", command=self._save_custom_image_preset, 
-				  font=("", 10), bg="#000000", fg="#ffffff", relief=tk.FLAT, padx=10, pady=5, 
-				  cursor="hand2", activebackground="#000000", activeforeground="#ffffff").grid(row=0, column=2, padx=(10, 0), pady=4)
+		btn_save_img_preset = tk.Button(grp_api, text="💾 保存为自定义预设", command=self._save_custom_image_preset, 
+				  font=("", 9), bg="#607D8B", fg="white", relief=tk.FLAT, padx=8, pady=3, cursor="hand2")
+		btn_save_img_preset.grid(row=0, column=2, padx=(6, 2))
 		
-		tk.Label(grp_api, text="API Key:", font=("", 11)).grid(row=1, column=0, sticky="e", padx=6, pady=(10, 6))
-		self.img_entry_key = ttk.Entry(grp_api, textvariable=self.img_api_key, show="*", font=("", 11))
-		self.img_entry_key.grid(row=1, column=1, columnspan=2, sticky="we", padx=6, pady=(10, 6))
+		# 添加删除自定义图片API按钮
+		btn_delete_img_preset = tk.Button(grp_api, text="🗑️", command=self._delete_custom_image_preset, 
+				  font=("", 9), bg="#d32f2f", fg="white", relief=tk.FLAT, padx=8, pady=3, cursor="hand2")
+		btn_delete_img_preset.grid(row=0, column=3, padx=(2, 6), sticky="w")
 		
-		tk.Label(grp_api, text="Base URL:", font=("", 11)).grid(row=2, column=0, sticky="e", padx=6, pady=6)
+		tk.Label(grp_api, text="提示: 可保存/删除自定义预设", fg="gray", font=("", 9)).grid(row=0, column=4, sticky="w", padx=6)
+
+		tk.Label(grp_api, text="API Key / SecretId:").grid(row=1, column=0, sticky="e", padx=6, pady=4)
+		self.img_entry_key = tk.Entry(grp_api, textvariable=self.img_api_key, show="*")
+		self.img_entry_key.grid(row=1, column=1, columnspan=4, sticky="we", padx=6)
+		
+		tk.Label(grp_api, text="SecretKey (仅腾讯混元):").grid(row=2, column=0, sticky="e", padx=6, pady=4)
+		self.img_secret_key = tk.StringVar(value="")
+		self.img_entry_secret_key = tk.Entry(grp_api, textvariable=self.img_secret_key, show="*")
+		self.img_entry_secret_key.grid(row=2, column=1, columnspan=4, sticky="we", padx=6)
+		
+		tk.Label(grp_api, text="Base URL:").grid(row=3, column=0, sticky="e", padx=6, pady=4)
 		self.img_base_url = tk.StringVar(value="https://api.openai.com/v1")
-		self.img_entry_base_url = ttk.Entry(grp_api, textvariable=self.img_base_url, font=("", 11))
-		self.img_entry_base_url.grid(row=2, column=1, columnspan=2, sticky="we", padx=6, pady=6)
+		self.img_entry_base_url = tk.Entry(grp_api, textvariable=self.img_base_url)
+		self.img_entry_base_url.grid(row=3, column=1, columnspan=4, sticky="we", padx=6)
 		
-		tk.Label(grp_api, text="模型:", font=("", 11)).grid(row=3, column=0, sticky="e", padx=6, pady=6)
-		self.img_entry_model = ttk.Entry(grp_api, textvariable=self.img_model, width=30, font=("", 11))
-		self.img_entry_model.grid(row=3, column=1, sticky="w", padx=6, pady=6)
+		tk.Label(grp_api, text="Model:").grid(row=4, column=0, sticky="e", padx=6, pady=4)
+		self.img_entry_model = tk.Entry(grp_api, textvariable=self.img_model)
+		self.img_entry_model.grid(row=4, column=1, sticky="we", padx=6)
+		tk.Button(grp_api, text="保存配置", command=self.save_img_api_config).grid(row=4, column=2, padx=6)
+		tk.Button(grp_api, text="加载配置", command=self.load_img_api_config).grid(row=4, column=3, padx=6, sticky="w")
 		
-		# 图片参数组
-		grp_params = ttk.LabelFrame(self.image_tab_setup, text="🎨 图片参数", padding=(10, 10))
-		grp_params.pack(fill="x", padx=10, pady=(0, 10))
+		# 图片参数与操作
+		grp_params = ttk.LabelFrame(self.image_tab_setup, text="参数与操作")
+		grp_params.pack(fill="x", padx=10, pady=5)
 		grp_params.columnconfigure(1, weight=1)
+		grp_params.columnconfigure(3, weight=1)
+		grp_params.columnconfigure(5, weight=1)
+		grp_params.columnconfigure(7, weight=1)
 		
-		tk.Label(grp_params, text="尺寸:", font=("", 11)).grid(row=0, column=0, sticky="e", padx=6, pady=6)
+		# 第一行：尺寸参数
+		tk.Label(grp_params, text="图片尺寸:").grid(row=0, column=0, sticky="e", padx=6, pady=4)
 		self.img_combo_size = ttk.Combobox(grp_params, textvariable=self.img_size, 
 										   values=("512x512","768x768","1024x1024","1024x1792","1792x1024"), 
-										   width=20, font=("", 11), state="readonly")
-		self.img_combo_size.grid(row=0, column=1, sticky="w", padx=6, pady=6)
+										   width=15, state="readonly")
+		self.img_combo_size.grid(row=0, column=1, sticky="w", padx=6)
+		tk.Label(grp_params, text="(1024x1024适合方形 | 1024x1792适合竖版 | 1792x1024适合横版)", 
+				 fg="gray", font=("", 9)).grid(row=0, column=2, columnspan=6, sticky="w", padx=6)
 		
-		tk.Label(grp_params, text="提示：", fg="gray", font=("", 10)).grid(row=1, column=0, columnspan=2, sticky="w", padx=6, pady=(10, 0))
-		tk.Label(grp_params, text="• 1024x1024 适合方形图片\n• 1024x1792 适合竖版海报\n• 1792x1024 适合横版封面", 
-				 fg="gray", font=("", 9), justify=LEFT).grid(row=2, column=0, columnspan=2, sticky="w", padx=6, pady=(0, 6))
-		
-		# 保存按钮
-		btn_frame = ttk.Frame(self.image_tab_setup)
-		btn_frame.pack(fill="x", padx=10, pady=(10, 10))
-		tk.Button(btn_frame, text="💾 保存图片API配置", command=self._save_image_api_config, 
-				  font=("", 11, "bold"), bg="#000000", fg="#ffffff", relief=tk.FLAT, padx=20, pady=8, 
-				  cursor="hand2", activebackground="#000000", activeforeground="#ffffff").pack(pady=10)
+		# 第二行：操作按钮
+		self.btn_test_img_api = ttk.Button(grp_params, text="🔌 测试API", command=self.on_test_image_api)
+		self.btn_test_img_api.grid(row=1, column=0, columnspan=2, padx=6, pady=(0, 4), sticky="we")
 		
 		# 启动后自动加载配置
 		self.after(100, self._auto_load_image_api_config)
@@ -1580,6 +1951,25 @@ class App(tk.Tk):
 				self.img_btn_gen.configure(state=DISABLED)
 				self.status.set("正在翻译图片描述为英文...")
 				
+				# 获取图片类型
+				img_type = self.img_type.get() if hasattr(self, 'img_type') else "写实照片"
+				
+				# 根据图片类型定义英文风格关键词
+				style_keywords = {
+					"写实照片": "photorealistic, high quality photography, natural lighting, realistic, detailed, 8K",
+					"日系动漫": "anime style, Japanese animation, vibrant colors, cel shading, anime artwork, high quality anime",
+					"3D渲染": "3D render, CGI, high quality rendering, octane render, unreal engine, detailed textures",
+					"水彩画": "watercolor painting, soft colors, artistic, traditional art, watercolor style, delicate brushstrokes",
+					"油画": "oil painting, thick brushstrokes, classical art style, rich colors, fine art, painterly",
+					"素描": "sketch style, pencil drawing, line art, monochrome, artistic sketch, detailed linework",
+					"赛博朋克": "cyberpunk style, neon lights, futuristic, dark atmosphere, high-tech, sci-fi",
+					"蒸汽朋克": "steampunk style, gears and machinery, Victorian era, retro-futuristic, industrial aesthetic",
+					"像素风": "pixel art style, 8-bit/16-bit graphics, retro game art, pixelated",
+					"中国风": "Chinese traditional painting style, ink wash painting, classical Chinese art, poetic atmosphere"
+				}
+				
+				style_keyword = style_keywords.get(img_type, "photorealistic, high quality")
+				
 				# 1. 先将中文翻译为英文提示词
 				client = DeepSeekClient(
 					api_key=_sanitize(self.api_key.get()),
@@ -1587,44 +1977,170 @@ class App(tk.Tk):
 					model=_sanitize(self.model.get()),
 				)
 				inst = (
-					"你是专业的图片提示词翻译专家。请将中文图片描述翻译为适合DALL-E、Stable Diffusion等AI绘图工具的英文提示词。\n"
-					"要求：\n"
-					"1. 保留所有细节（场景、人物、动作、光线、镜头、风格等）\n"
-					"2. 使用专业的图像生成术语（如 cinematic lighting, wide shot, close-up, 4K, detailed等）\n"
-					"3. 输出纯英文，不要任何中文或其他语言\n"
-					"4. 不要输出任何解释，只输出最终的英文提示词"
+					f"你是专业的图片提示词翻译专家。请将中文图片描述翻译为适合DALL-E、Stable Diffusion等AI绘图工具的英文提示词。\n"
+					f"目标风格：{img_type}\n"
+					f"风格关键词：{style_keyword}\n"
+					f"要求：\n"
+					f"1. 保留所有细节（场景、人物、动作、光线、镜头、风格等）\n"
+					f"2. 确保翻译体现【{img_type}】的风格特点\n"
+					f"3. 在提示词中加入风格相关的专业术语\n"
+					f"4. 使用专业的图像生成术语（如 cinematic lighting, wide shot, close-up, 4K, detailed等）\n"
+					f"5. 输出纯英文，不要任何中文或其他语言\n"
+					f"6. 不要输出任何解释，只输出最终的英文提示词"
 				)
 				prompt_en = client.chat([
 					{"role": "system", "content": inst},
-					{"role": "user", "content": f"请翻译以下中文图片描述为英文提示词：\n\n{prompt_cn}"},
+					{"role": "user", "content": f"图片类型：{img_type}\n\n请翻译以下中文图片描述为英文提示词：\n\n{prompt_cn}"},
 				], temperature=0.3)
 				
 				self.status.set("正在生成图片...")
 				
-				# 2. 使用英文提示词生成图片
-				img_client = OpenAIImageClient(
-					api_key=self.img_api_key.get().strip(), 
-					model=self.img_model.get().strip() or "dall-e-3",
-					base_url=self.img_base_url.get().strip() if hasattr(self, 'img_base_url') else None
-				)
+				# 2. 根据当前预设选择API提供商
+				current_preset = self.img_api_preset.get()
+				provider = self.img_api_presets.get(current_preset, {}).get("provider", "openai")
 				
-				if self.img_ref_path.get().strip():
-					results = img_client.generate_with_reference(
-						prompt=prompt_en, 
-						reference_image_path=self.img_ref_path.get().strip(), 
-						size=self.img_size.get()
+				# 3. 使用对应的客户端生成图片
+				if provider == "hunyuan":
+					# 使用腾讯混元API
+					from src.clients.hunyuan_image_client import HunyuanImageClient
+					
+					secret_id = self.img_api_key.get().strip()
+					secret_key = self.img_secret_key.get().strip()
+					
+					if not secret_id or not secret_key:
+						messagebox.showerror("错误", "请先配置腾讯混元的SecretId和SecretKey")
+						return
+					
+					# 根据图片类型映射腾讯混元的style参数
+					hunyuan_style_map = {
+						"写实照片": "201",  # 日系动漫风格（腾讯混元默认，也适合写实）
+						"日系动漫": "201",  # 日系动漫风格
+						"3D渲染": "201",
+						"水彩画": "201",
+						"油画": "201",
+						"素描": "201",
+						"赛博朋克": "201",
+						"蒸汽朋克": "201",
+						"像素风": "201",
+						"中国风": "201"
+					}
+					
+					hunyuan_style = hunyuan_style_map.get(img_type, "201")
+					
+					hunyuan_client = HunyuanImageClient(
+						secret_id=secret_id,
+						secret_key=secret_key
 					)
+					
+					# 腾讯混元支持中文，使用中文风格描述
+					# 定义中文风格描述
+					style_desc_cn = {
+						"写实照片": "高清摄影，写实风格，自然光线，真实质感",
+						"日系动漫": "日系动漫风格，精美作画，色彩鲜艳",
+						"3D渲染": "3D渲染，高品质建模，精致材质",
+						"水彩画": "水彩画风格，色彩柔和，艺术感强",
+						"油画": "油画质感，笔触厚重，色彩浓郁",
+						"素描": "素描风格，线条流畅，黑白灰调",
+						"赛博朋克": "赛博朋克风格，霓虹灯光，未来科技感",
+						"蒸汽朋克": "蒸汽朋克风格，机械齿轮，复古科技",
+						"像素风": "像素艺术风格，复古游戏美术",
+						"中国风": "中国传统绘画风格，水墨意境，古典韵味"
+					}.get(img_type, "")
+					
+					# 腾讯混元API限制：Prompt最多256个UTF-8字符
+					# 优化策略：使用关键词密集型描述，保证信息量
+					
+					# 简短风格关键词（用于腾讯混元）
+					style_keywords_short = {
+						"写实照片": "高清摄影",
+						"日系动漫": "动漫风",
+						"3D渲染": "3D渲染",
+						"水彩画": "水彩",
+						"油画": "油画质感",
+						"素描": "素描",
+						"赛博朋克": "赛博朋克",
+						"蒸汽朋克": "蒸汽朋克",
+						"像素风": "像素艺术",
+						"中国风": "中国风"
+					}.get(img_type, "")
+					
+					# 智能处理描述长度
+					max_base_length = 230  # 为风格关键词留空间
+					
+					if len(prompt_cn) > max_base_length:
+						# 优先截断，但保留完整的关键信息
+						# 尝试在逗号或句号处截断
+						truncated = prompt_cn[:max_base_length]
+						last_punct = max(truncated.rfind('，'), truncated.rfind('。'), truncated.rfind(','))
+						if last_punct > 180:  # 如果能找到合适的断点
+							prompt_cn = truncated[:last_punct]
+						else:
+							prompt_cn = truncated
+					
+					# 组合风格关键词
+					if style_keywords_short:
+						enhanced_prompt = f"{prompt_cn}，{style_keywords_short}"
+					else:
+						enhanced_prompt = prompt_cn
+					
+					# 最终检查，确保不超过256字符
+					if len(enhanced_prompt) > 256:
+						# 如果还是超长，优先保证主描述
+						enhanced_prompt = enhanced_prompt[:256]
+					
+					# 腾讯混元的分辨率格式是用冒号分隔，且只支持特定分辨率
+					# 将常见分辨率映射到腾讯混元支持的分辨率
+					size_mapping = {
+						"512x512": "768:768",
+						"768x768": "768:768",
+						"1024x1024": "1024:1024",
+						"1024x1792": "1080:1920",  # 映射到接近的16:9竖版
+						"1792x1024": "1920:1080",  # 映射到接近的16:9横版
+						"720x1280": "720:1280",
+						"1280x720": "1280:720",
+						"1080x1920": "1080:1920",
+						"1920x1080": "1920:1080"
+					}
+					current_size = self.img_size.get()
+					resolution = size_mapping.get(current_size, "1024:1024")
+					
+					result = hunyuan_client.generate(
+						prompt=enhanced_prompt,  # 使用优化后的中文提示词
+						resolution=resolution,
+						style=hunyuan_style,
+						rsp_img_type="base64"
+					)
+					
+					self.img_last_image = result.image
+					self._update_img_preview()
+					self.img_btn_save.configure(state=NORMAL)
+					self.status.set(f"【{img_type}】风格图片生成成功！使用腾讯混元模型")
+					
 				else:
-					results = img_client.generate(prompt=prompt_en, size=self.img_size.get(), n=1)
-				
-				if not results:
-					messagebox.showerror("错误", "生成失败")
-					return
-				
-				self.img_last_image = results[0].image
-				self._update_img_preview()
-				self.img_btn_save.configure(state=NORMAL)
-				self.status.set(f"图片生成成功！使用的英文提示词：{prompt_en[:50]}...")
+					# 使用OpenAI兼容API
+					img_client = OpenAIImageClient(
+						api_key=self.img_api_key.get().strip(), 
+						model=self.img_model.get().strip() or "dall-e-3",
+						base_url=self.img_base_url.get().strip() if hasattr(self, 'img_base_url') else None
+					)
+					
+					if self.img_ref_path.get().strip():
+						results = img_client.generate_with_reference(
+							prompt=prompt_en, 
+							reference_image_path=self.img_ref_path.get().strip(), 
+							size=self.img_size.get()
+						)
+					else:
+						results = img_client.generate(prompt=prompt_en, size=self.img_size.get(), n=1)
+					
+					if not results:
+						messagebox.showerror("错误", "生成失败")
+						return
+					
+					self.img_last_image = results[0].image
+					self._update_img_preview()
+					self.img_btn_save.configure(state=NORMAL)
+					self.status.set(f"【{img_type}】风格图片生成成功！英文提示词：{prompt_en[:40]}...")
 			except Exception as e:
 				messagebox.showerror("错误", str(e))
 				self.status.set("生成失败")
@@ -1796,6 +2312,23 @@ class App(tk.Tk):
 		story_text = self.output.get("1.0", END).strip() if hasattr(self, 'output') else ""
 		scene = self.img_entry_scene.get().strip() if hasattr(self, 'img_entry_scene') else ""
 		roles = self.img_txt_roles.get("1.0", END).strip() if hasattr(self, 'img_txt_roles') else ""
+		img_type = self.img_type.get() if hasattr(self, 'img_type') else "写实照片"
+		
+		# 根据图片类型定义不同的风格描述
+		style_instructions = {
+			"写实照片": "高清摄影作品，写实风格，自然光线，真实质感，细节丰富",
+			"日系动漫": "日系动漫风格，精美作画，色彩鲜艳，人物可爱，动漫渲染",
+			"3D渲染": "3D渲染，高品质建模，精致材质，专业渲染，光影逼真",
+			"水彩画": "水彩画风格，色彩柔和，笔触自然，艺术感强，优雅细腻",
+			"油画": "油画质感，笔触厚重，色彩浓郁，古典艺术风格，富有层次",
+			"素描": "素描风格，线条流畅，黑白灰调，光影明确，艺术素描",
+			"赛博朋克": "赛博朋克风格，霓虹灯光，未来科技感，暗黑氛围，高科技元素",
+			"蒸汽朋克": "蒸汽朋克风格，机械齿轮，复古科技，维多利亚时代，工业美学",
+			"像素风": "像素艺术风格，8bit/16bit画风，复古游戏美术，像素化",
+			"中国风": "中国传统绘画风格，水墨意境，古典韵味，诗意氛围，传统美学"
+		}
+		
+		style_desc = style_instructions.get(img_type, "写实照片风格")
 		
 		try:
 			self.set_busy(True)
@@ -1806,18 +2339,21 @@ class App(tk.Tk):
 				model=_sanitize(self.model.get()),
 			)
 			inst = (
-				"你是资深视觉设计师。基于分镜描述与故事上下文，生成一段详细的中文图片描述，"
-				"用于后续转换为英文提示词生成图片。要求：\n"
-				"1. 描述要包含：场景环境、主体人物外观（发型、服饰、年龄、表情）、动作姿态、光线氛围、镜头角度、画面风格\n"
-				"2. 确保人物与故事设定一致\n"
-				"3. 使用中文，描述清晰、细节丰富\n"
-				"4. 不要输出任何Markdown格式，只输出描述文字"
+				f"你是资深视觉设计师。基于分镜描述与故事上下文，生成一段高密度关键词的中文图片描述，"
+				f"用于后续转换为英文提示词生成【{img_type}】风格的图片。要求：\n"
+				f"1. 图片风格：{style_desc}\n"
+				f"2. 核心元素（必须）：主体人物（外貌特征、服饰、表情、动作）、场景环境（具体场所、氛围）、光线（时间、质感）、构图（镜头角度）\n"
+				f"3. 使用关键词+短句形式，不要冗长叙述。例如：'深夜医院，走廊尽头，女医生白大褂，疲惫神情，昏暗灯光，特写镜头'\n"
+				f"4. 确保描述符合【{img_type}】的视觉特点\n"
+				f"5. 控制在180字以内，但要信息密集，每个词都有意义\n"
+				f"6. 不要输出任何Markdown格式或解释，只输出最终描述"
 			)
 			user = (
+				f"目标图片类型：{img_type}\n\n"
 				f"当前分镜：\n{current_shot}\n\n"
 				f"故事上下文：\n{story_text[:500] if story_text else '无'}\n\n"
 				f"补充场景：{scene or '无'}\n人物设定：{roles or '无'}\n\n"
-				"请生成详细的中文图片描述。"
+				f"请生成详细的中文图片描述，体现{img_type}的风格特点。"
 			)
 			resp = client.chat([
 				{"role": "system", "content": inst},
