@@ -1,0 +1,16 @@
+# Core
+python-dotenv>=1.0.1,<2.0.0
+rich>=13.7.0,<14.0.0
+typer[all]>=0.12.3,<1.0.0
+
+# LLM client (DeepSeek is OpenAI-compatible)
+openai>=1.44.0,<2.0.0
+
+# RAG stack
+faiss-cpu>=1.8.0.post1,<2.0.0
+numpy>=1.26.4,<2.0.0
+sentence-transformers>=3.0.1,<4.0.0
+
+# Utils
+tqdm>=4.66.4,<5.0.0
+Pillow>=10.4.0,<11.0.0
