@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import os
+# 禁用Transformers的TF集成，避免因Keras导致的导入错误
+os.environ.setdefault("TRANSFORMERS_NO_TF", "1")
+
 from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Tuple

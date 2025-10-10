@@ -1,6 +1,6 @@
 {
   "mota": {
-    "base_url": "https://api-inference.modelscope.cn/v1/chat/completions",
+    "base_url": "https://api-inference.modelscope.cn/v1",
     "model": "Qwen/Qwen3-235B-A22B-Thinking-2507",
     "key": "sk-75f0190fa85b40b6876d09ca9eaa0b84"
   }
