@@ -34,11 +34,11 @@ class ImageMixin:
 		self.image_notebook.pack(fill=BOTH, expand=True, padx=0, pady=0)
 		
 		# 创建两个子标签页
-		self.image_tab_create = ttk.Frame(self.image_notebook)
-		self.image_tab_setup = ttk.Frame(self.image_notebook)
+		self.image_tab_create = tk.Frame(self.image_notebook, bg="#2b2b2b")
+		self.image_tab_setup = tk.Frame(self.image_notebook, bg="#2b2b2b")
 		
-		self.image_notebook.add(self.image_tab_create, text="  创作  ")
-		self.image_notebook.add(self.image_tab_setup, text="  配置  ")
+		self.image_notebook.add(self.image_tab_create, text="  ✍️ 创作  ")
+		self.image_notebook.add(self.image_tab_setup, text="  ⚙️ 配置  ")
 		
 		# 构建各个标签页
 		self._build_image_create_tab()
@@ -69,35 +69,30 @@ class ImageMixin:
 		
 		rowf = ttk.Frame(grp_shots)
 		rowf.pack(fill="x", padx=6, pady=(0, 6))
-		self.img_btn_extract_brief = ttk.Button(rowf, text="📝 大致分镜(8-12个)", command=lambda: self._on_img_extract_shots(mode="brief"))
-		self.img_btn_extract_brief.pack(side=LEFT, padx=(0, 4))
-		self.img_btn_extract_normal = ttk.Button(rowf, text="📝 标准分镜(12-20个)", command=lambda: self._on_img_extract_shots(mode="normal"))
-		self.img_btn_extract_normal.pack(side=LEFT, padx=(0, 4))
-		self.img_btn_extract_detailed = ttk.Button(rowf, text="📝 详细分镜(20-30个)", command=lambda: self._on_img_extract_shots(mode="detailed"))
-		self.img_btn_extract_detailed.pack(side=LEFT, padx=(0, 4))
-		self.img_btn_copy_shots = ttk.Button(rowf, text="📋 复制所有", command=self._on_copy_shots)
-		self.img_btn_copy_shots.pack(side=LEFT, padx=4)
-		self.img_btn_clear_shots = ttk.Button(rowf, text="🗑️ 清空", command=self._on_clear_shots)
-		self.img_btn_clear_shots.pack(side=LEFT, padx=4)
+		self.img_btn_extract_brief = ttk.Button(rowf, text="📝 大致分镜(8-12个)", command=lambda: self._on_img_extract_shots(mode="brief"), width=18)
+		self.img_btn_extract_brief.pack(side=LEFT, padx=(0, 3))
+		self.img_btn_extract_normal = ttk.Button(rowf, text="📝 标准分镜(12-20个)", command=lambda: self._on_img_extract_shots(mode="normal"), width=18)
+		self.img_btn_extract_normal.pack(side=LEFT, padx=(0, 3))
+		self.img_btn_extract_detailed = ttk.Button(rowf, text="📝 详细分镜(20-30个)", command=lambda: self._on_img_extract_shots(mode="detailed"), width=19)
+		self.img_btn_extract_detailed.pack(side=LEFT, padx=(0, 3))
+		self.img_btn_copy_shots = ttk.Button(rowf, text="📋 恢复所有", command=self._on_copy_shots, width=10)
+		self.img_btn_copy_shots.pack(side=LEFT, padx=3)
+		self.img_btn_clear_shots = ttk.Button(rowf, text="🗑️ 清空", command=self._on_clear_shots, width=8)
+		self.img_btn_clear_shots.pack(side=LEFT, padx=3)
 		
-		# 选择单个分镜
-		grp_shot_select = ttk.LabelFrame(left, text="🎯 选择要生成的分镜", padding=(8, 5))
-		grp_shot_select.pack(fill="x", padx=0, pady=(0, 8))
-		
-		shot_select_frame = ttk.Frame(grp_shot_select)
-		shot_select_frame.pack(fill="x", padx=6, pady=6)
-		tk.Label(shot_select_frame, text="分镜:", font=("", 10)).pack(side=LEFT, padx=(0, 6))
-		self.shot_selector = ttk.Combobox(shot_select_frame, state="disabled", width=50, font=("", 10))
-		self.shot_selector.pack(side=LEFT, fill="x", expand=True)
-		self.shot_selector.bind("<<ComboboxSelected>>", self._on_shot_selected)
-
-		# Left: 图片类型与场景补充
-		grp_ctx_add = ttk.LabelFrame(left, text="✨ 图片类型与场景补充", padding=(8, 5))
+		# 合并：选择分镜 + 图片类型与场景补充
+		grp_ctx_add = ttk.LabelFrame(left, text="🎯 选择要生成的分镜", padding=(8, 5))
 		grp_ctx_add.pack(fill="x", padx=0, pady=(0, 8))
 		grp_ctx_add.columnconfigure(1, weight=1)
 		
+		# 分镜选择
+		tk.Label(grp_ctx_add, text="分镜:", font=("", 10)).grid(row=0, column=0, sticky="e", padx=(0, 8), pady=(6, 6))
+		self.shot_selector = ttk.Combobox(grp_ctx_add, state="disabled", font=("", 10))
+		self.shot_selector.grid(row=0, column=1, columnspan=2, sticky="we", padx=(0, 6), pady=(6, 6))
+		self.shot_selector.bind("<<ComboboxSelected>>", self._on_shot_selected)
+		
 		# 图片类型选择
-		tk.Label(grp_ctx_add, text="图片类型:", font=("", 10)).grid(row=0, column=0, sticky="e", padx=(0, 8), pady=6)
+		tk.Label(grp_ctx_add, text="图片类型:", font=("", 10)).grid(row=1, column=0, sticky="e", padx=(0, 8), pady=6)
 		self.img_type = tk.StringVar(value="写实照片")
 		# 扩展图片类型，包含更多中国风格；支持手动输入自定义类型
 		self.combo_img_type = ttk.Combobox(grp_ctx_add, textvariable=self.img_type, font=("", 10), width=20,
@@ -105,38 +100,30 @@ class ImageMixin:
 											       "赛博朋克", "蒸汽朋克", "像素风", "中国风", "国风插画", 
 												   "古风", "仙侠", "武侠", "水墨画", "工笔画", "敦煌壁画", 
 												   "恐怖", "惊悚", "诡异", "悬疑", "玄幻", "科幻", "魔幻"))
-		self.combo_img_type.grid(row=0, column=1, sticky="we", padx=(0, 6), pady=6)
+		self.combo_img_type.grid(row=1, column=1, sticky="we", padx=(0, 6), pady=6)
 		# 添加提示文字
-		tk.Label(grp_ctx_add, text="（可手动输入自定义类型）", font=("", 8), fg="gray").grid(row=0, column=2, sticky="w", padx=4)
+		tk.Label(grp_ctx_add, text="（可手动输入自定义类型）", font=("", 8), fg="gray").grid(row=1, column=2, sticky="w", padx=4)
 		
-		tk.Label(grp_ctx_add, text="场景描述:", font=("", 10)).grid(row=1, column=0, sticky="e", padx=(0, 8), pady=6)
+		tk.Label(grp_ctx_add, text="场景描述:", font=("", 10)).grid(row=2, column=0, sticky="e", padx=(0, 8), pady=6)
 		self.img_entry_scene = ttk.Entry(grp_ctx_add, font=("", 10))
-		self.img_entry_scene.grid(row=1, column=1, sticky="we", padx=(0, 6), pady=6)
-		tk.Label(grp_ctx_add, text="角色特征:", font=("", 10)).grid(row=2, column=0, sticky="ne", padx=(0, 8), pady=(6, 0))
+		self.img_entry_scene.grid(row=2, column=1, columnspan=2, sticky="we", padx=(0, 6), pady=6)
+		tk.Label(grp_ctx_add, text="角色特征:", font=("", 10)).grid(row=3, column=0, sticky="ne", padx=(0, 8), pady=(6, 6))
 		self.img_txt_roles = tk.Text(grp_ctx_add, height=3, font=("", 10), wrap=tk.WORD, relief=tk.SOLID, borderwidth=1)
-		self.img_txt_roles.grid(row=2, column=1, sticky="we", padx=(0, 6), pady=(6, 2))
-		
-		# 添加角色特征提示
-		hint_label = tk.Label(grp_ctx_add, 
-							  text="💡 提示：详细描述每个角色的外貌、服饰、体型等特征。AI会按名字匹配，保持每个人物在所有场景中的一致性\n"
-							       "   单人物例：主角李明，28岁男性，黑色短发，身高约175cm，穿深蓝色西装白衬衫，戴金色边框眼镜\n"
-							       "   多人物例：李明-28岁男性，黑短发，深蓝西装 | 王芳-25岁女性，棕长发，白色连衣裙 | 张伟-35岁男性，光头，黑皮夹克",
-							  font=("", 8), fg="#FFB74D", justify=tk.LEFT, bg="#2b2b2b")
-		hint_label.grid(row=3, column=0, columnspan=3, sticky="w", padx=6, pady=(0, 6))
+		self.img_txt_roles.grid(row=3, column=1, columnspan=2, sticky="we", padx=(0, 6), pady=(6, 6))
 
 		# Left: 提示词（中文）
 		grp_prompt = ttk.LabelFrame(left, text="💬 图片描述（中文，可编辑）", padding=(8, 5))
 		grp_prompt.pack(fill="both", expand=True, padx=0, pady=0)
-		self.img_txt_prompt_cn = tk.Text(grp_prompt, height=5, font=("", 10), wrap=tk.WORD, relief=tk.SOLID, borderwidth=1)
+		self.img_txt_prompt_cn = tk.Text(grp_prompt, height=10, font=("", 10), wrap=tk.WORD, relief=tk.SOLID, borderwidth=1)
 		self.img_txt_prompt_cn.pack(fill="both", expand=True, padx=6, pady=(6, 8))
 		rowp = ttk.Frame(grp_prompt)
 		rowp.pack(fill="x", padx=6, pady=(0, 6))
-		self.img_btn_build_from_shot = ttk.Button(rowp, text="✨ 从当前分镜生成", command=self._on_img_prompt_from_current_shot)
-		self.img_btn_build_from_shot.pack(side=LEFT, padx=(0, 4))
-		self.img_btn_copy = ttk.Button(rowp, text="📋 复制", command=self._on_copy_img_prompt)
-		self.img_btn_copy.pack(side=LEFT, padx=4)
-		self.img_btn_clear = ttk.Button(rowp, text="🗑️ 清空", command=self._on_clear_img_prompt)
-		self.img_btn_clear.pack(side=LEFT, padx=4)
+		self.img_btn_build_from_shot = ttk.Button(rowp, text="✨ 从当前分镜生成", command=self._on_img_prompt_from_current_shot, width=18)
+		self.img_btn_build_from_shot.pack(side=LEFT, padx=(0, 3))
+		self.img_btn_copy = ttk.Button(rowp, text="📋 复制", command=self._on_copy_img_prompt, width=8)
+		self.img_btn_copy.pack(side=LEFT, padx=3)
+		self.img_btn_clear = ttk.Button(rowp, text="🗑️ 清空", command=self._on_clear_img_prompt, width=8)
+		self.img_btn_clear.pack(side=LEFT, padx=3)
 
 		# Right: 参考与生成
 		grp_ctx = ttk.LabelFrame(right, text="🎯 参考与参数", padding=(8, 5))
@@ -200,9 +187,55 @@ class ImageMixin:
 	
 	def _build_image_setup_tab(self) -> None:
 		"""构建图片API配置页面"""
+		# 创建Canvas和滚动条来支持内容滚动
+		canvas = tk.Canvas(self.image_tab_setup, bg="#2b2b2b", highlightthickness=0)
+		scrollbar = ttk.Scrollbar(self.image_tab_setup, orient="vertical", command=canvas.yview)
+		scrollable_frame = tk.Frame(canvas, bg="#2b2b2b")
+		
+		scrollable_frame.bind(
+			"<Configure>",
+			lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+		)
+		
+		# 创建窗口并保存ID
+		canvas_window = canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+		canvas.configure(yscrollcommand=scrollbar.set)
+		
+		# 绑定Canvas大小变化事件，使scrollable_frame填充整个宽度
+		def _on_canvas_configure(event):
+			canvas.itemconfig(canvas_window, width=event.width)
+		canvas.bind("<Configure>", _on_canvas_configure)
+		
+		# 绑定鼠标滚轮事件（支持macOS和Windows）
+		def _on_mousewheel(event):
+			if event.delta:
+				canvas.yview_scroll(int(-1 * event.delta), "units")
+			elif event.num == 4:
+				canvas.yview_scroll(-1, "units")
+			elif event.num == 5:
+				canvas.yview_scroll(1, "units")
+		
+		# 鼠标进入Canvas区域时绑定滚轮事件
+		def _bind_mousewheel(event):
+			canvas.bind_all("<MouseWheel>", _on_mousewheel)
+			canvas.bind_all("<Button-4>", _on_mousewheel)
+			canvas.bind_all("<Button-5>", _on_mousewheel)
+		
+		# 鼠标离开Canvas区域时解绑滚轮事件
+		def _unbind_mousewheel(event):
+			canvas.unbind_all("<MouseWheel>")
+			canvas.unbind_all("<Button-4>")
+			canvas.unbind_all("<Button-5>")
+		
+		canvas.bind("<Enter>", _bind_mousewheel)
+		canvas.bind("<Leave>", _unbind_mousewheel)
+		
+		canvas.pack(side="left", fill="both", expand=True)
+		scrollbar.pack(side="right", fill="y")
+		
 		# API 配置组
-		grp_api = ttk.LabelFrame(self.image_tab_setup, text="图片生成 API 配置")
-		grp_api.pack(fill="x", padx=10, pady=5)
+		grp_api = ttk.LabelFrame(scrollable_frame, text="🎨 图片生成 API 配置")
+		grp_api.pack(fill="x", padx=15, pady=(15, 8))
 		grp_api.columnconfigure(1, weight=1)
 		grp_api.columnconfigure(5, weight=1)
 		
@@ -289,10 +322,12 @@ class ImageMixin:
 		self.img_entry_model.grid(row=4, column=1, sticky="we", padx=6)
 		tk.Button(grp_api, text="保存配置", command=self.save_img_api_config).grid(row=4, column=2, padx=6)
 		tk.Button(grp_api, text="加载配置", command=self.load_img_api_config).grid(row=4, column=3, padx=6, sticky="w")
+		# API测试按钮 - 与加载配置同行
+		tk.Button(grp_api, text="API测试", command=self.on_test_image_api).grid(row=4, column=4, padx=6, sticky="w")
 		
 		# 图片参数设置
-		grp_params = ttk.LabelFrame(self.image_tab_setup, text="📐 图片参数")
-		grp_params.pack(fill="x", padx=10, pady=5)
+		grp_params = ttk.LabelFrame(scrollable_frame, text="📐 图片参数")
+		grp_params.pack(fill="x", padx=15, pady=8)
 		grp_params.columnconfigure(1, weight=1)
 		
 		# 图片尺寸
@@ -323,17 +358,9 @@ class ImageMixin:
 		tk.Label(hint_frame3, text="横版: ", fg="gray", font=("", 9), bg="#2b2b2b").pack(side=LEFT)
 		tk.Label(hint_frame3, text="1792x1024, 640x360, 1280x720, 1920x1080", fg="#FFCC80", font=("", 9), bg="#2b2b2b").pack(side=LEFT)
 		
-		# 测试操作
-		grp_test = ttk.LabelFrame(self.image_tab_setup, text="🔌 API测试")
-		grp_test.pack(fill="x", padx=10, pady=5)
-		
-		# 测试按钮
-		self.btn_test_img_api = ttk.Button(grp_test, text="🔌 测试图片生成API", command=self.on_test_image_api)
-		self.btn_test_img_api.pack(fill="x", padx=6, pady=6)
-		
 		# 辅助功能API配置（分镜头生成和图片描述生成）
-		grp_assist_api = ttk.LabelFrame(self.image_tab_setup, text="🤖 辅助功能 API 配置（使用聊天模型）")
-		grp_assist_api.pack(fill="x", padx=10, pady=5)
+		grp_assist_api = ttk.LabelFrame(scrollable_frame, text="🤖 辅助功能 API 配置（使用聊天模型）")
+		grp_assist_api.pack(fill="x", padx=15, pady=8)
 		grp_assist_api.columnconfigure(1, weight=1)
 		
 		# 说明文字
@@ -361,28 +388,48 @@ class ImageMixin:
 									   font=("", 9), bg="#4CAF50", fg="white", relief=tk.FLAT, padx=12, pady=4, cursor="hand2")
 		btn_save_assist_api.grid(row=3, column=0, columnspan=2, padx=6, pady=(8, 4), sticky="we")
 		
-		# 测试日志输出区域
-		grp_log = ttk.LabelFrame(self.image_tab_setup, text="测试日志")
-		grp_log.pack(fill="both", expand=True, padx=10, pady=5)
+		# 测试日志输出区域（合理高度）
+		grp_log = ttk.LabelFrame(scrollable_frame, text="📋 测试日志")
+		grp_log.pack(fill="x", padx=15, pady=(8, 15))
 		
-		# 添加滚动条
-		scroll_y = tk.Scrollbar(grp_log, orient="vertical")
-		scroll_y.pack(side=RIGHT, fill="y")
+		# 工具栏
+		toolbar = tk.Frame(grp_log, bg="#2b2b2b")
+		toolbar.pack(fill="x", padx=5, pady=(5, 0))
 		
-		# 日志文本框
-		self.img_test_log = tk.Text(grp_log, height=10, wrap="word", 
-									yscrollcommand=scroll_y.set,
-									bg="#1e1e1e", fg="#d4d4d4", 
-									font=("Consolas", 10), relief=tk.FLAT)
-		self.img_test_log.pack(fill="both", expand=True, padx=5, pady=5)
-		scroll_y.config(command=self.img_test_log.yview)
+		tk.Label(toolbar, text="💡 提示：点击上方'API测试'按钮查看详细测试结果", 
+				fg="#90CAF9", font=("", 9), bg="#2b2b2b").pack(side=LEFT, padx=5)
 		
-		# 清空日志按钮
-		btn_clear_log = tk.Button(grp_log, text="清空日志", 
+		btn_clear_log = tk.Button(toolbar, text="🗑️ 清空日志", 
 								  command=lambda: self.img_test_log.delete("1.0", END),
 								  font=("", 9), bg="#607D8B", fg="white", 
-								  relief=tk.FLAT, padx=8, pady=2)
-		btn_clear_log.pack(side=RIGHT, padx=5, pady=(0, 5))
+								  relief=tk.FLAT, padx=12, pady=4, cursor="hand2")
+		btn_clear_log.pack(side=RIGHT, padx=5)
+		
+		# 日志文本框容器（调整为更合理的高度200px）
+		log_container = tk.Frame(grp_log, bg="#1e1e1e", relief=tk.SUNKEN, bd=1, height=200)
+		log_container.pack(fill="both", padx=5, pady=5)
+		log_container.pack_propagate(False)  # 防止子组件改变容器大小
+		
+		# 添加滚动条
+		scroll_y = tk.Scrollbar(log_container, orient="vertical")
+		scroll_y.pack(side=RIGHT, fill="y")
+		
+		# 日志文本框 - 固定高度
+		self.img_test_log = tk.Text(log_container, wrap="word", 
+									yscrollcommand=scroll_y.set,
+									bg="#1e1e1e", fg="#d4d4d4", 
+									font=("Consolas", 10), relief=tk.FLAT,
+									padx=10, pady=10)
+		self.img_test_log.pack(fill="both", expand=True)
+		scroll_y.config(command=self.img_test_log.yview)
+		
+		# 初始提示信息
+		self.img_test_log.insert("1.0", "欢迎使用AI图片生成平台！\n\n")
+		self.img_test_log.insert(END, "📝 使用说明：\n")
+		self.img_test_log.insert(END, "1. 配置好上方的API信息\n")
+		self.img_test_log.insert(END, "2. 点击'API测试'按钮测试连接\n")
+		self.img_test_log.insert(END, "3. 测试结果会显示在此区域\n\n")
+		self.img_test_log.insert(END, "准备就绪，可以开始测试了... ✨\n")
 		
 		# 启动后自动加载配置
 		self.after(100, self._auto_load_image_api_config)
@@ -403,11 +450,17 @@ class ImageMixin:
 			try:
 				self.img_btn_gen.configure(state=DISABLED)
 				self.status.set("🎨 准备生成图片...（初始化）")
+				# 更新顶部状态栏
+				if hasattr(self, 'update_header_status'):
+					self.update_header_status("准备生成图片...", "🎨")
 				
 				# 获取图片类型
 				img_type = self.img_type.get() if hasattr(self, 'img_type') else "写实照片"
 				
 				self.status.set(f"📝 正在翻译【{img_type}】风格图片描述为英文...（步骤1/3）")
+				# 更新顶部状态栏
+				if hasattr(self, 'update_header_status'):
+					self.update_header_status("翻译提示词 (1/3)", "📝")
 				
 				# 根据图片类型定义英文风格关键词
 				style_keywords = {
@@ -527,6 +580,9 @@ class ImageMixin:
 				print(f"DEBUG: 英文提示词前100字符: {prompt_en[:100]}...")
 				
 				self.status.set(f"🖼️ 翻译完成，正在调用图片生成API...（步骤2/3）")
+				# 更新顶部状态栏
+				if hasattr(self, 'update_header_status'):
+					self.update_header_status("正在生成图片 (2/3)", "🎨")
 				
 				# 3. 使用对应的客户端生成图片
 				if provider == "hunyuan":
@@ -534,6 +590,9 @@ class ImageMixin:
 					from src.clients.hunyuan_image_client import HunyuanImageClient
 					
 					self.status.set(f"🎨 使用腾讯混元API生成【{img_type}】风格图片...（步骤2/3）")
+					# 更新顶部状态栏
+					if hasattr(self, 'update_header_status'):
+						self.update_header_status("腾讯混元生成中 (2/3)", "🎨")
 					
 					secret_id = self.img_api_key.get().strip()
 					secret_key = self.img_secret_key.get().strip()
@@ -691,11 +750,17 @@ class ImageMixin:
 					)
 					
 					self.status.set(f"✅ 处理生成结果...（步骤3/3）")
+					# 更新顶部状态栏
+					if hasattr(self, 'update_header_status'):
+						self.update_header_status("处理结果 (3/3)", "✅")
 					
 					self.img_last_image = result.image
 					self._update_img_preview()
 					self.img_btn_save.configure(state=NORMAL)
 					self.status.set(f"✨ 【{img_type}】风格图片生成成功！使用腾讯混元模型")
+					# 更新顶部状态栏
+					if hasattr(self, 'update_header_status'):
+						self.update_header_status("图片生成完成", "✅")
 				
 				else:
 					# 使用OpenAI兼容API
@@ -714,6 +779,9 @@ class ImageMixin:
 						return
 					
 					self.status.set(f"🎨 使用OpenAI API生成【{img_type}】风格图片...（模型：{model_name}）")
+					# 更新顶部状态栏
+					if hasattr(self, 'update_header_status'):
+						self.update_header_status("OpenAI生成中 (2/3)", "🎨")
 					
 					img_client = OpenAIImageClient(
 						api_key=img_api_key, 
@@ -737,17 +805,26 @@ class ImageMixin:
 						return
 					
 					self.status.set(f"✅ 处理生成结果...（步骤3/3）")
+					# 更新顶部状态栏
+					if hasattr(self, 'update_header_status'):
+						self.update_header_status("处理结果 (3/3)", "✅")
 					
 					self.img_last_image = results[0].image
 					self._update_img_preview()
 					self.img_btn_save.configure(state=NORMAL)
 					self.status.set(f"✨ 【{img_type}】风格图片生成成功！提示词：{prompt_en[:40]}...")
+					# 更新顶部状态栏
+					if hasattr(self, 'update_header_status'):
+						self.update_header_status("图片生成完成", "✅")
 			except Exception as e:
 				import traceback
 				error_detail = traceback.format_exc()
 				print(f"图片生成错误详情：\n{error_detail}")
 				messagebox.showerror("错误", f"{str(e)}\n\n详细错误请查看控制台")
 				self.status.set("❌ 图片生成失败，请检查配置和网络")
+				# 更新顶部状态栏
+				if hasattr(self, 'update_header_status'):
+					self.update_header_status("图片生成失败", "❌")
 			finally:
 				self.img_btn_gen.configure(state=NORMAL)
 		
@@ -841,6 +918,21 @@ class ImageMixin:
 			messagebox.showwarning("提示", "请先在'故事'页生成或粘贴正文内容，然后再生成分镜")
 			return
 		
+		# 获取选中的分镜头生成API配置
+		selected_api = self.shot_gen_api.get() if hasattr(self, 'shot_gen_api') else "DeepSeek"
+		if selected_api not in self.api_presets:
+			messagebox.showerror("错误", f"未找到API预设: {selected_api}")
+			return
+		
+		api_config = self.api_presets[selected_api]
+		api_key = _sanitize(api_config.get("key", ""))
+		base_url = _sanitize(api_config.get("base_url", ""))
+		model = _sanitize(api_config.get("model", ""))
+		
+		if not api_key:
+			messagebox.showwarning("提示", f"请先在故事生成页面配置 {selected_api} 的API Key")
+			return
+		
 		# 根据模式设置不同的提示词
 		if mode == "brief":
 			shot_count = "8-12"
@@ -890,80 +982,81 @@ class ImageMixin:
 				"格式：每行一个分镜，格式为'序号. 场景描述 / 主体 / 动作 / 情绪 / 光线镜头'。只输出清单，不要其他文字。"
 			)
 		
-		try:
-			self.set_busy(True)
-			
-			# 获取选中的分镜头生成API配置
-			selected_api = self.shot_gen_api.get() if hasattr(self, 'shot_gen_api') else "DeepSeek"
-			if selected_api not in self.api_presets:
-				messagebox.showerror("错误", f"未找到API预设: {selected_api}")
-				return
-			
-			api_config = self.api_presets[selected_api]
-			api_key = _sanitize(api_config.get("key", ""))
-			base_url = _sanitize(api_config.get("base_url", ""))
-			model = _sanitize(api_config.get("model", ""))
-			
-			if not api_key:
-				messagebox.showwarning("提示", f"请先在故事生成页面配置 {selected_api} 的API Key")
-				return
-			
-			self.status.set(f"🎬 正在使用 {selected_api} 生成{mode_name}分镜（目标{shot_count}个）...")
-			
-			client = DeepSeekClient(
-				api_key=api_key,
-				base_url=base_url,
-				model=model,
-			)
-			
-			self.status.set(f"🤖 {selected_api} 正在分析故事并生成{mode_name}分镜...")
-			
-			resp = client.chat([
-				{"role": "system", "content": inst},
-				{"role": "user", "content": story_text},
-			], temperature=max(0.4, self.temperature.get() - 0.2))
-			
-			self.status.set("📋 解析分镜头列表...")
-			
-			# 解析分镜列表
-			shots = []
-			shot_lines = []  # 保留带序号的原始行
-			for line in resp.strip().split('\n'):
-				line = line.strip()
-				if line and (line[0].isdigit() or line.startswith('•') or line.startswith('-')):
-					shot_lines.append(line)
-					# 移除序号提取内容
-					if '.' in line:
-						shot_text = line.split('.', 1)[1].strip()
-					elif line.startswith('•') or line.startswith('-'):
-						shot_text = line[1:].strip()
-					else:
-						shot_text = line
-					shots.append(shot_text)
-			
-			# 更新所有分镜显示框
-			if shots:
-				self.status.set(f"✅ 更新分镜显示...")
+		# 在后台线程中执行耗时操作
+		def task():
+			try:
+				self.set_busy(True)
+				self.status.set(f"🎬 正在使用 {selected_api} 生成{mode_name}分镜（目标{shot_count}个）...")
+				# 更新顶部状态栏
+				if hasattr(self, 'update_header_status'):
+					self.update_header_status(f"生成{mode_name}分镜...", "🎬")
 				
-				self.img_txt_all_shots.config(state=NORMAL)
-				self.img_txt_all_shots.delete("1.0", END)
-				self.img_txt_all_shots.insert("1.0", "\n".join(shot_lines))
-				self.img_txt_all_shots.config(state=DISABLED)
+				client = DeepSeekClient(
+					api_key=api_key,
+					base_url=base_url,
+					model=model,
+				)
 				
-				# 更新分镜选择器
-				self.shot_selector['values'] = [f"{i+1}. {shot[:60]}..." if len(shot) > 60 else f"{i+1}. {shot}" for i, shot in enumerate(shots)]
-				self.shot_selector['state'] = 'readonly'
-				self.shot_selector.current(0)
-				# 保存完整的分镜列表
-				self.parsed_shots = shots
-				# 显示第一个分镜
-				self._on_shot_selected(None)
-			
-			self.status.set(f"🎬 已生成{mode_name} {len(shots)} 个分镜（可在下拉框中选择）")
-		except Exception as e:
-			messagebox.showerror("错误", str(e))
-		finally:
-			self.set_busy(False)
+				self.status.set(f"🤖 {selected_api} 正在分析故事并生成{mode_name}分镜...")
+				
+				resp = client.chat([
+					{"role": "system", "content": inst},
+					{"role": "user", "content": story_text},
+				], temperature=max(0.4, self.temperature.get() - 0.2))
+				
+				self.status.set("📋 解析分镜头列表...")
+				# 更新顶部状态栏
+				if hasattr(self, 'update_header_status'):
+					self.update_header_status("解析分镜中...", "📋")
+				
+				# 解析分镜列表
+				shots = []
+				shot_lines = []  # 保留带序号的原始行
+				for line in resp.strip().split('\n'):
+					line = line.strip()
+					if line and (line[0].isdigit() or line.startswith('•') or line.startswith('-')):
+						shot_lines.append(line)
+						# 移除序号提取内容
+						if '.' in line:
+							shot_text = line.split('.', 1)[1].strip()
+						elif line.startswith('•') or line.startswith('-'):
+							shot_text = line[1:].strip()
+						else:
+							shot_text = line
+						shots.append(shot_text)
+				
+				# 更新所有分镜显示框
+				if shots:
+					self.status.set(f"✅ 更新分镜显示...")
+					
+					self.img_txt_all_shots.config(state=NORMAL)
+					self.img_txt_all_shots.delete("1.0", END)
+					self.img_txt_all_shots.insert("1.0", "\n".join(shot_lines))
+					self.img_txt_all_shots.config(state=DISABLED)
+					
+					# 更新分镜选择器
+					self.shot_selector['values'] = [f"{i+1}. {shot[:60]}..." if len(shot) > 60 else f"{i+1}. {shot}" for i, shot in enumerate(shots)]
+					self.shot_selector['state'] = 'readonly'
+					self.shot_selector.current(0)
+					# 保存完整的分镜列表
+					self.parsed_shots = shots
+					# 显示第一个分镜
+					self._on_shot_selected(None)
+				
+				self.status.set(f"🎬 已生成{mode_name} {len(shots)} 个分镜（可在下拉框中选择）")
+				# 更新顶部状态栏
+				if hasattr(self, 'update_header_status'):
+					self.update_header_status("分镜生成完成", "✅")
+			except Exception as e:
+				messagebox.showerror("错误", str(e))
+				# 更新顶部状态栏
+				if hasattr(self, 'update_header_status'):
+					self.update_header_status("分镜生成失败", "❌")
+			finally:
+				self.set_busy(False)
+		
+		import threading
+		threading.Thread(target=task, daemon=True).start()
 	
 	def _on_shot_selected(self, event) -> None:
 		"""当选择分镜时"""
@@ -1092,113 +1185,126 @@ class ImageMixin:
 				f"4. 风格：体现【{img_type}】美学特征"
 			)
 		
-		try:
-			self.set_busy(True)
-			
-			# 获取选中的图片描述生成API配置
-			selected_api = self.desc_gen_api.get() if hasattr(self, 'desc_gen_api') else "DeepSeek"
-			if selected_api not in self.api_presets:
-				messagebox.showerror("错误", f"未找到API预设: {selected_api}")
-				return
-			
-			api_config = self.api_presets[selected_api]
-			api_key = _sanitize(api_config.get("key", ""))
-			base_url = _sanitize(api_config.get("base_url", ""))
-			model = _sanitize(api_config.get("model", ""))
-			
-			if not api_key:
-				messagebox.showwarning("提示", f"请先在故事生成页面配置 {selected_api} 的API Key")
-				return
-			
-			self.status.set(f"📸 正在使用 {selected_api} 生成{'精简' if is_hunyuan else '详细'}图片描述（第{selected_index+1}个分镜）...")
-			client = DeepSeekClient(
-				api_key=api_key,
-				base_url=base_url,
-				model=model,
-			)
-			# 根据API类型调整上下文长度
-			context_length = 500 if is_hunyuan else 1000
-			
-			# 构建用户提示词，强调人物一致性
-			user_parts = [f"【目标图片类型】{img_type}\n"]
-			
-			# 人物一致性要求（最重要，放在前面）
-			if roles:
-				user_parts.append(f"【‼️ 人物设定档案 - 必须严格遵守】\n{roles}\n\n")
-				user_parts.append(f"⚠️ 人物一致性规则（极其重要）：\n")
-				user_parts.append(f"1. **人物-特征绑定**：以上每个人物的名字与其外貌、服饰特征是永久绑定的\n")
-				user_parts.append(f"2. **按名字匹配**：当分镜中提到某个人物的名字时，必须使用该人物在设定中的所有特征\n")
-				user_parts.append(f"3. **选择性出现**：只描述当前分镜中实际出现的人物，未出现的人物不要描述\n")
-				user_parts.append(f"4. **再次出现一致**：如果某人物在前面的场景没出现，但在当前场景出现，必须使用设定中该人物的特征\n")
-				user_parts.append(f"5. **多人物区分**：如果场景中有多个人物，要清楚区分每个人，按各自的名字使用对应的特征\n")
-				user_parts.append(f"6. **特征不混淆**：绝不允许将A人物的特征用在B人物身上，每个人物的特征独立且固定\n\n")
-				user_parts.append(f"例如：\n")
-				user_parts.append(f"- 如果分镜说「李明走进房间」→ 只描述李明，使用李明的设定特征\n")
-				user_parts.append(f"- 如果分镜说「王芳和李明对话」→ 描述两人，分别使用各自的设定特征\n")
-				user_parts.append(f"- 如果分镜说「一个空房间」→ 不描述任何人物，只描述环境\n")
-				user_parts.append(f"- 如果王芳在前3个场景没出现，第5个场景才出现 → 第5个场景中王芳的特征与设定完全一致\n\n")
-			else:
-				user_parts.append(f"【人物设定】从故事上下文和分镜描述中提取人物特征，为每个人物建立档案，")
-				user_parts.append(f"并在该人物每次出现时保持特征一致。不同人物要清楚区分，不要混淆。\n\n")
-			
-			# 当前分镜
-			user_parts.append(f"【当前分镜描述】\n{current_shot}\n\n")
-			
-			# 故事上下文
-			user_parts.append(f"【故事上下文】\n{story_text[:context_length] if story_text else '无相关上下文'}\n\n")
-			
-			# 场景设定
-			if scene:
-				user_parts.append(f"【场景设定】\n{scene}\n\n")
-			
-			# 一致性强调
-			user_parts.append(f"【描述生成要求】\n")
-			user_parts.append(f"1. **识别当前场景人物**：仔细阅读当前分镜描述，识别场景中出现的具体人物（根据名字或角色）\n")
-			user_parts.append(f"2. **匹配人物特征**：为每个出现的人物，从人物设定档案中找到对应的特征\n")
-			user_parts.append(f"3. **只描述在场人物**：只描述当前分镜中实际出现的人物，不在场的人物不要提及\n")
-			user_parts.append(f"4. **保持特征一致**：每个人物的年龄、性别、发型、发色、肤色、体型、五官、服饰必须与设定完全一致\n")
-			user_parts.append(f"5. **动态元素变化**：根据分镜要求，只改变表情、动作、姿态等动态元素，静态特征保持不变\n")
-			user_parts.append(f"6. **多人物区分**：如果场景中有多人，要清楚描述每个人的特征，不要混淆或遗漏\n")
-			user_parts.append(f"7. **服饰一致**：除非分镜明确说明换装，否则服装款式、颜色、材质保持一致\n")
-			user_parts.append(f"8. **细节补充**：如果设定中缺少某些细节，可适当添加，但要符合该人物的身份和场景，且后续保持一致\n\n")
-			
-			# 生成要求
-			user_parts.append(f"【生成要求】\n")
-			user_parts.append(f"请基于以上信息，生成{detail_level}的中文图片描述（{char_limit}），")
-			user_parts.append(f"充分体现【{img_type}】风格的视觉特点，同时严格保持人物一致性。")
-			
-			user = "".join(user_parts)
-			resp = client.chat([
-				{"role": "system", "content": inst},
-				{"role": "user", "content": user},
-			], temperature=max(0.5, self.temperature.get() - 0.1))
-			
-			self.status.set("✅ 更新图片描述...")
-			
-			description = resp.strip()
-			
-			# 根据API类型限制描述长度
-			max_desc_length = 200 if is_hunyuan else 500
-			if len(description) > max_desc_length:
-				# 在句号、逗号或顿号处截断
-				truncated = description[:max_desc_length]
-				last_punct = max(truncated.rfind('。'), truncated.rfind('，'), truncated.rfind('、'))
-				if last_punct > int(max_desc_length * 0.8):
-					description = truncated[:last_punct + 1]
+		# 获取选中的图片描述生成API配置
+		selected_api = self.desc_gen_api.get() if hasattr(self, 'desc_gen_api') else "DeepSeek"
+		if selected_api not in self.api_presets:
+			messagebox.showerror("错误", f"未找到API预设: {selected_api}")
+			return
+		
+		api_config = self.api_presets[selected_api]
+		api_key = _sanitize(api_config.get("key", ""))
+		base_url = _sanitize(api_config.get("base_url", ""))
+		model = _sanitize(api_config.get("model", ""))
+		
+		if not api_key:
+			messagebox.showwarning("提示", f"请先在故事生成页面配置 {selected_api} 的API Key")
+			return
+		
+		# 在后台线程中执行耗时操作
+		def task():
+			try:
+				self.set_busy(True)
+				self.status.set(f"📸 正在使用 {selected_api} 生成{'精简' if is_hunyuan else '详细'}图片描述（第{selected_index+1}个分镜）...")
+				# 更新顶部状态栏
+				if hasattr(self, 'update_header_status'):
+					self.update_header_status("生成图片描述...", "📸")
+				client = DeepSeekClient(
+					api_key=api_key,
+					base_url=base_url,
+					model=model,
+				)
+				# 根据API类型调整上下文长度
+				context_length = 500 if is_hunyuan else 1000
+				
+				# 构建用户提示词，强调人物一致性
+				user_parts = [f"【目标图片类型】{img_type}\n"]
+				
+				# 人物一致性要求（最重要，放在前面）
+				if roles:
+					user_parts.append(f"【‼️ 人物设定档案 - 必须严格遵守】\n{roles}\n\n")
+					user_parts.append(f"⚠️ 人物一致性规则（极其重要）：\n")
+					user_parts.append(f"1. **人物-特征绑定**：以上每个人物的名字与其外貌、服饰特征是永久绑定的\n")
+					user_parts.append(f"2. **按名字匹配**：当分镜中提到某个人物的名字时，必须使用该人物在设定中的所有特征\n")
+					user_parts.append(f"3. **选择性出现**：只描述当前分镜中实际出现的人物，未出现的人物不要描述\n")
+					user_parts.append(f"4. **再次出现一致**：如果某人物在前面的场景没出现，但在当前场景出现，必须使用设定中该人物的特征\n")
+					user_parts.append(f"5. **多人物区分**：如果场景中有多个人物，要清楚区分每个人，按各自的名字使用对应的特征\n")
+					user_parts.append(f"6. **特征不混淆**：绝不允许将A人物的特征用在B人物身上，每个人物的特征独立且固定\n\n")
+					user_parts.append(f"例如：\n")
+					user_parts.append(f"- 如果分镜说「李明走进房间」→ 只描述李明，使用李明的设定特征\n")
+					user_parts.append(f"- 如果分镜说「王芳和李明对话」→ 描述两人，分别使用各自的设定特征\n")
+					user_parts.append(f"- 如果分镜说「一个空房间」→ 不描述任何人物，只描述环境\n")
+					user_parts.append(f"- 如果王芳在前3个场景没出现，第5个场景才出现 → 第5个场景中王芳的特征与设定完全一致\n\n")
 				else:
-					description = truncated
-			
-			self.img_txt_prompt_cn.delete("1.0", END)
-			self.img_txt_prompt_cn.insert(END, description)
-			
-			# 显示字数统计
-			char_count = len(description)
-			api_type = "腾讯混元简洁版" if is_hunyuan else "精简版"
-			self.status.set(f"✨ 已生成【{img_type}】{api_type}图片描述（{char_count}字，可编辑后生成）")
-		except Exception as e:
-			messagebox.showerror("错误", str(e))
-		finally:
-			self.set_busy(False)
+					user_parts.append(f"【人物设定】从故事上下文和分镜描述中提取人物特征，为每个人物建立档案，")
+					user_parts.append(f"并在该人物每次出现时保持特征一致。不同人物要清楚区分，不要混淆。\n\n")
+				
+				# 当前分镜
+				user_parts.append(f"【当前分镜描述】\n{current_shot}\n\n")
+				
+				# 故事上下文
+				user_parts.append(f"【故事上下文】\n{story_text[:context_length] if story_text else '无相关上下文'}\n\n")
+				
+				# 场景设定
+				if scene:
+					user_parts.append(f"【场景设定】\n{scene}\n\n")
+				
+				# 一致性强调
+				user_parts.append(f"【描述生成要求】\n")
+				user_parts.append(f"1. **识别当前场景人物**：仔细阅读当前分镜描述，识别场景中出现的具体人物（根据名字或角色）\n")
+				user_parts.append(f"2. **匹配人物特征**：为每个出现的人物，从人物设定档案中找到对应的特征\n")
+				user_parts.append(f"3. **只描述在场人物**：只描述当前分镜中实际出现的人物，不在场的人物不要提及\n")
+				user_parts.append(f"4. **保持特征一致**：每个人物的年龄、性别、发型、发色、肤色、体型、五官、服饰必须与设定完全一致\n")
+				user_parts.append(f"5. **动态元素变化**：根据分镜要求，只改变表情、动作、姿态等动态元素，静态特征保持不变\n")
+				user_parts.append(f"6. **多人物区分**：如果场景中有多人，要清楚描述每个人的特征，不要混淆或遗漏\n")
+				user_parts.append(f"7. **服饰一致**：除非分镜明确说明换装，否则服装款式、颜色、材质保持一致\n")
+				user_parts.append(f"8. **细节补充**：如果设定中缺少某些细节，可适当添加，但要符合该人物的身份和场景，且后续保持一致\n\n")
+				
+				# 生成要求
+				user_parts.append(f"【生成要求】\n")
+				user_parts.append(f"请基于以上信息，生成{detail_level}的中文图片描述（{char_limit}），")
+				user_parts.append(f"充分体现【{img_type}】风格的视觉特点，同时严格保持人物一致性。")
+				
+				user = "".join(user_parts)
+				resp = client.chat([
+					{"role": "system", "content": inst},
+					{"role": "user", "content": user},
+				], temperature=max(0.5, self.temperature.get() - 0.1))
+				
+				self.status.set("✅ 更新图片描述...")
+				
+				description = resp.strip()
+				
+				# 根据API类型限制描述长度
+				max_desc_length = 200 if is_hunyuan else 500
+				if len(description) > max_desc_length:
+					# 在句号、逗号或顿号处截断
+					truncated = description[:max_desc_length]
+					last_punct = max(truncated.rfind('。'), truncated.rfind('，'), truncated.rfind('、'))
+					if last_punct > int(max_desc_length * 0.8):
+						description = truncated[:last_punct + 1]
+					else:
+						description = truncated
+				
+				self.img_txt_prompt_cn.delete("1.0", END)
+				self.img_txt_prompt_cn.insert(END, description)
+				
+				# 显示字数统计
+				char_count = len(description)
+				api_type = "腾讯混元简洁版" if is_hunyuan else "精简版"
+				self.status.set(f"✨ 已生成【{img_type}】{api_type}图片描述（{char_count}字，可编辑后生成）")
+				# 更新顶部状态栏
+				if hasattr(self, 'update_header_status'):
+					self.update_header_status("图片描述完成", "✅")
+			except Exception as e:
+				messagebox.showerror("错误", str(e))
+				# 更新顶部状态栏
+				if hasattr(self, 'update_header_status'):
+					self.update_header_status("生成描述失败", "❌")
+			finally:
+				self.set_busy(False)
+		
+		import threading
+		threading.Thread(target=task, daemon=True).start()
 
 	def _on_img_prompt_from_shots(self) -> None:
 		shots = self.img_txt_shots.get("1.0", END).strip()

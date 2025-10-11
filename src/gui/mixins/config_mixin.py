@@ -220,6 +220,21 @@ class ConfigMixin:
 				self.combo_shot_gen_api['values'] = api_list
 				self.combo_desc_gen_api['values'] = api_list
 			
+			# 加载故事创作功能API配置
+			outline_api = os.getenv("STORY_OUTLINE_GEN_API", "DeepSeek")
+			if hasattr(self, 'outline_gen_api'):
+				self.outline_gen_api.set(outline_api)
+			
+			story_api = os.getenv("STORY_STORY_GEN_API", "DeepSeek")
+			if hasattr(self, 'story_gen_api'):
+				self.story_gen_api.set(story_api)
+			
+			# 更新故事创作功能API下拉框的选项
+			if hasattr(self, 'api_presets') and hasattr(self, 'combo_outline_gen_api'):
+				api_list = list(self.api_presets.keys())
+				self.combo_outline_gen_api['values'] = api_list
+				self.combo_story_gen_api['values'] = api_list
+			
 			print(f"已自动加载图片API配置: {last_preset or 'OpenAI (DALL-E)'}")
 		except Exception as e:
 			print(f"加载图片API配置失败: {e}")
@@ -247,43 +262,6 @@ class ConfigMixin:
 		except Exception as e:
 			messagebox.showerror("错误", f"保存配置失败: {str(e)}")
 	
-	def on_test_api(self) -> None:
-		try:
-			self.set_busy(True)
-			self.status.set("测试 API 中...")
-			key = _sanitize(self.api_key.get())
-			base = _sanitize(self.base_url.get())
-			model = _sanitize(self.model.get()) or "deepseek-chat"
-			candidates = []
-			# try user-provided
-			candidates.append(base.rstrip("/"))
-			# also try toggling /v1 suffix
-			if base.rstrip("/").endswith("/v1"):
-				candidates.append(base.rstrip("/")[:-3])
-			else:
-				candidates.append(base.rstrip("/") + "/v1")
-			tried_msgs: list[str] = []
-			for b in candidates:
-				ok, msg = _try_chat(key, b, model)
-				tried_msgs.append(f"base_url={b} -> {'SUCCESS' if ok else 'FAIL'}: {msg}")
-				if ok:
-					self.base_url.set(b)
-					messagebox.showinfo("测试成功", f"API 可用\n{b}")
-					self.status.set("API 可用")
-					return
-			# all failed
-			full_msg = "\n".join(tried_msgs)
-			self.output.insert(END, "API 测试失败（已尝试多种 base_url）:\n" + full_msg + "\n")
-			messagebox.showerror("API 错误", "鉴权失败，请检查密钥/额度/网络/模型。详情见下方输出日志。")
-			self.status.set("API 测试失败")
-		except Exception as e:
-			import traceback
-			self.output.insert(END, "API 测试异常:\n" + traceback.format_exc() + "\n")
-			messagebox.showerror("API 错误", str(e))
-			self.status.set("API 测试失败")
-		finally:
-			self.set_busy(False)
-
 	def on_test_image_api(self) -> None:
 		"""测试图片生成API"""
 		try:

@@ -473,6 +473,4 @@
 也许有些告别，从来都不需要说再见。
 
 ==================================================
-✅ 第 5 章完成！本章字数：2031 字API 测试失败（已尝试多种 base_url）:
-base_url=https://api.deepseek.com -> FAIL: Error code: 401 - {'error': {'message': 'Authentication Fails, Your api key: ****c6b0 is invalid', 'type': 'authentication_error', 'param': None, 'code': 'invalid_request_error'}}
-base_url=https://api.deepseek.com/v1 -> FAIL: Error code: 401 - {'error': {'message': 'Authentication Fails, Your api key: ****c6b0 is invalid', 'type': 'authentication_error', 'param': None, 'code': 'invalid_request_error'}}
+✅ 第 5 章完成！本章字数：2031 字

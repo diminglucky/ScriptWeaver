@@ -33,6 +33,18 @@ export DEEPSEEK_API_KEY="your_api_key_here"
 ```
 
 ## 直接启动 GUI
+
+### 现代化专业UI（推荐）✨
+```bash
+python run_modern_app.py
+```
+全新设计的专业级UI界面，包含：
+- 优雅的深色主题配色
+- 现代化的侧边导航栏
+- 专业的状态指示
+- 流畅的交互体验
+
+### 传统UI
 ```bash
 python main.py
 ```
