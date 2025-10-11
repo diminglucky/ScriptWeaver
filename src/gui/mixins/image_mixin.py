@@ -67,18 +67,26 @@ class ImageMixin:
 		self.img_txt_all_shots.insert("1.0", "点击下方按钮从故事生成分镜头列表...")
 		self.img_txt_all_shots.config(state=DISABLED)
 		
-		rowf = ttk.Frame(grp_shots)
-		rowf.pack(fill="x", padx=6, pady=(0, 6))
-		self.img_btn_extract_brief = ttk.Button(rowf, text="📝 大致分镜(8-12个)", command=lambda: self._on_img_extract_shots(mode="brief"), width=18)
+		# 第一行按钮：主要的分镜生成按钮
+		rowf1 = ttk.Frame(grp_shots)
+		rowf1.pack(fill="x", padx=6, pady=(0, 4))
+		self.img_btn_extract_brief = ttk.Button(rowf1, text="📝 大致(8-12)", command=lambda: self._on_img_extract_shots(mode="brief"), width=14)
 		self.img_btn_extract_brief.pack(side=LEFT, padx=(0, 3))
-		self.img_btn_extract_normal = ttk.Button(rowf, text="📝 标准分镜(12-20个)", command=lambda: self._on_img_extract_shots(mode="normal"), width=18)
+		self.img_btn_extract_normal = ttk.Button(rowf1, text="📝 标准(12-20)", command=lambda: self._on_img_extract_shots(mode="normal"), width=14)
 		self.img_btn_extract_normal.pack(side=LEFT, padx=(0, 3))
-		self.img_btn_extract_detailed = ttk.Button(rowf, text="📝 详细分镜(20-30个)", command=lambda: self._on_img_extract_shots(mode="detailed"), width=19)
+		self.img_btn_extract_detailed = ttk.Button(rowf1, text="📝 详细(20-30)", command=lambda: self._on_img_extract_shots(mode="detailed"), width=14)
 		self.img_btn_extract_detailed.pack(side=LEFT, padx=(0, 3))
-		self.img_btn_copy_shots = ttk.Button(rowf, text="📋 恢复所有", command=self._on_copy_shots, width=10)
-		self.img_btn_copy_shots.pack(side=LEFT, padx=3)
-		self.img_btn_clear_shots = ttk.Button(rowf, text="🗑️ 清空", command=self._on_clear_shots, width=8)
-		self.img_btn_clear_shots.pack(side=LEFT, padx=3)
+		self.img_btn_extract_video = ttk.Button(rowf1, text="🎬 视频版(10-15)", command=lambda: self._on_img_extract_shots(mode="video"), width=14)
+		self.img_btn_extract_video.pack(side=LEFT, padx=(0, 3))
+		
+		# 第二行按钮：辅助功能按钮
+		rowf2 = ttk.Frame(grp_shots)
+		rowf2.pack(fill="x", padx=6, pady=(0, 6))
+		tk.Label(rowf2, text="💡 视频版包含镜头时长、运镜、转场、音效等视频制作要素", font=("", 9), fg="#90CAF9", bg="#2b2b2b").pack(side=LEFT)
+		self.img_btn_copy_shots = ttk.Button(rowf2, text="📋 恢复", command=self._on_copy_shots, width=8)
+		self.img_btn_copy_shots.pack(side=RIGHT, padx=(3, 0))
+		self.img_btn_clear_shots = ttk.Button(rowf2, text="🗑️ 清空", command=self._on_clear_shots, width=8)
+		self.img_btn_clear_shots.pack(side=RIGHT, padx=3)
 		
 		# 合并：选择分镜 + 图片类型与场景补充
 		grp_ctx_add = ttk.LabelFrame(left, text="🎯 选择要生成的分镜", padding=(8, 5))
@@ -916,6 +924,7 @@ class ImageMixin:
 				- "brief": 大致版，8-12个分镜，覆盖主要情节
 				- "normal": 标准版，12-20个分镜（保持兼容）
 				- "detailed": 详细版，20-30个分镜，细致分割每个场景
+				- "video": 视频版，10-15个分镜，专为视频制作优化
 		"""
 		story_text = self.output.get("1.0", END).strip()
 		if not story_text:
@@ -952,6 +961,31 @@ class ImageMixin:
 				"- 光线/镜头：如 close-up（特写）、wide shot（全景）、low angle（低角度）等\n\n"
 				"输出格式：每行一个分镜，格式为'序号. 场景 / 主体 / 动作 / 情绪 / 光线镜头'。\n"
 				"注意：只输出清单，不要其他说明文字或解释。"
+			)
+		elif mode == "video":
+			shot_count = "10-15"
+			mode_name = "视频版"
+			inst = (
+				"请把以下故事正文拆解为**专业视频制作分镜脚本**，生成10-15个镜头，"
+				"每个镜头都要考虑视频拍摄和剪辑的实际需求，确保镜头之间流畅连贯。\n\n"
+				"每个镜头必须包含以下要素：\n"
+				"1. **场景描述**：具体地点、环境、时间（如：白天/傍晚/夜晚）\n"
+				"2. **人物与动作**：主体是谁，在做什么，表情状态\n"
+				"3. **镜头类型**：特写(CU)/近景(MS)/中景(MCU)/全景(WS)/远景(LS)/过肩(OTS)/主观视角(POV)\n"
+				"4. **运镜方式**：固定镜头/推镜/拉镜/摇镜/跟随/环绕/升降，如'缓慢推进''快速拉远''左摇''跟随人物'\n"
+				"5. **镜头时长**：建议停留时间，如'3-5秒''8-10秒''瞬间闪过'\n"
+				"6. **转场效果**：与下一镜头的衔接方式，如'切''淡入淡出''叠化''闪白''黑场'（最后一个镜头写'结束'）\n"
+				"7. **声音提示**（可选）：环境音、音乐情绪、对白提示，如'紧张配乐''环境安静''人物对白'\n\n"
+				"输出格式（每个镜头一行，用' | '分隔各要素）：\n"
+				"序号. 场景描述 | 人物与动作 | 镜头类型 | 运镜方式 | 时长 | 转场 | 声音\n\n"
+				"示例：\n"
+				"1. 深夜城市街道，路灯昏暗 | 空无一人的街道，远处车灯闪烁 | 远景(LS) | 缓慢右摇 | 5-6秒 | 淡入淡出 | 低沉环境音，远处汽车声\n"
+				"2. 公寓楼外景，三楼窗户亮灯 | 窗帘后有人影移动 | 中景(MCU) | 固定，缓慢推进 | 4-5秒 | 切 | 环境音渐弱\n\n"
+				"注意事项：\n"
+				"- 每个镜头都要考虑视频的流畅性和节奏感\n"
+				"- 情绪转折处使用不同的镜头和运镜方式\n"
+				"- 关键情节用特写+慢运镜，过渡场景用全景+快节奏\n"
+				"- 只输出分镜清单，不要其他解释说明"
 			)
 		elif mode == "detailed":
 			shot_count = "20-30"
