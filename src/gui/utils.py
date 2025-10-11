@@ -33,15 +33,34 @@ def try_image_api(key: str, base_url: str, model: str) -> tuple[bool, str]:
 	"""测试图片生成API是否可用"""
 	try:
 		client = OpenAI(api_key=key, base_url=base_url, timeout=30)
-		# 尝试生成一个简单的测试图片
+		
+		# 根据模型选择合适的测试参数
+		if "dall-e-2" in model.lower():
+			# DALL-E-2 建议用较小的尺寸测试，速度快且省钱
+			size = "512x512"
+		else:
+			# DALL-E-3 和其他模型用标准尺寸
+			size = "1024x1024"
+		
+		# 尝试生成一个简单的测试图片（不强制要求格式）
 		resp = client.images.generate(
 			model=model,
-			prompt="test image",
+			prompt="a simple test image",
 			n=1,
-			size="1024x1024"
+			size=size
 		)
 		_ok = bool(resp.data and len(resp.data) > 0)
-		return True, "图片API测试成功"
+		
+		# 检查返回的数据类型
+		has_url = hasattr(resp.data[0], 'url') and resp.data[0].url
+		has_b64 = hasattr(resp.data[0], 'b64_json') and resp.data[0].b64_json
+		
+		if has_url:
+			return True, f"图片API测试成功 (返回URL格式，尺寸:{size})"
+		elif has_b64:
+			return True, f"图片API测试成功 (返回Base64格式，尺寸:{size})"
+		else:
+			return True, f"图片API测试成功 (尺寸:{size})"
 	except Exception as e:
 		return False, str(e)
 

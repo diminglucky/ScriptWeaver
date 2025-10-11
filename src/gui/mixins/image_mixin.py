@@ -261,6 +261,29 @@ class ImageMixin:
 		self.btn_test_img_api = ttk.Button(grp_params, text="🔌 测试API", command=self.on_test_image_api)
 		self.btn_test_img_api.grid(row=1, column=0, columnspan=2, padx=6, pady=(0, 4), sticky="we")
 		
+		# 测试日志输出区域
+		grp_log = ttk.LabelFrame(self.image_tab_setup, text="测试日志")
+		grp_log.pack(fill="both", expand=True, padx=10, pady=5)
+		
+		# 添加滚动条
+		scroll_y = tk.Scrollbar(grp_log, orient="vertical")
+		scroll_y.pack(side=RIGHT, fill="y")
+		
+		# 日志文本框
+		self.img_test_log = tk.Text(grp_log, height=10, wrap="word", 
+									yscrollcommand=scroll_y.set,
+									bg="#1e1e1e", fg="#d4d4d4", 
+									font=("Consolas", 10), relief=tk.FLAT)
+		self.img_test_log.pack(fill="both", expand=True, padx=5, pady=5)
+		scroll_y.config(command=self.img_test_log.yview)
+		
+		# 清空日志按钮
+		btn_clear_log = tk.Button(grp_log, text="清空日志", 
+								  command=lambda: self.img_test_log.delete("1.0", END),
+								  font=("", 9), bg="#607D8B", fg="white", 
+								  relief=tk.FLAT, padx=8, pady=2)
+		btn_clear_log.pack(side=RIGHT, padx=5, pady=(0, 5))
+		
 		# 启动后自动加载配置
 		self.after(100, self._auto_load_image_api_config)
 
@@ -757,30 +780,97 @@ class ImageMixin:
 		
 		style_desc = style_instructions.get(img_type, f"{img_type}风格")
 		
+		# 检测是否使用腾讯混元（根据preset或provider判断）
+		is_hunyuan = False
+		if hasattr(self, 'img_api_preset'):
+			preset_name = self.img_api_preset.get()
+			if "腾讯混元" in preset_name or "hunyuan" in preset_name.lower():
+				is_hunyuan = True
+		
+		# 根据API类型设置不同的描述详细程度
+		if is_hunyuan:
+			# 腾讯混元：简洁版，180字以内（因为API有256字符限制）
+			char_limit = "180字以内"
+			detail_level = "精简但信息密集"
+			inst = (
+				f"你是资深视觉设计师。基于分镜描述与故事上下文，生成一段高密度关键词的中文图片描述，"
+				f"用于腾讯混元生成【{img_type}】风格的图片。要求：\n"
+				f"1. 图片风格：{style_desc}\n"
+				f"2. 核心元素（必须）：主体人物（外貌特征、服饰、表情、动作）、场景环境（具体场所、氛围）、光线（时间、质感）、构图（镜头角度）\n"
+				f"3. 使用关键词+短句形式，不要冗长叙述。例如：'深夜医院，走廊尽头，女医生白大褂，疲惫神情，昏暗灯光，特写镜头'\n"
+				f"4. 确保描述符合【{img_type}】的视觉特点\n"
+				f"5. 控制在{char_limit}，但要信息密集，每个词都有意义\n"
+				f"6. 不要输出任何Markdown格式或解释，只输出最终描述"
+			)
+		else:
+			# OpenAI/DALL-E等：详细版，可以更长更精准
+			char_limit = "300-400字"
+			detail_level = "极度详细，每个细节都要描述"
+			inst = (
+				f"你是资深视觉设计师和电影摄影指导。基于分镜描述与故事上下文，生成一段极其详细、信息丰富的中文图片描述，"
+				f"用于生成高质量的【{img_type}】风格图片。要求：\n\n"
+				f"【风格定位】\n"
+				f"图片风格：{style_desc}\n\n"
+				f"【核心元素描述（必须全部包含）】\n"
+				f"1. **人物细节**（如有人物）：\n"
+				f"   - 外貌：年龄、性别、发型、发色、肤色、体型、五官特征\n"
+				f"   - 服饰：款式、颜色、材质、配饰、细节（如纽扣、花纹）\n"
+				f"   - 表情：眼神、嘴角、眉头、整体情绪（如：眼神坚毅、嘴角微扬、眉头紧锁）\n"
+				f"   - 动作/姿态：身体姿势、手部动作、站姿坐姿、动态感（如：半蹲姿态、右手握拳、身体前倾）\n"
+				f"   - 位置：在画面中的位置和占比\n\n"
+				f"2. **背景环境**（极度详细）：\n"
+				f"   - 场所：具体地点类型（如：废弃工厂、现代办公室、古代宫殿）\n"
+				f"   - 建筑/空间：墙壁材质、地面类型、天花板、门窗、建筑风格\n"
+				f"   - 物品/道具：重要物品的位置、形态、状态（如：破碎的镜子、散落的文件、燃烧的蜡烛）\n"
+				f"   - 自然元素：天空、云层、植被、水体（如有）\n"
+				f"   - 纵深感：前景、中景、背景的层次关系\n\n"
+				f"3. **光线与氛围**：\n"
+				f"   - 光源：类型（自然光/人造光）、方向（侧光/顶光/逆光）、强度\n"
+				f"   - 时间：具体时段（如：黎明、正午、黄昏、深夜）\n"
+				f"   - 天气/季节：晴天、阴天、雨雪、雾气、季节特征\n"
+				f"   - 色温：暖色调/冷色调、色彩氛围\n"
+				f"   - 阴影：阴影的形态和分布\n\n"
+				f"4. **构图与镜头**：\n"
+				f"   - 镜头类型：特写/近景/中景/全景/远景\n"
+				f"   - 拍摄角度：平视/俯视/仰视/侧面\n"
+				f"   - 景深：浅景深/深景深、焦点位置\n"
+				f"   - 构图方式：三分法、中心构图、对角线构图等\n\n"
+				f"5. **情绪与氛围**：\n"
+				f"   - 整体情绪基调（如：紧张、温馨、神秘、恐怖）\n"
+				f"   - 视觉张力和戏剧性\n\n"
+				f"【输出格式】\n"
+				f"使用分层结构输出，用顿号和逗号分隔，例如：\n"
+				f"'人物：20岁女性，黑色长发披肩，白色医生制服，疲惫眼神，眉头微蹙，双手插在口袋里，站立姿态略显疲惫；\n"
+				f"背景：深夜医院走廊，白色墙面，灰绿色地板，墙上挂着医疗海报，走廊尽头有昏暗的红色安全出口标志；\n"
+				f"光线：顶部日光灯发出惨白光线，部分灯管闪烁不定，地面有长长的阴影；\n"
+				f"构图：中景，平视角度，浅景深，人物居中偏右，背景虚化；\n"
+				f"氛围：寂静压抑，略带不安'\n\n"
+				f"【特别要求】\n"
+				f"- 长度：{char_limit}，充分展开每个细节\n"
+				f"- 确保描述符合【{img_type}】的视觉特点和美学风格\n"
+				f"- 所有描述要具体，避免模糊词汇（如'很多'应改为'约10个'）\n"
+				f"- 不要输出任何Markdown格式或额外解释，只输出最终描述"
+			)
+		
 		try:
 			self.set_busy(True)
-			self.status.set(f"📸 正在根据第{selected_index+1}个分镜生成图片描述...")
+			self.status.set(f"📸 正在生成{'精简' if is_hunyuan else '详细'}图片描述（第{selected_index+1}个分镜）...")
 			client = DeepSeekClient(
 				api_key=_sanitize(self.api_key.get()),
 				base_url=_sanitize(self.base_url.get()),
 				model=_sanitize(self.model.get()),
 			)
-			inst = (
-				f"你是资深视觉设计师。基于分镜描述与故事上下文，生成一段高密度关键词的中文图片描述，"
-				f"用于后续转换为英文提示词生成【{img_type}】风格的图片。要求：\n"
-				f"1. 图片风格：{style_desc}\n"
-				f"2. 核心元素（必须）：主体人物（外貌特征、服饰、表情、动作）、场景环境（具体场所、氛围）、光线（时间、质感）、构图（镜头角度）\n"
-				f"3. 使用关键词+短句形式，不要冗长叙述。例如：'深夜医院，走廊尽头，女医生白大褂，疲惫神情，昏暗灯光，特写镜头'\n"
-				f"4. 确保描述符合【{img_type}】的视觉特点\n"
-				f"5. 控制在180字以内，但要信息密集，每个词都有意义\n"
-				f"6. 不要输出任何Markdown格式或解释，只输出最终描述"
-			)
+			# 根据API类型调整上下文长度
+			context_length = 500 if is_hunyuan else 1000
+			
 			user = (
-				f"目标图片类型：{img_type}\n\n"
-				f"当前分镜：\n{current_shot}\n\n"
-				f"故事上下文：\n{story_text[:500] if story_text else '无'}\n\n"
-				f"补充场景：{scene or '无'}\n人物设定：{roles or '无'}\n\n"
-				f"请生成详细的中文图片描述，体现{img_type}的风格特点。"
+				f"【目标图片类型】{img_type}\n\n"
+				f"【当前分镜描述】\n{current_shot}\n\n"
+				f"【故事上下文】\n{story_text[:context_length] if story_text else '无相关上下文'}\n\n"
+				f"【补充信息】\n"
+				f"场景设定：{scene if scene else '按分镜描述'}\n"
+				f"人物设定：{roles if roles else '按分镜描述'}\n\n"
+				f"请基于以上信息，生成{detail_level}的中文图片描述（{char_limit}），充分体现【{img_type}】风格的视觉特点。"
 			)
 			resp = client.chat([
 				{"role": "system", "content": inst},
@@ -789,9 +879,14 @@ class ImageMixin:
 			
 			self.status.set("✅ 更新图片描述...")
 			
+			description = resp.strip()
 			self.img_txt_prompt_cn.delete("1.0", END)
-			self.img_txt_prompt_cn.insert(END, resp.strip())
-			self.status.set(f"✨ 已生成【{img_type}】风格的中文图片描述（可编辑后生成）")
+			self.img_txt_prompt_cn.insert(END, description)
+			
+			# 显示字数统计
+			char_count = len(description)
+			api_type = "腾讯混元简洁版" if is_hunyuan else "详细版"
+			self.status.set(f"✨ 已生成【{img_type}】{api_type}图片描述（{char_count}字，可编辑后生成）")
 		except Exception as e:
 			messagebox.showerror("错误", str(e))
 		finally:

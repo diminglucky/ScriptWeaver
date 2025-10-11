@@ -5,6 +5,12 @@ Config相关功能模块
 from tkinter import BOTH, LEFT, RIGHT, DISABLED, NORMAL, END, messagebox, filedialog
 import tkinter as tk
 from tkinter import ttk
+import os
+from pathlib import Path
+from dotenv import load_dotenv, find_dotenv, set_key
+
+# 导入工具函数
+from ..utils import sanitize as _sanitize, try_chat_api as _try_chat, try_image_api as _try_image
 
 
 class ConfigMixin:
@@ -246,6 +252,23 @@ class ConfigMixin:
 			self.set_busy(True)
 			self.status.set("测试图片生成 API 中...")
 			
+			# 确保使用图片配置页面的日志框（如果不存在则提示用户）
+			if not hasattr(self, 'img_test_log'):
+				messagebox.showwarning(
+					"提示", 
+					"请先切换到【图片生成 → 配置】标签页，\n"
+					"以便在该页面查看详细的测试日志。\n\n"
+					"点击确定后将在故事生成页面显示简要日志。"
+				)
+				log_widget = self.output
+			else:
+				log_widget = self.img_test_log
+				# 清空之前的日志
+				self.img_test_log.delete("1.0", END)
+				import datetime
+				timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+				self.img_test_log.insert(END, f"[{timestamp}] 开始测试图片生成API...\n")
+			
 			key = _sanitize(self.img_api_key.get())
 			base = _sanitize(self.img_base_url.get())
 			model = _sanitize(self.img_model.get()) or "dall-e-3"
@@ -253,12 +276,19 @@ class ConfigMixin:
 			if not key:
 				messagebox.showwarning("警告", "请先填写API Key")
 				self.status.set("测试失败：缺少API Key")
+				log_widget.insert(END, "❌ 错误: 缺少API Key\n")
 				return
 			
 			if not base:
 				messagebox.showwarning("警告", "请先填写Base URL")
 				self.status.set("测试失败：缺少Base URL")
+				log_widget.insert(END, "❌ 错误: 缺少Base URL\n")
 				return
+			
+			# 记录测试参数
+			log_widget.insert(END, f"\n📋 测试参数:\n")
+			log_widget.insert(END, f"  • Model: {model}\n")
+			log_widget.insert(END, f"  • API Key: {'*' * (len(key)-8) + key[-8:] if len(key) > 8 else '***'}\n")
 			
 			candidates = []
 			# try user-provided
@@ -269,25 +299,59 @@ class ConfigMixin:
 			else:
 				candidates.append(base.rstrip("/") + "/v1")
 			
+			log_widget.insert(END, f"\n🔍 尝试的Base URL:\n")
+			
 			tried_msgs: list[str] = []
-			for b in candidates:
+			for i, b in enumerate(candidates, 1):
+				log_widget.insert(END, f"\n[{i}/{len(candidates)}] 测试: {b}\n")
+				log_widget.update()
+				
 				ok, msg = _try_image(key, b, model)
 				tried_msgs.append(f"base_url={b} -> {'SUCCESS' if ok else 'FAIL'}: {msg}")
+				
+				if ok:
+					log_widget.insert(END, f"✅ 成功: {msg}\n")
+				else:
+					log_widget.insert(END, f"❌ 失败: {msg}\n")
+				
 				if ok:
 					self.img_base_url.set(b)
-					messagebox.showinfo("测试成功", f"图片生成 API 可用\n{b}\n\n注意：实际生成了一张测试图片，可能会消耗少量费用")
+					log_widget.insert(END, f"\n🎉 测试成功！已自动更新Base URL为: {b}\n")
+					messagebox.showinfo("测试成功", f"图片生成 API 可用\n{b}\n\n{msg}\n\n注意：实际生成了一张测试图片，可能会消耗少量费用")
 					self.status.set("图片API可用")
 					return
 			
 			# all failed
 			full_msg = "\n".join(tried_msgs)
-			self.output.insert(END, "图片API测试失败（已尝试多种 base_url）:\n" + full_msg + "\n")
-			messagebox.showerror("API 错误", "图片API鉴权失败，请检查密钥/额度/网络/模型。详情见下方输出日志。")
+			log_widget.insert(END, "\n" + "="*60 + "\n")
+			log_widget.insert(END, "❌ 图片API测试失败（已尝试所有可能的base_url）\n")
+			log_widget.insert(END, "="*60 + "\n")
+			log_widget.insert(END, full_msg + "\n")
+			log_widget.insert(END, "\n💡 可能的原因:\n")
+			log_widget.insert(END, "  1. API密钥错误或已过期\n")
+			log_widget.insert(END, "  2. 账户余额不足\n")
+			log_widget.insert(END, "  3. Base URL不正确\n")
+			log_widget.insert(END, "  4. 网络连接问题\n")
+			log_widget.insert(END, "  5. 模型名称不支持\n")
+			log_widget.insert(END, "\n建议操作:\n")
+			log_widget.insert(END, "  • 检查API密钥是否正确\n")
+			log_widget.insert(END, "  • 登录服务商网站查看账户余额\n")
+			log_widget.insert(END, "  • 确认Base URL格式正确\n")
+			messagebox.showerror("API 错误", "图片API鉴权失败，请检查密钥/额度/网络/模型。\n详情见配置页面的测试日志。")
 			self.status.set("图片API测试失败")
 		except Exception as e:
 			import traceback
-			self.output.insert(END, "图片API测试异常:\n" + traceback.format_exc() + "\n")
-			messagebox.showerror("API 错误", str(e))
+			# 使用已经确定的 log_widget，如果不存在则使用 output
+			if 'log_widget' not in locals():
+				log_widget = getattr(self, 'img_test_log', self.output)
+			error_trace = traceback.format_exc()
+			log_widget.insert(END, "\n" + "="*60 + "\n")
+			log_widget.insert(END, "💥 图片API测试异常\n")
+			log_widget.insert(END, "="*60 + "\n")
+			log_widget.insert(END, error_trace + "\n")
+			
+			error_location = "配置页面的测试日志" if hasattr(self, 'img_test_log') and log_widget == self.img_test_log else "故事生成页面的输出日志"
+			messagebox.showerror("API 错误", f"测试时发生异常:\n{str(e)}\n\n详情见{error_location}。")
 			self.status.set("图片API测试失败")
 		finally:
 			self.set_busy(False)
