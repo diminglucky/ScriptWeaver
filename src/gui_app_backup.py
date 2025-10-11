@@ -2044,7 +2044,7 @@ class App(tk.Tk):
 			messagebox.showwarning("提示", "请先生成或填写图片描述")
 			return
 		
-		def task():
+		def task(prompt_cn=prompt_cn):
 			try:
 				self.img_btn_gen.configure(state=DISABLED)
 				self.status.set("🎨 准备生成图片...（初始化）")
@@ -2086,8 +2086,16 @@ class App(tk.Tk):
 				style_keyword = style_keywords.get(img_type, f"{img_type} style, artistic, high quality, detailed")
 				
 				# 1. 先将中文翻译为英文提示词
+				# 使用故事生成的API来翻译（因为需要文本生成能力）
+				story_api_key = _sanitize(self.api_key.get())
+				if not story_api_key:
+					messagebox.showerror("错误", "请先在'故事生成'页面配置API Key（用于翻译提示词）")
+					return
+				
+				print(f"DEBUG: 使用故事API翻译，API Key长度: {len(story_api_key)}")
+				
 				client = DeepSeekClient(
-					api_key=_sanitize(self.api_key.get()),
+					api_key=story_api_key,
 					base_url=_sanitize(self.base_url.get()),
 					model=_sanitize(self.model.get()),
 				)
@@ -2096,21 +2104,72 @@ class App(tk.Tk):
 					f"目标风格：{img_type}\n"
 					f"风格关键词：{style_keyword}\n"
 					f"要求：\n"
-					f"1. 保留所有细节（场景、人物、动作、光线、镜头、风格等）\n"
+					f"1. 保留核心细节（场景、人物、动作、光线、镜头、风格等），但要简洁\n"
 					f"2. 确保翻译体现【{img_type}】的风格特点\n"
-					f"3. 在提示词中加入风格相关的专业术语\n"
-					f"4. 使用专业的图像生成术语（如 cinematic lighting, wide shot, close-up, 4K, detailed等）\n"
-					f"5. 输出纯英文，不要任何中文或其他语言\n"
+					f"3. 使用专业的图像生成术语（如 cinematic lighting, wide shot, close-up等）\n"
+					f"4. 输出纯英文，不要任何中文或其他语言\n"
+					f"5. 控制在500个英文单词以内，优先保留最重要的视觉元素\n"
 					f"6. 不要输出任何解释，只输出最终的英文提示词"
 				)
+				
+				# 如果中文描述过长，先截断
+				max_cn_length = 800
+				prompt_cn_for_translate = prompt_cn
+				if len(prompt_cn_for_translate) > max_cn_length:
+					prompt_cn_for_translate = prompt_cn_for_translate[:max_cn_length] + "..."
+				
 				prompt_en = client.chat([
 					{"role": "system", "content": inst},
-					{"role": "user", "content": f"图片类型：{img_type}\n\n请翻译以下中文图片描述为英文提示词：\n\n{prompt_cn}"},
+					{"role": "user", "content": f"图片类型：{img_type}\n\n请翻译以下中文图片描述为简洁的英文提示词：\n\n{prompt_cn_for_translate}"},
 				], temperature=0.3)
+				
+				# 过滤可能违反内容策略的词汇
+				sensitive_words = [
+					'blood', 'bloody', 'gore', 'gory', 'violence', 'violent', 'death', 'dead', 'corpse',
+					'kill', 'murder', 'suicide', 'weapon', 'gun', 'knife', 'explosion', 'bomb',
+					'torture', 'mutilation', 'dismember', 'decapitate', 'horrific', 'gruesome'
+				]
+				
+				# 温和替换敏感词
+				replacements = {
+					'blood': 'red liquid', 'bloody': 'stained', 'gore': 'dramatic scene',
+					'violence': 'intense action', 'violent': 'intense', 'death': 'ending',
+					'dead': 'motionless', 'corpse': 'figure', 'kill': 'defeat', 
+					'murder': 'incident', 'suicide': 'tragedy', 'weapon': 'tool',
+					'gun': 'device', 'knife': 'blade', 'explosion': 'burst',
+					'bomb': 'device', 'torture': 'suffering', 'mutilation': 'injury',
+					'dismember': 'separate', 'decapitate': 'remove', 
+					'horrific': 'dramatic', 'gruesome': 'intense'
+				}
+				
+				prompt_en_filtered = prompt_en
+				for word, replacement in replacements.items():
+					import re
+					# 使用正则表达式进行大小写不敏感的替换
+					pattern = re.compile(re.escape(word), re.IGNORECASE)
+					prompt_en_filtered = pattern.sub(replacement, prompt_en_filtered)
+				
+				# 添加安全后缀
+				prompt_en = prompt_en_filtered + ", artistic style, cinematic composition, professional photography"
+				
+				# 检查英文提示词长度，如果太长则截断（保留在1000字符以内）
+				max_en_length = 1000
+				if len(prompt_en) > max_en_length:
+					# 在句号或逗号处截断，保持完整性
+					truncated = prompt_en[:max_en_length]
+					last_punct = max(truncated.rfind('.'), truncated.rfind(','))
+					if last_punct > 800:
+						prompt_en = truncated[:last_punct + 1]
+					else:
+						prompt_en = truncated
 				
 				# 2. 根据当前预设选择API提供商
 				current_preset = self.img_api_preset.get()
 				provider = self.img_api_presets.get(current_preset, {}).get("provider", "openai")
+				
+				print(f"DEBUG: 当前图片API预设: {current_preset}, 提供商: {provider}")
+				print(f"DEBUG: 翻译后的英文提示词长度: {len(prompt_en)}")
+				print(f"DEBUG: 英文提示词前100字符: {prompt_en[:100]}...")
 				
 				self.status.set(f"🖼️ 翻译完成，正在调用图片生成API...（步骤2/3）")
 				
@@ -2286,12 +2345,25 @@ class App(tk.Tk):
 				else:
 					# 使用OpenAI兼容API
 					model_name = self.img_model.get().strip() or "dall-e-3"
+					img_api_key = self.img_api_key.get().strip()
+					img_base_url = self.img_base_url.get().strip() if hasattr(self, 'img_base_url') else None
+					
+					print(f"DEBUG: 使用OpenAI兼容API")
+					print(f"DEBUG: 模型: {model_name}")
+					print(f"DEBUG: API Key长度: {len(img_api_key)}")
+					print(f"DEBUG: Base URL: {img_base_url}")
+					print(f"DEBUG: 图片尺寸: {self.img_size.get()}")
+					
+					if not img_api_key:
+						messagebox.showerror("错误", "请先配置图片生成API Key")
+						return
+					
 					self.status.set(f"🎨 使用OpenAI API生成【{img_type}】风格图片...（模型：{model_name}）")
 					
 					img_client = OpenAIImageClient(
-						api_key=self.img_api_key.get().strip(), 
+						api_key=img_api_key, 
 						model=model_name,
-						base_url=self.img_base_url.get().strip() if hasattr(self, 'img_base_url') else None
+						base_url=img_base_url
 					)
 					
 					if self.img_ref_path.get().strip():
@@ -2316,7 +2388,10 @@ class App(tk.Tk):
 					self.img_btn_save.configure(state=NORMAL)
 					self.status.set(f"✨ 【{img_type}】风格图片生成成功！提示词：{prompt_en[:40]}...")
 			except Exception as e:
-				messagebox.showerror("错误", str(e))
+				import traceback
+				error_detail = traceback.format_exc()
+				print(f"图片生成错误详情：\n{error_detail}")
+				messagebox.showerror("错误", f"{str(e)}\n\n详细错误请查看控制台")
 				self.status.set("❌ 图片生成失败，请检查配置和网络")
 			finally:
 				self.img_btn_gen.configure(state=NORMAL)

@@ -9,6 +9,7 @@ import os
 from PIL import Image, ImageTk
 
 from src.clients.deepseek_client import DeepSeekClient
+from src.clients.image_client import OpenAIImageClient
 from ..utils import sanitize as _sanitize
 
 
@@ -111,9 +112,17 @@ class ImageMixin:
 		tk.Label(grp_ctx_add, text="场景描述:", font=("", 10)).grid(row=1, column=0, sticky="e", padx=(0, 8), pady=6)
 		self.img_entry_scene = ttk.Entry(grp_ctx_add, font=("", 10))
 		self.img_entry_scene.grid(row=1, column=1, sticky="we", padx=(0, 6), pady=6)
-		tk.Label(grp_ctx_add, text="角色特征:", font=("", 10)).grid(row=2, column=0, sticky="ne", padx=(0, 8), pady=(0, 6))
+		tk.Label(grp_ctx_add, text="角色特征:", font=("", 10)).grid(row=2, column=0, sticky="ne", padx=(0, 8), pady=(6, 0))
 		self.img_txt_roles = tk.Text(grp_ctx_add, height=3, font=("", 10), wrap=tk.WORD, relief=tk.SOLID, borderwidth=1)
-		self.img_txt_roles.grid(row=2, column=1, sticky="we", padx=(0, 6), pady=(0, 6))
+		self.img_txt_roles.grid(row=2, column=1, sticky="we", padx=(0, 6), pady=(6, 2))
+		
+		# 添加角色特征提示
+		hint_label = tk.Label(grp_ctx_add, 
+							  text="💡 提示：详细描述每个角色的外貌、服饰、体型等特征。AI会按名字匹配，保持每个人物在所有场景中的一致性\n"
+							       "   单人物例：主角李明，28岁男性，黑色短发，身高约175cm，穿深蓝色西装白衬衫，戴金色边框眼镜\n"
+							       "   多人物例：李明-28岁男性，黑短发，深蓝西装 | 王芳-25岁女性，棕长发，白色连衣裙 | 张伟-35岁男性，光头，黑皮夹克",
+							  font=("", 8), fg="#FFB74D", justify=tk.LEFT, bg="#2b2b2b")
+		hint_label.grid(row=3, column=0, columnspan=3, sticky="w", padx=6, pady=(0, 6))
 
 		# Left: 提示词（中文）
 		grp_prompt = ttk.LabelFrame(left, text="💬 图片描述（中文，可编辑）", padding=(8, 5))
@@ -390,7 +399,7 @@ class ImageMixin:
 			messagebox.showwarning("提示", "请先生成或填写图片描述")
 			return
 		
-		def task():
+		def task(prompt_cn=prompt_cn):
 			try:
 				self.img_btn_gen.configure(state=DISABLED)
 				self.status.set("🎨 准备生成图片...（初始化）")
@@ -432,8 +441,16 @@ class ImageMixin:
 				style_keyword = style_keywords.get(img_type, f"{img_type} style, artistic, high quality, detailed")
 				
 				# 1. 先将中文翻译为英文提示词
+				# 使用故事生成的API来翻译（因为需要文本生成能力）
+				story_api_key = _sanitize(self.api_key.get())
+				if not story_api_key:
+					messagebox.showerror("错误", "请先在'故事生成'页面配置API Key（用于翻译提示词）")
+					return
+				
+				print(f"DEBUG: 使用故事API翻译，API Key长度: {len(story_api_key)}")
+				
 				client = DeepSeekClient(
-					api_key=_sanitize(self.api_key.get()),
+					api_key=story_api_key,
 					base_url=_sanitize(self.base_url.get()),
 					model=_sanitize(self.model.get()),
 				)
@@ -442,21 +459,72 @@ class ImageMixin:
 					f"目标风格：{img_type}\n"
 					f"风格关键词：{style_keyword}\n"
 					f"要求：\n"
-					f"1. 保留所有细节（场景、人物、动作、光线、镜头、风格等）\n"
+					f"1. 保留核心细节（场景、人物、动作、光线、镜头、风格等），但要简洁\n"
 					f"2. 确保翻译体现【{img_type}】的风格特点\n"
-					f"3. 在提示词中加入风格相关的专业术语\n"
-					f"4. 使用专业的图像生成术语（如 cinematic lighting, wide shot, close-up, 4K, detailed等）\n"
-					f"5. 输出纯英文，不要任何中文或其他语言\n"
+					f"3. 使用专业的图像生成术语（如 cinematic lighting, wide shot, close-up等）\n"
+					f"4. 输出纯英文，不要任何中文或其他语言\n"
+					f"5. 控制在500个英文单词以内，优先保留最重要的视觉元素\n"
 					f"6. 不要输出任何解释，只输出最终的英文提示词"
 				)
+				
+				# 如果中文描述过长，先截断
+				max_cn_length = 800
+				prompt_cn_for_translate = prompt_cn
+				if len(prompt_cn_for_translate) > max_cn_length:
+					prompt_cn_for_translate = prompt_cn_for_translate[:max_cn_length] + "..."
+				
 				prompt_en = client.chat([
 					{"role": "system", "content": inst},
-					{"role": "user", "content": f"图片类型：{img_type}\n\n请翻译以下中文图片描述为英文提示词：\n\n{prompt_cn}"},
+					{"role": "user", "content": f"图片类型：{img_type}\n\n请翻译以下中文图片描述为简洁的英文提示词：\n\n{prompt_cn_for_translate}"},
 				], temperature=0.3)
+				
+				# 过滤可能违反内容策略的词汇
+				sensitive_words = [
+					'blood', 'bloody', 'gore', 'gory', 'violence', 'violent', 'death', 'dead', 'corpse',
+					'kill', 'murder', 'suicide', 'weapon', 'gun', 'knife', 'explosion', 'bomb',
+					'torture', 'mutilation', 'dismember', 'decapitate', 'horrific', 'gruesome'
+				]
+				
+				# 温和替换敏感词
+				replacements = {
+					'blood': 'red liquid', 'bloody': 'stained', 'gore': 'dramatic scene',
+					'violence': 'intense action', 'violent': 'intense', 'death': 'ending',
+					'dead': 'motionless', 'corpse': 'figure', 'kill': 'defeat', 
+					'murder': 'incident', 'suicide': 'tragedy', 'weapon': 'tool',
+					'gun': 'device', 'knife': 'blade', 'explosion': 'burst',
+					'bomb': 'device', 'torture': 'suffering', 'mutilation': 'injury',
+					'dismember': 'separate', 'decapitate': 'remove', 
+					'horrific': 'dramatic', 'gruesome': 'intense'
+				}
+				
+				prompt_en_filtered = prompt_en
+				for word, replacement in replacements.items():
+					import re
+					# 使用正则表达式进行大小写不敏感的替换
+					pattern = re.compile(re.escape(word), re.IGNORECASE)
+					prompt_en_filtered = pattern.sub(replacement, prompt_en_filtered)
+				
+				# 添加安全后缀
+				prompt_en = prompt_en_filtered + ", artistic style, cinematic composition, professional photography"
+				
+				# 检查英文提示词长度，如果太长则截断（保留在1000字符以内）
+				max_en_length = 1000
+				if len(prompt_en) > max_en_length:
+					# 在句号或逗号处截断，保持完整性
+					truncated = prompt_en[:max_en_length]
+					last_punct = max(truncated.rfind('.'), truncated.rfind(','))
+					if last_punct > 800:
+						prompt_en = truncated[:last_punct + 1]
+					else:
+						prompt_en = truncated
 				
 				# 2. 根据当前预设选择API提供商
 				current_preset = self.img_api_preset.get()
 				provider = self.img_api_presets.get(current_preset, {}).get("provider", "openai")
+				
+				print(f"DEBUG: 当前图片API预设: {current_preset}, 提供商: {provider}")
+				print(f"DEBUG: 翻译后的英文提示词长度: {len(prompt_en)}")
+				print(f"DEBUG: 英文提示词前100字符: {prompt_en[:100]}...")
 				
 				self.status.set(f"🖼️ 翻译完成，正在调用图片生成API...（步骤2/3）")
 				
@@ -632,12 +700,25 @@ class ImageMixin:
 				else:
 					# 使用OpenAI兼容API
 					model_name = self.img_model.get().strip() or "dall-e-3"
+					img_api_key = self.img_api_key.get().strip()
+					img_base_url = self.img_base_url.get().strip() if hasattr(self, 'img_base_url') else None
+					
+					print(f"DEBUG: 使用OpenAI兼容API")
+					print(f"DEBUG: 模型: {model_name}")
+					print(f"DEBUG: API Key长度: {len(img_api_key)}")
+					print(f"DEBUG: Base URL: {img_base_url}")
+					print(f"DEBUG: 图片尺寸: {self.img_size.get()}")
+					
+					if not img_api_key:
+						messagebox.showerror("错误", "请先配置图片生成API Key")
+						return
+					
 					self.status.set(f"🎨 使用OpenAI API生成【{img_type}】风格图片...（模型：{model_name}）")
 					
 					img_client = OpenAIImageClient(
-						api_key=self.img_api_key.get().strip(), 
+						api_key=img_api_key, 
 						model=model_name,
-						base_url=self.img_base_url.get().strip() if hasattr(self, 'img_base_url') else None
+						base_url=img_base_url
 					)
 					
 					if self.img_ref_path.get().strip():
@@ -662,7 +743,10 @@ class ImageMixin:
 					self.img_btn_save.configure(state=NORMAL)
 					self.status.set(f"✨ 【{img_type}】风格图片生成成功！提示词：{prompt_en[:40]}...")
 			except Exception as e:
-				messagebox.showerror("错误", str(e))
+				import traceback
+				error_detail = traceback.format_exc()
+				print(f"图片生成错误详情：\n{error_detail}")
+				messagebox.showerror("错误", f"{str(e)}\n\n详细错误请查看控制台")
 				self.status.set("❌ 图片生成失败，请检查配置和网络")
 			finally:
 				self.img_btn_gen.configure(state=NORMAL)
@@ -949,67 +1033,63 @@ class ImageMixin:
 		
 		# 根据API类型设置不同的描述详细程度
 		if is_hunyuan:
-			# 腾讯混元：简洁版，180字以内（因为API有256字符限制）
-			char_limit = "180字以内"
-			detail_level = "精简但信息密集"
+			# 腾讯混元：简洁版，200字以内（因为API有256字符限制）
+			char_limit = "200字以内"
+			detail_level = "精简但极其精准"
 			inst = (
-				f"你是资深视觉设计师。基于分镜描述与故事上下文，生成一段高密度关键词的中文图片描述，"
-				f"用于腾讯混元生成【{img_type}】风格的图片。要求：\n"
-				f"1. 图片风格：{style_desc}\n"
-				f"2. 核心元素（必须）：主体人物（外貌特征、服饰、表情、动作）、场景环境（具体场所、氛围）、光线（时间、质感）、构图（镜头角度）\n"
-				f"3. 使用关键词+短句形式，不要冗长叙述。例如：'深夜医院，走廊尽头，女医生白大褂，疲惫神情，昏暗灯光，特写镜头'\n"
-				f"4. 确保描述符合【{img_type}】的视觉特点\n"
-				f"5. 控制在{char_limit}，但要信息密集，每个词都有意义\n"
-				f"6. 不要输出任何Markdown格式或解释，只输出最终描述"
+				f"你是资深视觉设计师和电影摄影师。基于分镜描述与故事上下文，生成一段超高密度、信息丰富的中文图片描述，"
+				f"用于腾讯混元生成【{img_type}】风格的图片。要求：\n\n"
+				f"【风格】{style_desc}\n\n"
+				f"【必须包含的细节】：\n"
+				f"1. 人物：具体年龄、性别、发型发色、肤色、体型、五官特征、完整服饰描述（颜色+款式+材质）、"
+				f"精确表情（眼神+嘴角+眉头）、详细动作（身体姿势+手部动作+站姿或坐姿）\n"
+				f"2. 环境：具体地点、墙面材质和颜色、地面类型、重要物品的详细描述、空间层次\n"
+				f"3. 光线：光源类型和方向、具体时间、天气、色温、阴影形态\n"
+				f"4. 镜头：具体镜头类型（特写/中景/全景）、拍摄角度（平视/俯视/仰视）、景深、构图方式\n"
+				f"5. 氛围：整体情绪基调\n\n"
+				f"【格式】使用简洁有力的短语，用顿号和逗号连接，每个词都要有具体含义。\n"
+				f"例如：'25岁女性、黑色长发过肩、白色医生制服带胸牌、疲惫眼神眉头紧锁、双手插口袋、站立微驼背、深夜医院走廊、"
+				f"白墙灰绿色地板、顶部惨白日光灯部分闪烁、走廊尽头红色安全出口标志、中景平视浅景深人物居中、寂静压抑氛围'\n\n"
+				f"【要求】\n"
+				f"- 控制在{char_limit}，但必须包含所有关键视觉元素\n"
+				f"- 每个描述都要具体精确，避免'很'、'非常'等模糊词\n"
+				f"- 颜色、材质、尺寸都要明确\n"
+				f"- 符合【{img_type}】风格特点\n"
+				f"- **人物一致性（极其重要）**：\n"
+				f"  · 如果提供了人物设定档案，必须严格按名字匹配每个人物的特征\n"
+				f"  · 只描述当前分镜中出现的人物，不在场的人物不描述\n"
+				f"  · 每个人物的外貌、服饰、体型等特征必须与设定完全一致\n"
+				f"  · 多人物场景要清楚区分每个人，不要混淆特征\n"
+				f"- 只输出描述文本，不要任何格式标记或解释"
 			)
 		else:
-			# OpenAI/DALL-E等：详细版，可以更长更精准
-			char_limit = "300-400字"
-			detail_level = "极度详细，每个细节都要描述"
+			# OpenAI/DALL-E等：精简版（避免提示词过长）
+			char_limit = "300-500字"
+			detail_level = "详细但精炼，重点突出核心视觉元素"
 			inst = (
-				f"你是资深视觉设计师和电影摄影指导。基于分镜描述与故事上下文，生成一段极其详细、信息丰富的中文图片描述，"
-				f"用于生成高质量的【{img_type}】风格图片。要求：\n\n"
-				f"【风格定位】\n"
-				f"图片风格：{style_desc}\n\n"
-				f"【核心元素描述（必须全部包含）】\n"
-				f"1. **人物细节**（如有人物）：\n"
-				f"   - 外貌：年龄、性别、发型、发色、肤色、体型、五官特征\n"
-				f"   - 服饰：款式、颜色、材质、配饰、细节（如纽扣、花纹）\n"
-				f"   - 表情：眼神、嘴角、眉头、整体情绪（如：眼神坚毅、嘴角微扬、眉头紧锁）\n"
-				f"   - 动作/姿态：身体姿势、手部动作、站姿坐姿、动态感（如：半蹲姿态、右手握拳、身体前倾）\n"
-				f"   - 位置：在画面中的位置和占比\n\n"
-				f"2. **背景环境**（极度详细）：\n"
-				f"   - 场所：具体地点类型（如：废弃工厂、现代办公室、古代宫殿）\n"
-				f"   - 建筑/空间：墙壁材质、地面类型、天花板、门窗、建筑风格\n"
-				f"   - 物品/道具：重要物品的位置、形态、状态（如：破碎的镜子、散落的文件、燃烧的蜡烛）\n"
-				f"   - 自然元素：天空、云层、植被、水体（如有）\n"
-				f"   - 纵深感：前景、中景、背景的层次关系\n\n"
-				f"3. **光线与氛围**：\n"
-				f"   - 光源：类型（自然光/人造光）、方向（侧光/顶光/逆光）、强度\n"
-				f"   - 时间：具体时段（如：黎明、正午、黄昏、深夜）\n"
-				f"   - 天气/季节：晴天、阴天、雨雪、雾气、季节特征\n"
-				f"   - 色温：暖色调/冷色调、色彩氛围\n"
-				f"   - 阴影：阴影的形态和分布\n\n"
-				f"4. **构图与镜头**：\n"
-				f"   - 镜头类型：特写/近景/中景/全景/远景\n"
-				f"   - 拍摄角度：平视/俯视/仰视/侧面\n"
-				f"   - 景深：浅景深/深景深、焦点位置\n"
-				f"   - 构图方式：三分法、中心构图、对角线构图等\n\n"
-				f"5. **情绪与氛围**：\n"
-				f"   - 整体情绪基调（如：紧张、温馨、神秘、恐怖）\n"
-				f"   - 视觉张力和戏剧性\n\n"
-				f"【输出格式】\n"
-				f"使用分层结构输出，用顿号和逗号分隔，例如：\n"
-				f"'人物：20岁女性，黑色长发披肩，白色医生制服，疲惫眼神，眉头微蹙，双手插在口袋里，站立姿态略显疲惫；\n"
-				f"背景：深夜医院走廊，白色墙面，灰绿色地板，墙上挂着医疗海报，走廊尽头有昏暗的红色安全出口标志；\n"
-				f"光线：顶部日光灯发出惨白光线，部分灯管闪烁不定，地面有长长的阴影；\n"
-				f"构图：中景，平视角度，浅景深，人物居中偏右，背景虚化；\n"
-				f"氛围：寂静压抑，略带不安'\n\n"
-				f"【特别要求】\n"
-				f"- 长度：{char_limit}，充分展开每个细节\n"
-				f"- 确保描述符合【{img_type}】的视觉特点和美学风格\n"
-				f"- 所有描述要具体，避免模糊词汇（如'很多'应改为'约10个'）\n"
-				f"- 不要输出任何Markdown格式或额外解释，只输出最终描述"
+				f"你是专业视觉设计师。基于分镜描述与故事上下文，生成一段**精炼而准确**的中文图片描述，"
+				f"用于生成高质量的【{img_type}】风格图片。\n\n"
+				
+				f"【风格定位】{style_desc}\n\n"
+				
+				f"【核心要求】\n"
+				f"1. 人物（如有）：年龄、性别、发型发色、面容、表情、服饰（颜色+款式）、姿态动作\n"
+				f"2. 环境：具体地点、主要物品、空间感、材质色彩\n"
+				f"3. 光线：光源类型、时间、天气、主色调\n"
+				f"4. 镜头：景别（特写/中景/全景）、角度（平视/俯视/仰视）、构图\n"
+				f"5. 氛围：整体情绪基调\n\n"
+				
+				f"【人物一致性规则】\n"
+				f"- 如提供人物设定，必须严格按名字匹配特征（年龄、发型、服饰等）\n"
+				f"- 只描述当前分镜中出现的人物\n"
+				f"- 多人物时清楚区分，不混淆特征\n"
+				f"- 每次出现保持静态特征一致，只改变表情动作\n\n"
+				
+				f"【输出要求】\n"
+				f"1. 长度：{char_limit}，简洁精炼\n"
+				f"2. 格式：流畅的中文段落，不用Markdown\n"
+				f"3. 具体：使用具体颜色、数字，避免'很'、'非常'等模糊词\n"
+				f"4. 风格：体现【{img_type}】美学特征"
 			)
 		
 		try:
@@ -1039,15 +1119,55 @@ class ImageMixin:
 			# 根据API类型调整上下文长度
 			context_length = 500 if is_hunyuan else 1000
 			
-			user = (
-				f"【目标图片类型】{img_type}\n\n"
-				f"【当前分镜描述】\n{current_shot}\n\n"
-				f"【故事上下文】\n{story_text[:context_length] if story_text else '无相关上下文'}\n\n"
-				f"【补充信息】\n"
-				f"场景设定：{scene if scene else '按分镜描述'}\n"
-				f"人物设定：{roles if roles else '按分镜描述'}\n\n"
-				f"请基于以上信息，生成{detail_level}的中文图片描述（{char_limit}），充分体现【{img_type}】风格的视觉特点。"
-			)
+			# 构建用户提示词，强调人物一致性
+			user_parts = [f"【目标图片类型】{img_type}\n"]
+			
+			# 人物一致性要求（最重要，放在前面）
+			if roles:
+				user_parts.append(f"【‼️ 人物设定档案 - 必须严格遵守】\n{roles}\n\n")
+				user_parts.append(f"⚠️ 人物一致性规则（极其重要）：\n")
+				user_parts.append(f"1. **人物-特征绑定**：以上每个人物的名字与其外貌、服饰特征是永久绑定的\n")
+				user_parts.append(f"2. **按名字匹配**：当分镜中提到某个人物的名字时，必须使用该人物在设定中的所有特征\n")
+				user_parts.append(f"3. **选择性出现**：只描述当前分镜中实际出现的人物，未出现的人物不要描述\n")
+				user_parts.append(f"4. **再次出现一致**：如果某人物在前面的场景没出现，但在当前场景出现，必须使用设定中该人物的特征\n")
+				user_parts.append(f"5. **多人物区分**：如果场景中有多个人物，要清楚区分每个人，按各自的名字使用对应的特征\n")
+				user_parts.append(f"6. **特征不混淆**：绝不允许将A人物的特征用在B人物身上，每个人物的特征独立且固定\n\n")
+				user_parts.append(f"例如：\n")
+				user_parts.append(f"- 如果分镜说「李明走进房间」→ 只描述李明，使用李明的设定特征\n")
+				user_parts.append(f"- 如果分镜说「王芳和李明对话」→ 描述两人，分别使用各自的设定特征\n")
+				user_parts.append(f"- 如果分镜说「一个空房间」→ 不描述任何人物，只描述环境\n")
+				user_parts.append(f"- 如果王芳在前3个场景没出现，第5个场景才出现 → 第5个场景中王芳的特征与设定完全一致\n\n")
+			else:
+				user_parts.append(f"【人物设定】从故事上下文和分镜描述中提取人物特征，为每个人物建立档案，")
+				user_parts.append(f"并在该人物每次出现时保持特征一致。不同人物要清楚区分，不要混淆。\n\n")
+			
+			# 当前分镜
+			user_parts.append(f"【当前分镜描述】\n{current_shot}\n\n")
+			
+			# 故事上下文
+			user_parts.append(f"【故事上下文】\n{story_text[:context_length] if story_text else '无相关上下文'}\n\n")
+			
+			# 场景设定
+			if scene:
+				user_parts.append(f"【场景设定】\n{scene}\n\n")
+			
+			# 一致性强调
+			user_parts.append(f"【描述生成要求】\n")
+			user_parts.append(f"1. **识别当前场景人物**：仔细阅读当前分镜描述，识别场景中出现的具体人物（根据名字或角色）\n")
+			user_parts.append(f"2. **匹配人物特征**：为每个出现的人物，从人物设定档案中找到对应的特征\n")
+			user_parts.append(f"3. **只描述在场人物**：只描述当前分镜中实际出现的人物，不在场的人物不要提及\n")
+			user_parts.append(f"4. **保持特征一致**：每个人物的年龄、性别、发型、发色、肤色、体型、五官、服饰必须与设定完全一致\n")
+			user_parts.append(f"5. **动态元素变化**：根据分镜要求，只改变表情、动作、姿态等动态元素，静态特征保持不变\n")
+			user_parts.append(f"6. **多人物区分**：如果场景中有多人，要清楚描述每个人的特征，不要混淆或遗漏\n")
+			user_parts.append(f"7. **服饰一致**：除非分镜明确说明换装，否则服装款式、颜色、材质保持一致\n")
+			user_parts.append(f"8. **细节补充**：如果设定中缺少某些细节，可适当添加，但要符合该人物的身份和场景，且后续保持一致\n\n")
+			
+			# 生成要求
+			user_parts.append(f"【生成要求】\n")
+			user_parts.append(f"请基于以上信息，生成{detail_level}的中文图片描述（{char_limit}），")
+			user_parts.append(f"充分体现【{img_type}】风格的视觉特点，同时严格保持人物一致性。")
+			
+			user = "".join(user_parts)
 			resp = client.chat([
 				{"role": "system", "content": inst},
 				{"role": "user", "content": user},
@@ -1056,12 +1176,24 @@ class ImageMixin:
 			self.status.set("✅ 更新图片描述...")
 			
 			description = resp.strip()
+			
+			# 根据API类型限制描述长度
+			max_desc_length = 200 if is_hunyuan else 500
+			if len(description) > max_desc_length:
+				# 在句号、逗号或顿号处截断
+				truncated = description[:max_desc_length]
+				last_punct = max(truncated.rfind('。'), truncated.rfind('，'), truncated.rfind('、'))
+				if last_punct > int(max_desc_length * 0.8):
+					description = truncated[:last_punct + 1]
+				else:
+					description = truncated
+			
 			self.img_txt_prompt_cn.delete("1.0", END)
 			self.img_txt_prompt_cn.insert(END, description)
 			
 			# 显示字数统计
 			char_count = len(description)
-			api_type = "腾讯混元简洁版" if is_hunyuan else "详细版"
+			api_type = "腾讯混元简洁版" if is_hunyuan else "精简版"
 			self.status.set(f"✨ 已生成【{img_type}】{api_type}图片描述（{char_count}字，可编辑后生成）")
 		except Exception as e:
 			messagebox.showerror("错误", str(e))
