@@ -761,6 +761,8 @@ class ImageMixin:
 					# 更新顶部状态栏
 					if hasattr(self, 'update_header_status'):
 						self.update_header_status("图片生成完成", "✅")
+					# 自动保存图片到项目
+					self._auto_save_image_to_project()
 				
 				else:
 					# 使用OpenAI兼容API
@@ -816,6 +818,8 @@ class ImageMixin:
 					# 更新顶部状态栏
 					if hasattr(self, 'update_header_status'):
 						self.update_header_status("图片生成完成", "✅")
+					# 自动保存图片到项目
+					self._auto_save_image_to_project()
 			except Exception as e:
 				import traceback
 				error_detail = traceback.format_exc()
@@ -1411,20 +1415,85 @@ class ImageMixin:
 		
 		self.img_canvas.coords(self.img_canvas_window, x_offset, y_offset)
 
-	def _on_img_save(self) -> None:
+	def _auto_save_image_to_project(self) -> None:
+		"""自动保存图片到当前项目，使用分镜头描述作为文件名"""
 		if not self.img_last_image:
 			return
-		path = filedialog.asksaveasfilename(defaultextension=".png", filetypes=[("PNG","*.png"),("JPEG","*.jpg;*.jpeg"),("WEBP","*.webp")])
+		
+		if not self.current_project:
+			# 如果没有当前项目，不自动保存
+			return
+		
+		try:
+			import re
+			import tempfile
+			from datetime import datetime
+			
+			# 获取当前选中的分镜描述作为文件名
+			filename = "image"
+			if hasattr(self, 'parsed_shots') and self.parsed_shots:
+				selected_index = self.shot_selector.current() if hasattr(self, 'shot_selector') else -1
+				if selected_index >= 0 and selected_index < len(self.parsed_shots):
+					shot_desc = self.parsed_shots[selected_index]
+					# 清理文件名：移除特殊字符，只保留中文、英文、数字和空格
+					clean_name = re.sub(r'[^\w\s\u4e00-\u9fff-]', '', shot_desc)
+					# 限制长度，避免文件名过长
+					clean_name = clean_name[:50].strip()
+					if clean_name:
+						filename = clean_name
+			
+			# 添加时间戳避免重名
+			timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+			filename = f"{filename}_{timestamp}.png"
+			
+			# 先保存到临时文件
+			with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
+				self.img_last_image.save(tmp.name, "PNG")
+				temp_path = tmp.name
+			
+			# 保存到项目
+			saved_path = self.current_project.save_image(temp_path, filename)
+			
+			# 删除临时文件
+			import os
+			os.unlink(temp_path)
+			
+			self.status.set(f"✅ 图片已自动保存到项目: {filename}")
+			print(f"图片已自动保存: {saved_path}")
+			
+		except Exception as e:
+			print(f"自动保存图片失败: {e}")
+			# 自动保存失败不弹窗，只打印日志
+	
+	def _on_img_save(self) -> None:
+		"""手动保存图片到用户选择的位置"""
+		if not self.img_last_image:
+			return
+		
+		# 默认文件名建议
+		default_name = "image.png"
+		if hasattr(self, 'parsed_shots') and self.parsed_shots:
+			selected_index = self.shot_selector.current() if hasattr(self, 'shot_selector') else -1
+			if selected_index >= 0 and selected_index < len(self.parsed_shots):
+				import re
+				shot_desc = self.parsed_shots[selected_index]
+				clean_name = re.sub(r'[^\w\s\u4e00-\u9fff-]', '', shot_desc)
+				clean_name = clean_name[:50].strip()
+				if clean_name:
+					from datetime import datetime
+					timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+					default_name = f"{clean_name}_{timestamp}.png"
+		
+		path = filedialog.asksaveasfilename(
+			defaultextension=".png", 
+			initialfile=default_name,
+			filetypes=[("PNG","*.png"),("JPEG","*.jpg;*.jpeg"),("WEBP","*.webp")]
+		)
 		if not path:
 			return
 		try:
 			self.img_last_image.save(path)
-			# 如果有当前项目，也保存到项目中
-			if self.current_project:
-				self.current_project.save_image(path)
-				self.status.set(f"图片已保存到: {path} 和当前项目")
-			else:
-				self.status.set(f"图片已保存到: {path}")
+			self.status.set(f"图片已保存到: {path}")
 			messagebox.showinfo("成功", f"已保存到: {path}")
 		except Exception as e:
 			messagebox.showerror("错误", str(e))
