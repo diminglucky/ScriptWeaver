@@ -320,7 +320,7 @@ class StoryMixin:
 		
 		# 中间：风格
 		tk.Label(row1_frame, text="🎨 风格:", font=("", 12, "bold"), bg="#2b2b2b", fg="#ffffff").pack(side=LEFT, padx=(0, 8))
-		self.entry_style = tk.Entry(row1_frame, textvariable=self.style, width=20, font=("", 12),
+		self.entry_style = tk.Entry(row1_frame, textvariable=self.style, width=45, font=("", 12),
 									 relief=tk.FLAT, borderwidth=0, bg="#1e1e1e", fg="#ffffff",
 									 insertbackground="white", selectbackground="#ffffff", selectforeground="#000000",
 									 highlightthickness=0)

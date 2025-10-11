@@ -67,26 +67,26 @@ class ImageMixin:
 		self.img_txt_all_shots.insert("1.0", "点击下方按钮从故事生成分镜头列表...")
 		self.img_txt_all_shots.config(state=DISABLED)
 		
-		# 第一行按钮：主要的分镜生成按钮
-		rowf1 = ttk.Frame(grp_shots)
-		rowf1.pack(fill="x", padx=6, pady=(0, 4))
-		self.img_btn_extract_brief = ttk.Button(rowf1, text="📝 大致(8-12)", command=lambda: self._on_img_extract_shots(mode="brief"), width=14)
-		self.img_btn_extract_brief.pack(side=LEFT, padx=(0, 3))
-		self.img_btn_extract_normal = ttk.Button(rowf1, text="📝 标准(12-20)", command=lambda: self._on_img_extract_shots(mode="normal"), width=14)
-		self.img_btn_extract_normal.pack(side=LEFT, padx=(0, 3))
-		self.img_btn_extract_detailed = ttk.Button(rowf1, text="📝 详细(20-30)", command=lambda: self._on_img_extract_shots(mode="detailed"), width=14)
-		self.img_btn_extract_detailed.pack(side=LEFT, padx=(0, 3))
-		self.img_btn_extract_video = ttk.Button(rowf1, text="🎬 视频版(10-15)", command=lambda: self._on_img_extract_shots(mode="video"), width=14)
-		self.img_btn_extract_video.pack(side=LEFT, padx=(0, 3))
+		# 智能推荐按钮
+		rowf_recommend = ttk.Frame(grp_shots)
+		rowf_recommend.pack(fill="x", padx=6, pady=(0, 8))
+		self.img_btn_recommend = ttk.Button(rowf_recommend, text="🤖 智能推荐视频模式", command=self._on_recommend_video_mode, width=25)
+		self.img_btn_recommend.pack(side=LEFT, padx=(0, 8))
+		self.recommend_label = tk.Label(rowf_recommend, text="分析故事后给出最佳视频模式建议", 
+										font=("", 9), fg="#90CAF9", bg="#2b2b2b")
+		self.recommend_label.pack(side=LEFT)
 		
-		# 第二行按钮：辅助功能按钮
-		rowf2 = ttk.Frame(grp_shots)
-		rowf2.pack(fill="x", padx=6, pady=(0, 6))
-		tk.Label(rowf2, text="💡 视频版包含镜头时长、运镜、转场、音效等视频制作要素", font=("", 9), fg="#90CAF9", bg="#2b2b2b").pack(side=LEFT)
-		self.img_btn_copy_shots = ttk.Button(rowf2, text="📋 恢复", command=self._on_copy_shots, width=8)
-		self.img_btn_copy_shots.pack(side=RIGHT, padx=(3, 0))
-		self.img_btn_clear_shots = ttk.Button(rowf2, text="🗑️ 清空", command=self._on_clear_shots, width=8)
-		self.img_btn_clear_shots.pack(side=RIGHT, padx=3)
+		# 视频分镜生成按钮（全部为视频模式）
+		rowf = ttk.Frame(grp_shots)
+		rowf.pack(fill="x", padx=6, pady=(0, 6))
+		self.img_btn_extract_brief = ttk.Button(rowf, text="🎬 简短视频(8-12)", command=lambda: self._on_img_extract_shots(mode="brief"), width=16)
+		self.img_btn_extract_brief.pack(side=LEFT, padx=(0, 3))
+		self.img_btn_extract_video = ttk.Button(rowf, text="🎬 平衡视频(15-25)", command=lambda: self._on_img_extract_shots(mode="video"), width=18)
+		self.img_btn_extract_video.pack(side=LEFT, padx=(0, 3))
+		self.img_btn_extract_normal = ttk.Button(rowf, text="🎬 标准视频(15-22)", command=lambda: self._on_img_extract_shots(mode="normal"), width=16)
+		self.img_btn_extract_normal.pack(side=LEFT, padx=(0, 3))
+		self.img_btn_extract_detailed = ttk.Button(rowf, text="🎬 精细视频(25-40)", command=lambda: self._on_img_extract_shots(mode="detailed"), width=16)
+		self.img_btn_extract_detailed.pack(side=LEFT, padx=(0, 3))
 		
 		# 合并：选择分镜 + 图片类型与场景补充
 		grp_ctx_add = ttk.LabelFrame(left, text="🎯 选择要生成的分镜", padding=(8, 5))
@@ -853,34 +853,99 @@ class ImageMixin:
 		self.img_txt_prompt_cn.delete("1.0", END)
 		self.status.set("图片描述已清空")
 
-	def _on_copy_shots(self) -> None:
-		"""复制所有分镜"""
-		all_shots = self.img_txt_all_shots.get("1.0", END)
-		self.clipboard_clear()
-		self.clipboard_append(all_shots)
-		self.status.set("所有分镜已复制")
-
-	def _on_clear_shots(self) -> None:
-		"""清空所有分镜"""
-		if hasattr(self, 'parsed_shots'):
-			self.parsed_shots = []
+	def _on_recommend_video_mode(self) -> None:
+		"""智能推荐视频模式"""
+		story_text = self.output.get("1.0", END).strip()
+		if not story_text:
+			messagebox.showwarning("提示", "请先在'故事'页生成或粘贴故事内容")
+			return
 		
-		# 清空所有分镜显示框
-		self.img_txt_all_shots.config(state=NORMAL)
-		self.img_txt_all_shots.delete("1.0", END)
-		self.img_txt_all_shots.insert("1.0", "点击下方按钮从故事生成分镜头列表...")
-		self.img_txt_all_shots.config(state=DISABLED)
+		# 分析故事特征
+		story_length = len(story_text)
 		
-		# 清空选择器
-		self.shot_selector['values'] = []
-		self.shot_selector['state'] = 'disabled'
+		# 统计场景转换关键词
+		scene_keywords = ['突然', '这时', '随后', '接着', '然后', '于是', '转身', '走进', '来到', 
+						  '回到', '看到', '听到', '发现', '意识到', '想起', '记得']
+		scene_count = sum(story_text.count(kw) for kw in scene_keywords)
 		
-		self.status.set("分镜已清空")
+		# 统计情节复杂度关键词
+		complexity_keywords = ['但是', '然而', '不料', '没想到', '原来', '竟然', '居然', 
+							   '转折', '突变', '真相', '秘密', '回忆', '闪回']
+		complexity_score = sum(story_text.count(kw) for kw in complexity_keywords)
+		
+		# 统计人物数量（粗略估计）
+		character_keywords = ['他', '她', '我', '你', '他们', '她们', '我们']
+		has_multiple_characters = sum(story_text.count(kw) for kw in character_keywords) > 20
+		
+		# 推荐逻辑
+		recommendation = ""
+		mode = ""
+		reason = []
+		
+		if story_length < 1000:
+			mode = "brief"
+			recommendation = "🎬 简短视频(8-12)"
+			reason.append(f"• 故事较短（{story_length}字）")
+			reason.append("• 适合快节奏短视频")
+			reason.append("• 8-12个镜头足够覆盖核心情节")
+		elif story_length < 2500:
+			if complexity_score > 5 or scene_count > 10:
+				mode = "video"
+				recommendation = "🎬 平衡视频(15-25) ⭐推荐"
+				reason.append(f"• 故事长度适中（{story_length}字）")
+				reason.append(f"• 情节有一定复杂度（转折词{complexity_score}个）")
+				reason.append("• 15-25个镜头能完整呈现故事")
+			else:
+				mode = "normal"
+				recommendation = "🎬 标准视频(15-22)"
+				reason.append(f"• 故事长度标准（{story_length}字）")
+				reason.append("• 情节相对简单流畅")
+				reason.append("• 15-22个镜头刚好合适")
+		elif story_length < 5000:
+			if complexity_score > 8 or has_multiple_characters:
+				mode = "detailed"
+				recommendation = "🎬 精细视频(25-40)"
+				reason.append(f"• 故事较长（{story_length}字）")
+				reason.append(f"• 情节复杂（转折词{complexity_score}个，场景{scene_count}处）")
+				reason.append("• 需要25-40个镜头细致呈现")
+			else:
+				mode = "video"
+				recommendation = "🎬 平衡视频(15-25)"
+				reason.append(f"• 故事较长（{story_length}字）")
+				reason.append("• 情节适中，不太复杂")
+				reason.append("• 15-25个镜头平衡完整性和精简度")
+		else:
+			mode = "detailed"
+			recommendation = "🎬 精细视频(25-40)"
+			reason.append(f"• 故事很长（{story_length}字）")
+			reason.append(f"• 需要充足的镜头数量来完整叙事")
+			reason.append("• 25-40个镜头才能展现所有重要时刻")
+		
+		# 显示推荐结果
+		reason_text = "\n".join(reason)
+		result = messagebox.askyesno(
+			"智能推荐结果", 
+			f"📊 故事分析：\n"
+			f"字数：{story_length} 字\n"
+			f"场景转换：约 {scene_count} 处\n"
+			f"情节复杂度：{'高' if complexity_score > 8 else '中' if complexity_score > 4 else '低'}\n\n"
+			f"💡 推荐模式：\n{recommendation}\n\n"
+			f"📝 推荐理由：\n{reason_text}\n\n"
+			f"是否立即使用推荐模式生成分镜？"
+		)
+		
+		if result:
+			# 用户确认，直接生成
+			self._on_img_extract_shots(mode=mode)
+		else:
+			# 更新提示文字
+			self.recommend_label.config(text=f"💡 推荐：{recommendation}")
+			self.status.set(f"已分析故事，推荐使用 {recommendation}")
 
 	def _on_img_build_prompt(self) -> None:
 		story_text = self.output.get("1.0", END).strip()
 		if not story_text:
-			messagebox.showwarning("提示", "请先在‘故事’页生成或粘贴正文内容，然后再提炼提示词")
+			messagebox.showwarning("提示", "请先在'故事'页生成或粘贴正文内容，然后再提炼提示词")
 			return
 		try:
 			self.set_busy(True)
@@ -949,75 +1014,87 @@ class ImageMixin:
 		# 根据模式设置不同的提示词
 		if mode == "brief":
 			shot_count = "8-12"
-			mode_name = "大致版"
+			mode_name = "简短视频"
 			inst = (
-				"请把以下故事正文拆解为适合生成插图/分镜的'镜头清单'，使用中文简洁编号列出 5-8 条核心分镜，"
-				"**只选取最关键、最具代表性的场景**，概括整个故事的主要情节转折和高潮时刻。\n\n"
-				"每条包含：\n"
-				"- 场景：具体地点和环境\n"
-				"- 主体：人物或主要对象\n"
-				"- 动作：正在发生的行为\n"
-				"- 情绪：情感氛围\n"
-				"- 光线/镜头：如 close-up（特写）、wide shot（全景）、low angle（低角度）等\n\n"
-				"输出格式：每行一个分镜，格式为'序号. 场景 / 主体 / 动作 / 情绪 / 光线镜头'。\n"
-				"注意：只输出清单，不要其他说明文字或解释。"
+				"请把以下故事正文拆解为**简短视频分镜脚本**，生成8-12个关键镜头，"
+				"**只选取最核心的场景**，快节奏叙述故事的主要情节和高潮时刻。\n\n"
+				"每个镜头包含（用 | 分隔）：\n"
+				"1. **场景**：地点、环境、时间\n"
+				"2. **人物与动作**：主体、动作、表情\n"
+				"3. **镜头**：特写CU/中景MS/全景WS/远景LS\n"
+				"4. **运镜**：固定/推镜/拉镜/摇镜/跟随\n"
+				"5. **时长**：如'3-5秒''8-10秒'\n"
+				"6. **转场**：切/淡入淡出/闪白（最后写'结束'）\n"
+				"7. **声音**：环境音/配乐/对白提示\n\n"
+				"格式示例：\n"
+				"1. 深夜街道，路灯昏暗 | 女主角快步行走，不时回头 | 全景(WS) | 跟随 | 4-5秒 | 淡入 | 紧张配乐，脚步声\n\n"
+				"输出格式：序号. 场景 | 人物与动作 | 镜头 | 运镜 | 时长 | 转场 | 声音\n"
+				"注意：只输出清单，不要其他文字。"
 			)
 		elif mode == "video":
-			shot_count = "10-15"
-			mode_name = "视频版"
+			shot_count = "15-25"
+			mode_name = "平衡视频"
 			inst = (
-				"请把以下故事正文拆解为**专业视频制作分镜脚本**，生成10-15个镜头，"
-				"每个镜头都要考虑视频拍摄和剪辑的实际需求，确保镜头之间流畅连贯。\n\n"
-				"每个镜头必须包含以下要素：\n"
-				"1. **场景描述**：具体地点、环境、时间（如：白天/傍晚/夜晚）\n"
-				"2. **人物与动作**：主体是谁，在做什么，表情状态\n"
-				"3. **镜头类型**：特写(CU)/近景(MS)/中景(MCU)/全景(WS)/远景(LS)/过肩(OTS)/主观视角(POV)\n"
-				"4. **运镜方式**：固定镜头/推镜/拉镜/摇镜/跟随/环绕/升降，如'缓慢推进''快速拉远''左摇''跟随人物'\n"
-				"5. **镜头时长**：建议停留时间，如'3-5秒''8-10秒''瞬间闪过'\n"
-				"6. **转场效果**：与下一镜头的衔接方式，如'切''淡入淡出''叠化''闪白''黑场'（最后一个镜头写'结束'）\n"
-				"7. **声音提示**（可选）：环境音、音乐情绪、对白提示，如'紧张配乐''环境安静''人物对白'\n\n"
-				"输出格式（每个镜头一行，用' | '分隔各要素）：\n"
-				"序号. 场景描述 | 人物与动作 | 镜头类型 | 运镜方式 | 时长 | 转场 | 声音\n\n"
-				"示例：\n"
-				"1. 深夜城市街道，路灯昏暗 | 空无一人的街道，远处车灯闪烁 | 远景(LS) | 缓慢右摇 | 5-6秒 | 淡入淡出 | 低沉环境音，远处汽车声\n"
-				"2. 公寓楼外景，三楼窗户亮灯 | 窗帘后有人影移动 | 中景(MCU) | 固定，缓慢推进 | 4-5秒 | 切 | 环境音渐弱\n\n"
-				"注意事项：\n"
-				"- 每个镜头都要考虑视频的流畅性和节奏感\n"
-				"- 情绪转折处使用不同的镜头和运镜方式\n"
-				"- 关键情节用特写+慢运镜，过渡场景用全景+快节奏\n"
-				"- 只输出分镜清单，不要其他解释说明"
+				"请把以下故事正文拆解为**专业平衡视频分镜脚本**，生成15-25个镜头，"
+				"在完整性和精简度之间找到平衡，适合大多数视频项目。\n\n"
+				"每个镜头包含（用 | 分隔）：\n"
+				"1. **场景**：具体地点、环境、时间（白天/夜晚/傍晚）\n"
+				"2. **人物与动作**：主体、动作、表情状态\n"
+				"3. **镜头**：特写CU/近景MS/中景MCU/全景WS/远景LS/过肩OTS/主观POV\n"
+				"4. **运镜**：固定/推镜/拉镜/摇镜/跟随/环绕/升降（如'缓慢推进''快速拉远''平稳跟随'）\n"
+				"5. **时长**：建议停留时间，如'3-5秒''8-10秒''瞬间闪过'\n"
+				"6. **转场**：切/淡入淡出/叠化/闪白/黑场（最后一个写'结束'）\n"
+				"7. **声音**：环境音/音乐情绪/对白提示/音效\n\n"
+				"格式示例：\n"
+				"1. 深夜城市街道，路灯昏暗，薄雾 | 空旷街道，远处车灯 | 远景(LS) | 缓慢右摇 | 5-6秒 | 淡入 | 低沉环境音，车声\n"
+				"2. 公寓楼外景，三楼灯亮 | 窗帘后人影移动 | 中景(MCU) | 固定，缓慢推进 | 4-5秒 | 切 | 环境音渐弱\n\n"
+				"输出格式：序号. 场景 | 人物与动作 | 镜头 | 运镜 | 时长 | 转场 | 声音\n"
+				"注意：保持节奏流畅，情绪转折用不同镜头，关键情节特写+慢镜，过渡场景全景+快节奏。"
 			)
 		elif mode == "detailed":
-			shot_count = "20-30"
-			mode_name = "详细版"
+			shot_count = "25-40"
+			mode_name = "精细视频"
 			inst = (
-				"请把以下故事正文拆解为极其详细的'分镜头清单'，使用中文编号列出 15-25 条分镜，"
-				"**尽可能细致地分割每个场景、每个情节转折、每个重要细节**，"
-				"确保故事的每个重要瞬间都有对应的分镜。\n\n"
-				"分镜原则：\n"
-				"1. 场景转换时必须新开分镜\n"
-				"2. 人物表情或动作有明显变化时新开分镜\n"
-				"3. 情节转折点必须单独成镜\n"
-				"4. 重要对话场景可拆分为多个分镜（不同角度）\n"
-				"5. 氛围营造的细节镜头也要包含\n\n"
-				"每条分镜包含：\n"
-				"- 场景：具体地点和环境细节\n"
-				"- 主体：人物或主要对象（包括服饰、姿态）\n"
-				"- 动作：正在发生的具体行为或状态\n"
-				"- 情绪：人物情感或场景氛围\n"
-				"- 光线/镜头：如 extreme close-up（大特写）、close-up（特写）、medium shot（中景）、"
-				"wide shot（全景）、establishing shot（定场镜头）、high angle（高角度）、low angle（低角度）、"
-				"POV（主观视角）、over-the-shoulder（过肩镜头）等\n\n"
-				"输出格式：每行一个分镜，格式为'序号. 场景 / 主体 / 动作 / 情绪 / 光线镜头'。\n"
-				"注意：只输出清单，不要其他说明文字。尽量覆盖故事的所有重要时刻。"
+				"请把以下故事正文拆解为**极其详细的视频分镜脚本**，生成25-40个镜头，"
+				"**细致分割每个场景、情节转折、人物表情变化**，力求电影级的完整叙事。\n\n"
+				"分镜原则（确保完整性）：\n"
+				"1. 场景转换必须新开分镜\n"
+				"2. 人物表情或动作变化时新开分镜\n"
+				"3. 情节转折点单独成镜\n"
+				"4. 对话场景拆分多角度（正反打、过肩镜头）\n"
+				"5. 氛围细节镜头独立展示\n"
+				"6. 重要物件特写单独成镜\n\n"
+				"每个镜头包含（用 | 分隔）：\n"
+				"1. **场景**：具体地点、环境细节、时间\n"
+				"2. **人物与动作**：主体、服饰、姿态、表情、具体动作\n"
+				"3. **镜头**：大特写ECU/特写CU/近景MS/中景MCU/全景WS/远景LS/定场镜头/过肩OTS/主观POV/高角度/低角度\n"
+				"4. **运镜**：固定/推镜/拉镜/摇镜/跟随/环绕/升降/摇臂（描述速度和感觉，如'极慢推进''快速环绕'）\n"
+				"5. **时长**：精确的停留时间，如'2-3秒''5-7秒''10-15秒'\n"
+				"6. **转场**：切/淡入淡出/叠化/擦除/闪白/闪黑/黑场（最后写'结束'）\n"
+				"7. **声音**：环境音/配乐变化/对白内容/音效细节\n\n"
+				"格式示例：\n"
+				"1. 雨夜街角，霓虹灯闪烁，地面积水 | 女主角撑伞独行，黑色风衣，眼神疲惫 | 全景(WS) | 缓慢推进 | 6-8秒 | 淡入 | 雨声，远处车声，忧伤钢琴\n\n"
+				"输出格式：序号. 场景 | 人物与动作 | 镜头 | 运镜 | 时长 | 转场 | 声音\n"
+				"注意：只输出清单，覆盖所有重要时刻，追求电影级完整度。"
 			)
-		else:  # normal mode (保持向后兼容)
-			shot_count = "12-20"
-			mode_name = "标准版"
+		else:  # normal mode - 改为标准视频
+			shot_count = "15-22"
+			mode_name = "标准视频"
 			inst = (
-				"请把以下故事正文拆解为适合生成插图/分镜的'镜头清单'，使用中文简洁编号列出 8-12 条，"
-				"每条包含：场景/主体/动作/情绪/关键物件/光线镜头（如 close-up、wide shot）。"
-				"格式：每行一个分镜，格式为'序号. 场景描述 / 主体 / 动作 / 情绪 / 光线镜头'。只输出清单，不要其他文字。"
+				"请把以下故事正文拆解为**标准视频分镜脚本**，生成15-22个镜头，"
+				"完整覆盖故事情节，节奏适中，既保证叙事完整又不过于冗长。\n\n"
+				"每个镜头包含（用 | 分隔）：\n"
+				"1. **场景**：地点、环境、时间\n"
+				"2. **人物与动作**：主体、动作、表情状态\n"
+				"3. **镜头**：特写CU/近景MS/中景MCU/全景WS/远景LS/过肩OTS/主观POV\n"
+				"4. **运镜**：固定/推镜/拉镜/摇镜/跟随/环绕/升降（如'缓慢推进''快速拉远'）\n"
+				"5. **时长**：建议停留时间，如'3-5秒''8-10秒'\n"
+				"6. **转场**：切/淡入淡出/叠化/闪白/黑场（最后一个写'结束'）\n"
+				"7. **声音**：环境音/配乐情绪/对白/音效\n\n"
+				"格式示例：\n"
+				"1. 办公室走廊，夜晚，日光灯闪烁 | 男主角疲惫地走着，眼神空洞 | 中景(MCU) | 跟随移动 | 5-6秒 | 淡入 | 空调嗡嗡声，低沉配乐\n\n"
+				"输出格式：序号. 场景 | 人物与动作 | 镜头 | 运镜 | 时长 | 转场 | 声音\n"
+				"注意：只输出清单，覆盖完整故事线。"
 			)
 		
 		# 在后台线程中执行耗时操作
