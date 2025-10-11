@@ -5,6 +5,11 @@ Image相关功能模块
 from tkinter import BOTH, LEFT, RIGHT, DISABLED, NORMAL, END, messagebox, filedialog
 import tkinter as tk
 from tkinter import ttk
+import os
+from PIL import Image, ImageTk
+
+from src.clients.deepseek_client import DeepSeekClient
+from ..utils import sanitize as _sanitize
 
 
 class ImageMixin:
@@ -63,8 +68,12 @@ class ImageMixin:
 		
 		rowf = ttk.Frame(grp_shots)
 		rowf.pack(fill="x", padx=6, pady=(0, 6))
-		self.img_btn_extract = ttk.Button(rowf, text="📝 从故事生成分镜", command=self._on_img_extract_shots)
-		self.img_btn_extract.pack(side=LEFT, padx=(0, 4))
+		self.img_btn_extract_brief = ttk.Button(rowf, text="📝 大致分镜(8-12个)", command=lambda: self._on_img_extract_shots(mode="brief"))
+		self.img_btn_extract_brief.pack(side=LEFT, padx=(0, 4))
+		self.img_btn_extract_normal = ttk.Button(rowf, text="📝 标准分镜(12-20个)", command=lambda: self._on_img_extract_shots(mode="normal"))
+		self.img_btn_extract_normal.pack(side=LEFT, padx=(0, 4))
+		self.img_btn_extract_detailed = ttk.Button(rowf, text="📝 详细分镜(20-30个)", command=lambda: self._on_img_extract_shots(mode="detailed"))
+		self.img_btn_extract_detailed.pack(side=LEFT, padx=(0, 4))
 		self.img_btn_copy_shots = ttk.Button(rowf, text="📋 复制所有", command=self._on_copy_shots)
 		self.img_btn_copy_shots.pack(side=LEFT, padx=4)
 		self.img_btn_clear_shots = ttk.Button(rowf, text="🗑️ 清空", command=self._on_clear_shots)
@@ -144,9 +153,41 @@ class ImageMixin:
 
 		grp_preview = ttk.LabelFrame(right, text="🖼️ 预览", padding=(8, 5))
 		grp_preview.pack(fill=BOTH, expand=True, padx=0, pady=0)
-		self.img_preview = ttk.Label(grp_preview, text="图片预览区\n\n点击\"生成图片\"后\n图片将显示在这里", 
-									  font=("", 10), foreground="#888888", anchor="center")
-		self.img_preview.pack(fill=BOTH, expand=True, padx=10, pady=10)
+		
+		# 创建Canvas和滚动条用于图片预览
+		preview_frame = ttk.Frame(grp_preview)
+		preview_frame.pack(fill=BOTH, expand=True, padx=5, pady=5)
+		
+		# 创建垂直和水平滚动条
+		v_scroll = ttk.Scrollbar(preview_frame, orient="vertical")
+		h_scroll = ttk.Scrollbar(preview_frame, orient="horizontal")
+		
+		# 创建Canvas
+		self.img_canvas = tk.Canvas(preview_frame, bg="#2b2b2b", 
+									 yscrollcommand=v_scroll.set,
+									 xscrollcommand=h_scroll.set,
+									 highlightthickness=0)
+		
+		# 配置滚动条
+		v_scroll.config(command=self.img_canvas.yview)
+		h_scroll.config(command=self.img_canvas.xview)
+		
+		# 布局
+		self.img_canvas.grid(row=0, column=0, sticky="nsew")
+		v_scroll.grid(row=0, column=1, sticky="ns")
+		h_scroll.grid(row=1, column=0, sticky="ew")
+		
+		preview_frame.grid_rowconfigure(0, weight=1)
+		preview_frame.grid_columnconfigure(0, weight=1)
+		
+		# 在Canvas上创建图片显示区域
+		self.img_preview = ttk.Label(self.img_canvas, text="图片预览区\n\n点击\"生成图片\"后\n图片将显示在这里", 
+									  font=("", 10), foreground="#888888", anchor="center",
+									  background="#2b2b2b")
+		self.img_canvas_window = self.img_canvas.create_window(0, 0, window=self.img_preview, anchor="nw")
+		
+		# 绑定Canvas大小变化事件，自动调整图片显示
+		self.img_canvas.bind('<Configure>', self._on_canvas_configure)
 	
 	def _build_image_setup_tab(self) -> None:
 		"""构建图片API配置页面"""
@@ -240,26 +281,76 @@ class ImageMixin:
 		tk.Button(grp_api, text="保存配置", command=self.save_img_api_config).grid(row=4, column=2, padx=6)
 		tk.Button(grp_api, text="加载配置", command=self.load_img_api_config).grid(row=4, column=3, padx=6, sticky="w")
 		
-		# 图片参数与操作
-		grp_params = ttk.LabelFrame(self.image_tab_setup, text="参数与操作")
+		# 图片参数设置
+		grp_params = ttk.LabelFrame(self.image_tab_setup, text="📐 图片参数")
 		grp_params.pack(fill="x", padx=10, pady=5)
 		grp_params.columnconfigure(1, weight=1)
-		grp_params.columnconfigure(3, weight=1)
-		grp_params.columnconfigure(5, weight=1)
-		grp_params.columnconfigure(7, weight=1)
 		
-		# 第一行：尺寸参数
+		# 图片尺寸
 		tk.Label(grp_params, text="图片尺寸:").grid(row=0, column=0, sticky="e", padx=6, pady=4)
 		self.img_combo_size = ttk.Combobox(grp_params, textvariable=self.img_size, 
-										   values=("512x512","768x768","1024x1024","1024x1792","1792x1024"), 
+										   values=(
+											   "256x256", "512x512", "768x768",
+											   "1024x1024", "1024x1792", "1792x1024",
+											   "640x360", "1280x720", "1920x1080",
+											   "360x640", "720x1280", "1080x1920"
+										   ), 
 										   width=15, state="readonly")
-		self.img_combo_size.grid(row=0, column=1, sticky="w", padx=6)
-		tk.Label(grp_params, text="(1024x1024适合方形 | 1024x1792适合竖版 | 1792x1024适合横版)", 
-				 fg="gray", font=("", 9)).grid(row=0, column=2, columnspan=6, sticky="w", padx=6)
+		self.img_combo_size.grid(row=0, column=1, sticky="w", padx=6, pady=4)
 		
-		# 第二行：操作按钮
-		self.btn_test_img_api = ttk.Button(grp_params, text="🔌 测试API", command=self.on_test_image_api)
-		self.btn_test_img_api.grid(row=1, column=0, columnspan=2, padx=6, pady=(0, 4), sticky="we")
+		# 提示文字
+		hint_frame = tk.Frame(grp_params, bg="#2b2b2b")
+		hint_frame.grid(row=1, column=0, columnspan=2, sticky="w", padx=6, pady=(0, 4))
+		tk.Label(hint_frame, text="方形: ", fg="gray", font=("", 9), bg="#2b2b2b").pack(side=LEFT)
+		tk.Label(hint_frame, text="256x256, 512x512, 768x768, 1024x1024", fg="#90CAF9", font=("", 9), bg="#2b2b2b").pack(side=LEFT)
+		
+		hint_frame2 = tk.Frame(grp_params, bg="#2b2b2b")
+		hint_frame2.grid(row=2, column=0, columnspan=2, sticky="w", padx=6, pady=(0, 4))
+		tk.Label(hint_frame2, text="竖版: ", fg="gray", font=("", 9), bg="#2b2b2b").pack(side=LEFT)
+		tk.Label(hint_frame2, text="1024x1792, 360x640, 720x1280, 1080x1920", fg="#A5D6A7", font=("", 9), bg="#2b2b2b").pack(side=LEFT)
+		
+		hint_frame3 = tk.Frame(grp_params, bg="#2b2b2b")
+		hint_frame3.grid(row=3, column=0, columnspan=2, sticky="w", padx=6, pady=(0, 6))
+		tk.Label(hint_frame3, text="横版: ", fg="gray", font=("", 9), bg="#2b2b2b").pack(side=LEFT)
+		tk.Label(hint_frame3, text="1792x1024, 640x360, 1280x720, 1920x1080", fg="#FFCC80", font=("", 9), bg="#2b2b2b").pack(side=LEFT)
+		
+		# 测试操作
+		grp_test = ttk.LabelFrame(self.image_tab_setup, text="🔌 API测试")
+		grp_test.pack(fill="x", padx=10, pady=5)
+		
+		# 测试按钮
+		self.btn_test_img_api = ttk.Button(grp_test, text="🔌 测试图片生成API", command=self.on_test_image_api)
+		self.btn_test_img_api.pack(fill="x", padx=6, pady=6)
+		
+		# 辅助功能API配置（分镜头生成和图片描述生成）
+		grp_assist_api = ttk.LabelFrame(self.image_tab_setup, text="🤖 辅助功能 API 配置（使用聊天模型）")
+		grp_assist_api.pack(fill="x", padx=10, pady=5)
+		grp_assist_api.columnconfigure(1, weight=1)
+		
+		# 说明文字
+		tk.Label(grp_assist_api, text="选择用于生成分镜头和图片描述的聊天API（使用故事生成页面配置的API Key）", 
+				 fg="gray", font=("", 9)).grid(row=0, column=0, columnspan=2, sticky="w", padx=6, pady=(4, 8))
+		
+		# 分镜头生成API选择
+		tk.Label(grp_assist_api, text="分镜头生成API:").grid(row=1, column=0, sticky="e", padx=6, pady=4)
+		self.shot_gen_api = tk.StringVar(value="DeepSeek")
+		self.combo_shot_gen_api = ttk.Combobox(grp_assist_api, textvariable=self.shot_gen_api, 
+											   values=["DeepSeek"],  # 初始值，会在加载配置时更新
+											   state="readonly", width=30)
+		self.combo_shot_gen_api.grid(row=1, column=1, sticky="w", padx=6, pady=4)
+		
+		# 图片描述生成API选择
+		tk.Label(grp_assist_api, text="图片描述生成API:").grid(row=2, column=0, sticky="e", padx=6, pady=4)
+		self.desc_gen_api = tk.StringVar(value="DeepSeek")
+		self.combo_desc_gen_api = ttk.Combobox(grp_assist_api, textvariable=self.desc_gen_api,
+											   values=["DeepSeek"],  # 初始值，会在加载配置时更新
+											   state="readonly", width=30)
+		self.combo_desc_gen_api.grid(row=2, column=1, sticky="w", padx=6, pady=4)
+		
+		# 保存按钮
+		btn_save_assist_api = tk.Button(grp_assist_api, text="💾 保存辅助API配置", command=self._save_assist_api_config,
+									   font=("", 9), bg="#4CAF50", fg="white", relief=tk.FLAT, padx=12, pady=4, cursor="hand2")
+		btn_save_assist_api.grid(row=3, column=0, columnspan=2, padx=6, pady=(8, 4), sticky="we")
 		
 		# 测试日志输出区域
 		grp_log = ttk.LabelFrame(self.image_tab_setup, text="测试日志")
@@ -652,27 +743,96 @@ class ImageMixin:
 		finally:
 			self.set_busy(False)
 
-	def _on_img_extract_shots(self) -> None:
-		"""从故事生成分镜列表"""
+	def _on_img_extract_shots(self, mode="normal") -> None:
+		"""从故事生成分镜列表
+		
+		Args:
+			mode: 分镜详细程度
+				- "brief": 大致版，8-12个分镜，覆盖主要情节
+				- "normal": 标准版，12-20个分镜（保持兼容）
+				- "detailed": 详细版，20-30个分镜，细致分割每个场景
+		"""
 		story_text = self.output.get("1.0", END).strip()
 		if not story_text:
 			messagebox.showwarning("提示", "请先在'故事'页生成或粘贴正文内容，然后再生成分镜")
 			return
-		try:
-			self.set_busy(True)
-			self.status.set("🎬 正在分析故事内容...")
-			client = DeepSeekClient(
-				api_key=_sanitize(self.api_key.get()),
-				base_url=_sanitize(self.base_url.get()),
-				model=_sanitize(self.model.get()),
-			)
+		
+		# 根据模式设置不同的提示词
+		if mode == "brief":
+			shot_count = "8-12"
+			mode_name = "大致版"
 			inst = (
-				"请把以下故事正文拆解为适合生成插图/分镜的'镜头清单'，使用中文简洁编号列出 6-12 条，"
+				"请把以下故事正文拆解为适合生成插图/分镜的'镜头清单'，使用中文简洁编号列出 5-8 条核心分镜，"
+				"**只选取最关键、最具代表性的场景**，概括整个故事的主要情节转折和高潮时刻。\n\n"
+				"每条包含：\n"
+				"- 场景：具体地点和环境\n"
+				"- 主体：人物或主要对象\n"
+				"- 动作：正在发生的行为\n"
+				"- 情绪：情感氛围\n"
+				"- 光线/镜头：如 close-up（特写）、wide shot（全景）、low angle（低角度）等\n\n"
+				"输出格式：每行一个分镜，格式为'序号. 场景 / 主体 / 动作 / 情绪 / 光线镜头'。\n"
+				"注意：只输出清单，不要其他说明文字或解释。"
+			)
+		elif mode == "detailed":
+			shot_count = "20-30"
+			mode_name = "详细版"
+			inst = (
+				"请把以下故事正文拆解为极其详细的'分镜头清单'，使用中文编号列出 15-25 条分镜，"
+				"**尽可能细致地分割每个场景、每个情节转折、每个重要细节**，"
+				"确保故事的每个重要瞬间都有对应的分镜。\n\n"
+				"分镜原则：\n"
+				"1. 场景转换时必须新开分镜\n"
+				"2. 人物表情或动作有明显变化时新开分镜\n"
+				"3. 情节转折点必须单独成镜\n"
+				"4. 重要对话场景可拆分为多个分镜（不同角度）\n"
+				"5. 氛围营造的细节镜头也要包含\n\n"
+				"每条分镜包含：\n"
+				"- 场景：具体地点和环境细节\n"
+				"- 主体：人物或主要对象（包括服饰、姿态）\n"
+				"- 动作：正在发生的具体行为或状态\n"
+				"- 情绪：人物情感或场景氛围\n"
+				"- 光线/镜头：如 extreme close-up（大特写）、close-up（特写）、medium shot（中景）、"
+				"wide shot（全景）、establishing shot（定场镜头）、high angle（高角度）、low angle（低角度）、"
+				"POV（主观视角）、over-the-shoulder（过肩镜头）等\n\n"
+				"输出格式：每行一个分镜，格式为'序号. 场景 / 主体 / 动作 / 情绪 / 光线镜头'。\n"
+				"注意：只输出清单，不要其他说明文字。尽量覆盖故事的所有重要时刻。"
+			)
+		else:  # normal mode (保持向后兼容)
+			shot_count = "12-20"
+			mode_name = "标准版"
+			inst = (
+				"请把以下故事正文拆解为适合生成插图/分镜的'镜头清单'，使用中文简洁编号列出 8-12 条，"
 				"每条包含：场景/主体/动作/情绪/关键物件/光线镜头（如 close-up、wide shot）。"
 				"格式：每行一个分镜，格式为'序号. 场景描述 / 主体 / 动作 / 情绪 / 光线镜头'。只输出清单，不要其他文字。"
 			)
+		
+		try:
+			self.set_busy(True)
 			
-			self.status.set("🤖 正在生成分镜头清单...")
+			# 获取选中的分镜头生成API配置
+			selected_api = self.shot_gen_api.get() if hasattr(self, 'shot_gen_api') else "DeepSeek"
+			if selected_api not in self.api_presets:
+				messagebox.showerror("错误", f"未找到API预设: {selected_api}")
+				return
+			
+			api_config = self.api_presets[selected_api]
+			api_key = _sanitize(api_config.get("key", ""))
+			base_url = _sanitize(api_config.get("base_url", ""))
+			model = _sanitize(api_config.get("model", ""))
+			
+			if not api_key:
+				messagebox.showwarning("提示", f"请先在故事生成页面配置 {selected_api} 的API Key")
+				return
+			
+			self.status.set(f"🎬 正在使用 {selected_api} 生成{mode_name}分镜（目标{shot_count}个）...")
+			
+			client = DeepSeekClient(
+				api_key=api_key,
+				base_url=base_url,
+				model=model,
+			)
+			
+			self.status.set(f"🤖 {selected_api} 正在分析故事并生成{mode_name}分镜...")
 			
 			resp = client.chat([
 				{"role": "system", "content": inst},
@@ -715,7 +875,7 @@ class ImageMixin:
 				# 显示第一个分镜
 				self._on_shot_selected(None)
 			
-			self.status.set(f"🎬 已生成 {len(shots)} 个分镜（可在下拉框中选择）")
+			self.status.set(f"🎬 已生成{mode_name} {len(shots)} 个分镜（可在下拉框中选择）")
 		except Exception as e:
 			messagebox.showerror("错误", str(e))
 		finally:
@@ -854,11 +1014,27 @@ class ImageMixin:
 		
 		try:
 			self.set_busy(True)
-			self.status.set(f"📸 正在生成{'精简' if is_hunyuan else '详细'}图片描述（第{selected_index+1}个分镜）...")
+			
+			# 获取选中的图片描述生成API配置
+			selected_api = self.desc_gen_api.get() if hasattr(self, 'desc_gen_api') else "DeepSeek"
+			if selected_api not in self.api_presets:
+				messagebox.showerror("错误", f"未找到API预设: {selected_api}")
+				return
+			
+			api_config = self.api_presets[selected_api]
+			api_key = _sanitize(api_config.get("key", ""))
+			base_url = _sanitize(api_config.get("base_url", ""))
+			model = _sanitize(api_config.get("model", ""))
+			
+			if not api_key:
+				messagebox.showwarning("提示", f"请先在故事生成页面配置 {selected_api} 的API Key")
+				return
+			
+			self.status.set(f"📸 正在使用 {selected_api} 生成{'精简' if is_hunyuan else '详细'}图片描述（第{selected_index+1}个分镜）...")
 			client = DeepSeekClient(
-				api_key=_sanitize(self.api_key.get()),
-				base_url=_sanitize(self.base_url.get()),
-				model=_sanitize(self.model.get()),
+				api_key=api_key,
+				base_url=base_url,
+				model=model,
 			)
 			# 根据API类型调整上下文长度
 			context_length = 500 if is_hunyuan else 1000
@@ -931,15 +1107,71 @@ class ImageMixin:
 		finally:
 			self.set_busy(False)
 
+	def _on_canvas_configure(self, event=None) -> None:
+		"""Canvas大小变化时重新缩放图片"""
+		if self.img_last_image:
+			self._update_img_preview()
+	
 	def _update_img_preview(self) -> None:
+		"""更新图片预览，支持自适应缩放和滚动"""
 		if not self.img_last_image:
 			return
-		max_w = max(300, self.page_image.winfo_width() - 80)
-		max_h = max(300, self.page_image.winfo_height() - 220)
-		img = self.img_last_image.copy()
-		img.thumbnail((max_w, max_h))
+		
+		# 获取Canvas的实际可用尺寸
+		canvas_width = self.img_canvas.winfo_width()
+		canvas_height = self.img_canvas.winfo_height()
+		
+		# 如果Canvas还未初始化完成，使用默认值
+		if canvas_width <= 1:
+			canvas_width = 400
+		if canvas_height <= 1:
+			canvas_height = 400
+		
+		# 获取原始图片尺寸
+		orig_w, orig_h = self.img_last_image.size
+		
+		# 计算缩放比例，保持宽高比
+		# 给边距留出一些空间
+		max_w = canvas_width - 20
+		max_h = canvas_height - 20
+		
+		# 计算缩放比例（取较小的比例以确保图片完全显示）
+		scale_w = max_w / orig_w
+		scale_h = max_h / orig_h
+		scale = min(scale_w, scale_h, 1.0)  # 不放大，只缩小
+		
+		# 如果原图太大，进行缩放；否则显示原尺寸
+		if scale < 1.0:
+			new_w = int(orig_w * scale)
+			new_h = int(orig_h * scale)
+			img = self.img_last_image.copy()
+			img.thumbnail((new_w, new_h), Image.Resampling.LANCZOS)
+		else:
+			# 图片较小，直接显示原图
+			img = self.img_last_image.copy()
+			new_w, new_h = orig_w, orig_h
+		
+		# 转换为PhotoImage
 		self.img_preview_photo = ImageTk.PhotoImage(img)
-		self.img_preview.configure(image=self.img_preview_photo)
+		
+		# 更新Label
+		self.img_preview.configure(image=self.img_preview_photo, text="")
+		
+		# 更新Canvas的滚动区域
+		self.img_canvas.configure(scrollregion=(0, 0, new_w, new_h))
+		
+		# 居中显示图片
+		if new_w < canvas_width:
+			x_offset = (canvas_width - new_w) // 2
+		else:
+			x_offset = 0
+			
+		if new_h < canvas_height:
+			y_offset = (canvas_height - new_h) // 2
+		else:
+			y_offset = 0
+		
+		self.img_canvas.coords(self.img_canvas_window, x_offset, y_offset)
 
 	def _on_img_save(self) -> None:
 		if not self.img_last_image:

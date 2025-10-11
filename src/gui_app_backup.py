@@ -883,9 +883,47 @@ class App(tk.Tk):
 			if size:
 				self.img_size.set(size)
 			
+			# 加载辅助功能API配置
+			shot_api = os.getenv("ASSIST_SHOT_GEN_API", "DeepSeek")
+			if hasattr(self, 'shot_gen_api'):
+				self.shot_gen_api.set(shot_api)
+			
+			desc_api = os.getenv("ASSIST_DESC_GEN_API", "DeepSeek")
+			if hasattr(self, 'desc_gen_api'):
+				self.desc_gen_api.set(desc_api)
+			
+			# 更新辅助功能API下拉框的选项（从story api_presets）
+			if hasattr(self, 'api_presets') and hasattr(self, 'combo_shot_gen_api'):
+				api_list = list(self.api_presets.keys())
+				self.combo_shot_gen_api['values'] = api_list
+				self.combo_desc_gen_api['values'] = api_list
+			
 			print(f"已自动加载图片API配置: {last_preset or 'OpenAI (DALL-E)'}")
 		except Exception as e:
 			print(f"加载图片API配置失败: {e}")
+	
+	def _save_assist_api_config(self) -> None:
+		"""保存辅助功能API配置（分镜头生成和图片描述生成）"""
+		try:
+			env_path_str = find_dotenv(usecwd=True)
+			if not env_path_str:
+				env_path = Path.cwd() / ".env"
+			else:
+				env_path = Path(env_path_str)
+			env_path.touch(exist_ok=True)
+			
+			# 保存分镜头生成API
+			if hasattr(self, 'shot_gen_api'):
+				set_key(str(env_path), "ASSIST_SHOT_GEN_API", self.shot_gen_api.get())
+			
+			# 保存图片描述生成API
+			if hasattr(self, 'desc_gen_api'):
+				set_key(str(env_path), "ASSIST_DESC_GEN_API", self.desc_gen_api.get())
+			
+			load_dotenv(override=True)
+			messagebox.showinfo("成功", f"已保存辅助功能API配置\n\n分镜头生成: {self.shot_gen_api.get()}\n图片描述生成: {self.desc_gen_api.get()}")
+		except Exception as e:
+			messagebox.showerror("错误", f"保存配置失败: {str(e)}")
 	
 	def _on_api_preset_selected(self, event=None) -> None:
 		"""当选择API预设时，自动填充配置（包括已保存的API Key）"""
@@ -1739,8 +1777,12 @@ class App(tk.Tk):
 		
 		rowf = ttk.Frame(grp_shots)
 		rowf.pack(fill="x", padx=6, pady=(0, 6))
-		self.img_btn_extract = ttk.Button(rowf, text="📝 从故事生成分镜", command=self._on_img_extract_shots)
-		self.img_btn_extract.pack(side=LEFT, padx=(0, 4))
+		self.img_btn_extract_brief = ttk.Button(rowf, text="📝 大致分镜(8-12个)", command=lambda: self._on_img_extract_shots(mode="brief"))
+		self.img_btn_extract_brief.pack(side=LEFT, padx=(0, 4))
+		self.img_btn_extract_normal = ttk.Button(rowf, text="📝 标准分镜(12-20个)", command=lambda: self._on_img_extract_shots(mode="normal"))
+		self.img_btn_extract_normal.pack(side=LEFT, padx=(0, 4))
+		self.img_btn_extract_detailed = ttk.Button(rowf, text="📝 详细分镜(20-30个)", command=lambda: self._on_img_extract_shots(mode="detailed"))
+		self.img_btn_extract_detailed.pack(side=LEFT, padx=(0, 4))
 		self.img_btn_copy_shots = ttk.Button(rowf, text="📋 复制所有", command=self._on_copy_shots)
 		self.img_btn_copy_shots.pack(side=LEFT, padx=4)
 		self.img_btn_clear_shots = ttk.Button(rowf, text="🗑️ 清空", command=self._on_clear_shots)
@@ -1916,26 +1958,76 @@ class App(tk.Tk):
 		tk.Button(grp_api, text="保存配置", command=self.save_img_api_config).grid(row=4, column=2, padx=6)
 		tk.Button(grp_api, text="加载配置", command=self.load_img_api_config).grid(row=4, column=3, padx=6, sticky="w")
 		
-		# 图片参数与操作
-		grp_params = ttk.LabelFrame(self.image_tab_setup, text="参数与操作")
+		# 图片参数设置
+		grp_params = ttk.LabelFrame(self.image_tab_setup, text="📐 图片参数")
 		grp_params.pack(fill="x", padx=10, pady=5)
 		grp_params.columnconfigure(1, weight=1)
-		grp_params.columnconfigure(3, weight=1)
-		grp_params.columnconfigure(5, weight=1)
-		grp_params.columnconfigure(7, weight=1)
 		
-		# 第一行：尺寸参数
+		# 图片尺寸
 		tk.Label(grp_params, text="图片尺寸:").grid(row=0, column=0, sticky="e", padx=6, pady=4)
 		self.img_combo_size = ttk.Combobox(grp_params, textvariable=self.img_size, 
-										   values=("512x512","768x768","1024x1024","1024x1792","1792x1024"), 
+										   values=(
+											   "256x256", "512x512", "768x768",
+											   "1024x1024", "1024x1792", "1792x1024",
+											   "640x360", "1280x720", "1920x1080",
+											   "360x640", "720x1280", "1080x1920"
+										   ), 
 										   width=15, state="readonly")
-		self.img_combo_size.grid(row=0, column=1, sticky="w", padx=6)
-		tk.Label(grp_params, text="(1024x1024适合方形 | 1024x1792适合竖版 | 1792x1024适合横版)", 
-				 fg="gray", font=("", 9)).grid(row=0, column=2, columnspan=6, sticky="w", padx=6)
+		self.img_combo_size.grid(row=0, column=1, sticky="w", padx=6, pady=4)
 		
-		# 第二行：操作按钮
-		self.btn_test_img_api = ttk.Button(grp_params, text="🔌 测试API", command=self.on_test_image_api)
-		self.btn_test_img_api.grid(row=1, column=0, columnspan=2, padx=6, pady=(0, 4), sticky="we")
+		# 提示文字
+		hint_frame = tk.Frame(grp_params, bg="#2b2b2b")
+		hint_frame.grid(row=1, column=0, columnspan=2, sticky="w", padx=6, pady=(0, 4))
+		tk.Label(hint_frame, text="方形: ", fg="gray", font=("", 9), bg="#2b2b2b").pack(side=LEFT)
+		tk.Label(hint_frame, text="256x256, 512x512, 768x768, 1024x1024", fg="#90CAF9", font=("", 9), bg="#2b2b2b").pack(side=LEFT)
+		
+		hint_frame2 = tk.Frame(grp_params, bg="#2b2b2b")
+		hint_frame2.grid(row=2, column=0, columnspan=2, sticky="w", padx=6, pady=(0, 4))
+		tk.Label(hint_frame2, text="竖版: ", fg="gray", font=("", 9), bg="#2b2b2b").pack(side=LEFT)
+		tk.Label(hint_frame2, text="1024x1792, 360x640, 720x1280, 1080x1920", fg="#A5D6A7", font=("", 9), bg="#2b2b2b").pack(side=LEFT)
+		
+		hint_frame3 = tk.Frame(grp_params, bg="#2b2b2b")
+		hint_frame3.grid(row=3, column=0, columnspan=2, sticky="w", padx=6, pady=(0, 6))
+		tk.Label(hint_frame3, text="横版: ", fg="gray", font=("", 9), bg="#2b2b2b").pack(side=LEFT)
+		tk.Label(hint_frame3, text="1792x1024, 640x360, 1280x720, 1920x1080", fg="#FFCC80", font=("", 9), bg="#2b2b2b").pack(side=LEFT)
+		
+		# 测试操作
+		grp_test = ttk.LabelFrame(self.image_tab_setup, text="🔌 API测试")
+		grp_test.pack(fill="x", padx=10, pady=5)
+		
+		# 测试按钮
+		self.btn_test_img_api = ttk.Button(grp_test, text="🔌 测试图片生成API", command=self.on_test_image_api)
+		self.btn_test_img_api.pack(fill="x", padx=6, pady=6)
+		
+		# 辅助功能API配置（分镜头生成和图片描述生成）
+		grp_assist_api = ttk.LabelFrame(self.image_tab_setup, text="🤖 辅助功能 API 配置（使用聊天模型）")
+		grp_assist_api.pack(fill="x", padx=10, pady=5)
+		grp_assist_api.columnconfigure(1, weight=1)
+		
+		# 说明文字
+		tk.Label(grp_assist_api, text="选择用于生成分镜头和图片描述的聊天API（使用故事生成页面配置的API Key）", 
+				 fg="gray", font=("", 9)).grid(row=0, column=0, columnspan=2, sticky="w", padx=6, pady=(4, 8))
+		
+		# 分镜头生成API选择
+		tk.Label(grp_assist_api, text="分镜头生成API:").grid(row=1, column=0, sticky="e", padx=6, pady=4)
+		self.shot_gen_api = tk.StringVar(value="DeepSeek")
+		self.combo_shot_gen_api = ttk.Combobox(grp_assist_api, textvariable=self.shot_gen_api, 
+											   values=["DeepSeek"],  # 初始值，会在加载配置时更新
+											   state="readonly", width=30)
+		self.combo_shot_gen_api.grid(row=1, column=1, sticky="w", padx=6, pady=4)
+		
+		# 图片描述生成API选择
+		tk.Label(grp_assist_api, text="图片描述生成API:").grid(row=2, column=0, sticky="e", padx=6, pady=4)
+		self.desc_gen_api = tk.StringVar(value="DeepSeek")
+		self.combo_desc_gen_api = ttk.Combobox(grp_assist_api, textvariable=self.desc_gen_api,
+											   values=["DeepSeek"],  # 初始值，会在加载配置时更新
+											   state="readonly", width=30)
+		self.combo_desc_gen_api.grid(row=2, column=1, sticky="w", padx=6, pady=4)
+		
+		# 保存按钮
+		btn_save_assist_api = tk.Button(grp_assist_api, text="💾 保存辅助API配置", command=self._save_assist_api_config,
+									   font=("", 9), bg="#4CAF50", fg="white", relief=tk.FLAT, padx=12, pady=4, cursor="hand2")
+		btn_save_assist_api.grid(row=3, column=0, columnspan=2, padx=6, pady=(8, 4), sticky="we")
 		
 		# 启动后自动加载配置
 		self.after(100, self._auto_load_image_api_config)
@@ -2305,25 +2397,76 @@ class App(tk.Tk):
 		finally:
 			self.set_busy(False)
 
-	def _on_img_extract_shots(self) -> None:
-		"""从故事生成分镜列表"""
+	def _on_img_extract_shots(self, mode="normal") -> None:
+		"""从故事生成分镜列表
+		
+		Args:
+			mode: 分镜详细程度
+				- "brief": 大致版，8-12个分镜，覆盖主要情节
+				- "normal": 标准版，12-20个分镜（保持兼容）
+				- "detailed": 详细版，20-30个分镜，细节丰富
+		"""
 		story_text = self.output.get("1.0", END).strip()
 		if not story_text:
 			messagebox.showwarning("提示", "请先在'故事'页生成或粘贴正文内容，然后再生成分镜")
 			return
 		try:
 			self.set_busy(True)
-			self.status.set("根据故事生成分镜中...")
+			
+			# 根据模式设置不同的提示词
+			if mode == "brief":
+				shot_count = "8-12"
+				mode_name = "大致版"
+				inst = (
+					"请把以下故事正文拆解为适合生成插图/分镜的'镜头清单'，使用中文简洁编号列出 8-12 条核心场景分镜。"
+					"每条包含：场景/主体/动作/情绪/关键物件。"
+					"格式：每行一个分镜，格式为'序号. 场景描述 / 主体 / 动作 / 情绪'。只输出清单，不要其他文字。"
+					"注意：只选择最关键的情节转折点和高潮场景，不要冗余。"
+				)
+				self.status.set(f"生成{mode_name}分镜中（{shot_count}个）...")
+			elif mode == "detailed":
+				shot_count = "20-30"
+				mode_name = "详细版"
+				inst = (
+					"请把以下故事正文拆解为详细的电影级分镜清单，使用中文编号列出 20-30 条精细分镜。"
+					"每条包含：场景设定 / 主体人物 / 具体动作 / 神态情绪 / 关键道具 / 镜头语言（如特写close-up、全景wide shot、俯拍overhead等）/ 光线氛围。"
+					"格式：每行一个分镜，格式为'序号. 场景 / 主体 / 动作 / 情绪 / 道具 / 镜头 / 光线'。"
+					"要求：覆盖每个细节转折，包括对话场景、细微表情变化、环境氛围渲染，创造电影般的视觉叙事节奏。只输出清单，不要其他说明。"
+				)
+				self.status.set(f"生成{mode_name}分镜中（{shot_count}个）...")
+			else:  # normal
+				shot_count = "12-20"
+				mode_name = "标准版"
+				inst = (
+					"请把以下故事正文拆解为适合生成插图/分镜的'镜头清单'，使用中文简洁编号列出 12-20 条，"
+					"每条包含：场景/主体/动作/情绪/关键物件/光线镜头（如 close-up、wide shot）。"
+					"格式：每行一个分镜，格式为'序号. 场景描述 / 主体 / 动作 / 情绪 / 光线镜头'。只输出清单，不要其他文字。"
+				)
+				self.status.set(f"生成{mode_name}分镜中（{shot_count}个）...")
+			
+			# 获取选中的分镜头生成API配置
+			selected_api = self.shot_gen_api.get() if hasattr(self, 'shot_gen_api') else "DeepSeek"
+			if selected_api not in self.api_presets:
+				messagebox.showerror("错误", f"未找到API预设: {selected_api}")
+				return
+			
+			api_config = self.api_presets[selected_api]
+			api_key = _sanitize(api_config.get("key", ""))
+			base_url = _sanitize(api_config.get("base_url", ""))
+			model = _sanitize(api_config.get("model", ""))
+			
+			if not api_key:
+				messagebox.showwarning("提示", f"请先在故事生成页面配置 {selected_api} 的API Key")
+				return
+			
+			self.status.set(f"🎬 正在使用 {selected_api} 生成{mode_name}分镜（{shot_count}个）...")
+			
 			client = DeepSeekClient(
-				api_key=_sanitize(self.api_key.get()),
-				base_url=_sanitize(self.base_url.get()),
-				model=_sanitize(self.model.get()),
+				api_key=api_key,
+				base_url=base_url,
+				model=model,
 			)
-			inst = (
-				"请把以下故事正文拆解为适合生成插图/分镜的'镜头清单'，使用中文简洁编号列出 6-12 条，"
-				"每条包含：场景/主体/动作/情绪/关键物件/光线镜头（如 close-up、wide shot）。"
-				"格式：每行一个分镜，格式为'序号. 场景描述 / 主体 / 动作 / 情绪 / 光线镜头'。只输出清单，不要其他文字。"
-			)
+			
 			resp = client.chat([
 				{"role": "system", "content": inst},
 				{"role": "user", "content": story_text},
@@ -2361,7 +2504,7 @@ class App(tk.Tk):
 				# 显示第一个分镜
 				self._on_shot_selected(None)
 			
-			self.status.set(f"已生成 {len(shots)} 个分镜（可选择生成）")
+			self.status.set(f"已生成 {len(shots)} 个分镜（{mode_name}，可选择生成）")
 		except Exception as e:
 			messagebox.showerror("错误", str(e))
 		finally:

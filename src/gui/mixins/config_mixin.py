@@ -205,9 +205,47 @@ class ConfigMixin:
 			if size:
 				self.img_size.set(size)
 			
+			# 加载辅助功能API配置
+			shot_api = os.getenv("ASSIST_SHOT_GEN_API", "DeepSeek")
+			if hasattr(self, 'shot_gen_api'):
+				self.shot_gen_api.set(shot_api)
+			
+			desc_api = os.getenv("ASSIST_DESC_GEN_API", "DeepSeek")
+			if hasattr(self, 'desc_gen_api'):
+				self.desc_gen_api.set(desc_api)
+			
+			# 更新辅助功能API下拉框的选项（从story api_presets）
+			if hasattr(self, 'api_presets') and hasattr(self, 'combo_shot_gen_api'):
+				api_list = list(self.api_presets.keys())
+				self.combo_shot_gen_api['values'] = api_list
+				self.combo_desc_gen_api['values'] = api_list
+			
 			print(f"已自动加载图片API配置: {last_preset or 'OpenAI (DALL-E)'}")
 		except Exception as e:
 			print(f"加载图片API配置失败: {e}")
+	
+	def _save_assist_api_config(self) -> None:
+		"""保存辅助功能API配置（分镜头生成和图片描述生成）"""
+		try:
+			env_path_str = find_dotenv(usecwd=True)
+			if not env_path_str:
+				env_path = Path.cwd() / ".env"
+			else:
+				env_path = Path(env_path_str)
+			env_path.touch(exist_ok=True)
+			
+			# 保存分镜头生成API
+			if hasattr(self, 'shot_gen_api'):
+				set_key(str(env_path), "ASSIST_SHOT_GEN_API", self.shot_gen_api.get())
+			
+			# 保存图片描述生成API
+			if hasattr(self, 'desc_gen_api'):
+				set_key(str(env_path), "ASSIST_DESC_GEN_API", self.desc_gen_api.get())
+			
+			load_dotenv(override=True)
+			messagebox.showinfo("成功", f"已保存辅助功能API配置\n\n分镜头生成: {self.shot_gen_api.get()}\n图片描述生成: {self.desc_gen_api.get()}")
+		except Exception as e:
+			messagebox.showerror("错误", f"保存配置失败: {str(e)}")
 	
 	def on_test_api(self) -> None:
 		try:
