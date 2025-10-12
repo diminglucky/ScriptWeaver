@@ -67,25 +67,18 @@ class ImageMixin:
 		self.img_txt_all_shots.insert("1.0", "点击下方按钮从故事生成分镜头列表...")
 		self.img_txt_all_shots.config(state=DISABLED)
 		
-		# 智能推荐按钮
-		rowf_recommend = ttk.Frame(grp_shots)
-		rowf_recommend.pack(fill="x", padx=6, pady=(0, 8))
-		self.img_btn_recommend = ttk.Button(rowf_recommend, text="🤖 智能推荐视频模式", command=self._on_recommend_video_mode, width=25)
-		self.img_btn_recommend.pack(side=LEFT, padx=(0, 8))
-		self.recommend_label = tk.Label(rowf_recommend, text="分析故事后给出最佳视频模式建议", 
-										font=("", 9), fg="#90CAF9", bg="#2b2b2b")
-		self.recommend_label.pack(side=LEFT)
-		
-		# 视频分镜生成按钮（全部为视频模式）
+		# 将所有按钮放在一行
 		rowf = ttk.Frame(grp_shots)
 		rowf.pack(fill="x", padx=6, pady=(0, 6))
-		self.img_btn_extract_brief = ttk.Button(rowf, text="🎬 简短视频(8-12)", command=lambda: self._on_img_extract_shots(mode="brief"), width=16)
+		self.img_btn_recommend = ttk.Button(rowf, text="🤖 智能推荐", command=self._on_recommend_video_mode, width=12, takefocus=False)
+		self.img_btn_recommend.pack(side=LEFT, padx=(0, 3))
+		self.img_btn_extract_brief = ttk.Button(rowf, text="🎬 简短(8-12)", command=lambda: self._on_img_extract_shots(mode="brief"), width=12, takefocus=False)
 		self.img_btn_extract_brief.pack(side=LEFT, padx=(0, 3))
-		self.img_btn_extract_video = ttk.Button(rowf, text="🎬 平衡视频(15-25)", command=lambda: self._on_img_extract_shots(mode="video"), width=18)
+		self.img_btn_extract_video = ttk.Button(rowf, text="🎬 平衡(15-25)", command=lambda: self._on_img_extract_shots(mode="video"), width=13, takefocus=False)
 		self.img_btn_extract_video.pack(side=LEFT, padx=(0, 3))
-		self.img_btn_extract_normal = ttk.Button(rowf, text="🎬 标准视频(15-22)", command=lambda: self._on_img_extract_shots(mode="normal"), width=16)
+		self.img_btn_extract_normal = ttk.Button(rowf, text="🎬 标准(15-22)", command=lambda: self._on_img_extract_shots(mode="normal"), width=13, takefocus=False)
 		self.img_btn_extract_normal.pack(side=LEFT, padx=(0, 3))
-		self.img_btn_extract_detailed = ttk.Button(rowf, text="🎬 精细视频(25-40)", command=lambda: self._on_img_extract_shots(mode="detailed"), width=16)
+		self.img_btn_extract_detailed = ttk.Button(rowf, text="🎬 精细(25-40)", command=lambda: self._on_img_extract_shots(mode="detailed"), width=13, takefocus=False)
 		self.img_btn_extract_detailed.pack(side=LEFT, padx=(0, 3))
 		
 		# 合并：选择分镜 + 图片类型与场景补充
