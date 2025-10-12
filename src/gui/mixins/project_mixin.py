@@ -45,6 +45,14 @@ class ProjectMixin:
 			self.current_project = self.project_manager.create_project(project_name.strip())
 			self.lbl_current_project.config(text=f"当前项目: {project_name}", fg="#4CAF50")
 			self.btn_save_story.config(state=NORMAL)
+			
+			# 创建人物照片文件夹
+			if self.current_project:
+				from pathlib import Path
+				characters_dir = self.current_project.project_dir / "characters"
+				characters_dir.mkdir(parents=True, exist_ok=True)
+				print(f"📁 已创建人物照片文件夹：{characters_dir}")
+			
 			self._refresh_project_list()
 			if hasattr(self, 'status'):
 				self.status.set(f"已创建项目: {project_name}")
@@ -85,6 +93,18 @@ class ProjectMixin:
 			else:
 				if hasattr(self, 'status'):
 					self.status.set(f"已加载项目: {project_name} (无故事内容)")
+			
+			# 确保项目有 characters 文件夹（兼容旧项目）
+			if self.current_project:
+				from pathlib import Path
+				characters_dir = self.current_project.project_dir / "characters"
+				if not characters_dir.exists():
+					characters_dir.mkdir(parents=True, exist_ok=True)
+					print(f"📁 自动创建人物照片文件夹：{characters_dir}")
+			
+			# 加载项目的人物照片
+			if hasattr(self, '_load_project_characters'):
+				self._load_project_characters()
 			
 			# 恢复创作参数
 			meta = self.current_project.metadata
