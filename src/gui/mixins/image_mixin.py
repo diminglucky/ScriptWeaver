@@ -44,7 +44,7 @@ class ImageMixin:
 		self.image_tab_create = tk.Frame(self.image_notebook, bg="#2b2b2b")
 		self.image_tab_setup = tk.Frame(self.image_notebook, bg="#2b2b2b")
 		
-		self.image_notebook.add(self.image_tab_character, text="  👥 人物生成  ")
+		self.image_notebook.add(self.image_tab_character, text="  👥 人物描述  ")
 		self.image_notebook.add(self.image_tab_create, text="  🎨 图片创作  ")
 		self.image_notebook.add(self.image_tab_setup, text="  ⚙️ 配置  ")
 		
@@ -66,67 +66,83 @@ class ImageMixin:
 		body.columnconfigure(1, weight=2)
 		body.rowconfigure(0, weight=1)
 
-		# Left: 分镜头列表
-		grp_shots = ttk.LabelFrame(left, text="📋 所有分镜头", padding=(8, 5))
+		# Left: 分镜头列表（合并版本）
+		grp_shots = ttk.LabelFrame(left, text="🎬 分镜头列表（点击选择）", padding=(8, 5))
 		grp_shots.pack(fill="both", expand=True, padx=0, pady=(0, 8))
-		
-		# 显示所有分镜头的文本框
-		self.img_txt_all_shots = tk.Text(grp_shots, height=8, font=("", 10), wrap=tk.WORD, relief=tk.SOLID, borderwidth=1)
-		self.img_txt_all_shots.pack(fill="both", expand=True, padx=6, pady=(6, 8))
-		self.img_txt_all_shots.insert("1.0", "点击下方按钮从故事生成分镜头列表...")
-		self.img_txt_all_shots.config(state=DISABLED)
 		
 		# 将所有按钮放在一行
 		rowf = ttk.Frame(grp_shots)
-		rowf.pack(fill="x", padx=6, pady=(0, 6))
-		self.img_btn_recommend = ttk.Button(rowf, text="🤖 智能推荐", command=self._on_recommend_video_mode, width=12, takefocus=False)
-		self.img_btn_recommend.pack(side=LEFT, padx=(0, 3))
-		self.img_btn_extract_brief = ttk.Button(rowf, text="🎬 简短(8-12)", command=lambda: self._on_img_extract_shots(mode="brief"), width=12, takefocus=False)
-		self.img_btn_extract_brief.pack(side=LEFT, padx=(0, 3))
-		self.img_btn_extract_video = ttk.Button(rowf, text="🎬 平衡(15-25)", command=lambda: self._on_img_extract_shots(mode="video"), width=13, takefocus=False)
-		self.img_btn_extract_video.pack(side=LEFT, padx=(0, 3))
-		self.img_btn_extract_normal = ttk.Button(rowf, text="🎬 标准(15-22)", command=lambda: self._on_img_extract_shots(mode="normal"), width=13, takefocus=False)
-		self.img_btn_extract_normal.pack(side=LEFT, padx=(0, 3))
-		self.img_btn_extract_detailed = ttk.Button(rowf, text="🎬 精细(25-40)", command=lambda: self._on_img_extract_shots(mode="detailed"), width=13, takefocus=False)
-		self.img_btn_extract_detailed.pack(side=LEFT, padx=(0, 3))
+		rowf.pack(fill="x", padx=6, pady=(6, 8))
+		self.img_btn_recommend = ttk.Button(rowf, text="🤖 智能推荐", command=self._on_recommend_video_mode, width=10, takefocus=False)
+		self.img_btn_recommend.pack(side=LEFT, padx=(0, 4))
+		self.img_btn_extract_brief = ttk.Button(rowf, text="🎬 简短(8-12)", command=lambda: self._on_img_extract_shots(mode="brief"), width=11, takefocus=False)
+		self.img_btn_extract_brief.pack(side=LEFT, padx=(0, 4))
+		self.img_btn_extract_video = ttk.Button(rowf, text="🎬 平衡(15-25)", command=lambda: self._on_img_extract_shots(mode="video"), width=12, takefocus=False)
+		self.img_btn_extract_video.pack(side=LEFT, padx=(0, 4))
+		self.img_btn_extract_normal = ttk.Button(rowf, text="🎬 标准(15-22)", command=lambda: self._on_img_extract_shots(mode="normal"), width=12, takefocus=False)
+		self.img_btn_extract_normal.pack(side=LEFT, padx=(0, 4))
+		self.img_btn_extract_detailed = ttk.Button(rowf, text="🎬 精细(25-40)", command=lambda: self._on_img_extract_shots(mode="detailed"), width=12, takefocus=False)
+		self.img_btn_extract_detailed.pack(side=LEFT, padx=(0, 4))
 		
-		# 合并：选择分镜 + 图片类型与场景补充
-		grp_ctx_add = ttk.LabelFrame(left, text="🎯 选择要生成的分镜", padding=(8, 5))
+		# 使用Listbox显示分镜列表
+		shots_list_frame = tk.Frame(grp_shots, bg="#2b2b2b")
+		shots_list_frame.pack(fill="both", expand=True, padx=6, pady=(0, 6))
+		
+		# 添加滚动条
+		shots_scrollbar = ttk.Scrollbar(shots_list_frame, orient="vertical")
+		self.shots_listbox = tk.Listbox(shots_list_frame, font=("", 10), 
+										 yscrollcommand=shots_scrollbar.set,
+										 relief=tk.SOLID, borderwidth=1,
+										 height=8, bg="#1e1e1e", fg="white",
+										 selectbackground="#4CAF50", selectforeground="white")
+		shots_scrollbar.config(command=self.shots_listbox.yview)
+		
+		self.shots_listbox.pack(side=LEFT, fill=BOTH, expand=True)
+		shots_scrollbar.pack(side=RIGHT, fill="y")
+		
+		# 显示提示信息
+		self.shots_listbox.insert(0, "点击上方按钮从故事生成分镜头列表...")
+		self.shots_listbox.config(state=DISABLED)
+		
+		# 绑定选择事件
+		self.shots_listbox.bind("<<ListboxSelect>>", self._on_shot_listbox_selected)
+		
+		# 图片类型与场景补充
+		grp_ctx_add = ttk.LabelFrame(left, text="🎨 图片参数", padding=(8, 5))
 		grp_ctx_add.pack(fill="x", padx=0, pady=(0, 8))
 		grp_ctx_add.columnconfigure(1, weight=1)
 		
-		# 分镜选择
-		tk.Label(grp_ctx_add, text="分镜:", font=("", 10)).grid(row=0, column=0, sticky="e", padx=(0, 8), pady=(6, 6))
-		self.shot_selector = ttk.Combobox(grp_ctx_add, state="disabled", font=("", 10))
-		self.shot_selector.grid(row=0, column=1, columnspan=2, sticky="we", padx=(0, 6), pady=(6, 6))
-		self.shot_selector.bind("<<ComboboxSelected>>", self._on_shot_selected)
-		
 		# 图片类型选择
-		tk.Label(grp_ctx_add, text="图片类型:", font=("", 10)).grid(row=1, column=0, sticky="e", padx=(0, 8), pady=6)
+		tk.Label(grp_ctx_add, text="图片类型:", font=("", 10)).grid(row=0, column=0, sticky="e", padx=(0, 8), pady=6)
 		self.img_type = tk.StringVar(value="写实照片")
 		# 扩展图片类型，包含更多中国风格；支持手动输入自定义类型
 		self.combo_img_type = ttk.Combobox(grp_ctx_add, textvariable=self.img_type, font=("", 10), width=20,
 										   values=("写实照片", "日系动漫", "3D渲染", "水彩画", "油画", "素描", 
-											       "赛博朋克", "蒸汽朋克", "像素风", "中国风", "国风插画", 
+												   "赛博朋克", "蒸汽朋克", "像素风", "中国风", "国风插画", 
 												   "古风", "仙侠", "武侠", "水墨画", "工笔画", "敦煌壁画", 
 												   "恐怖", "惊悚", "诡异", "悬疑", "玄幻", "科幻", "魔幻"))
-		self.combo_img_type.grid(row=1, column=1, sticky="we", padx=(0, 6), pady=6)
+		self.combo_img_type.grid(row=0, column=1, sticky="we", padx=(0, 6), pady=6)
 		# 添加提示文字
-		tk.Label(grp_ctx_add, text="（可手动输入自定义类型）", font=("", 8), fg="gray").grid(row=1, column=2, sticky="w", padx=4)
+		tk.Label(grp_ctx_add, text="（可手动输入自定义类型）", font=("", 8), fg="gray").grid(row=0, column=2, sticky="w", padx=4)
 		
-		tk.Label(grp_ctx_add, text="场景描述:", font=("", 10)).grid(row=2, column=0, sticky="e", padx=(0, 8), pady=6)
+		tk.Label(grp_ctx_add, text="场景描述:", font=("", 10)).grid(row=1, column=0, sticky="e", padx=(0, 8), pady=6)
 		self.img_entry_scene = ttk.Entry(grp_ctx_add, font=("", 10))
-		self.img_entry_scene.grid(row=2, column=1, columnspan=2, sticky="we", padx=(0, 6), pady=6)
-		tk.Label(grp_ctx_add, text="角色特征:", font=("", 10)).grid(row=3, column=0, sticky="ne", padx=(0, 8), pady=(6, 6))
+		self.img_entry_scene.grid(row=1, column=1, columnspan=2, sticky="we", padx=(0, 6), pady=6)
+		tk.Label(grp_ctx_add, text="角色特征:", font=("", 10)).grid(row=2, column=0, sticky="ne", padx=(0, 8), pady=(6, 6))
 		self.img_txt_roles = tk.Text(grp_ctx_add, height=3, font=("", 10), wrap=tk.WORD, relief=tk.SOLID, borderwidth=1)
-		self.img_txt_roles.grid(row=3, column=1, columnspan=2, sticky="we", padx=(0, 6), pady=(6, 6))
+		self.img_txt_roles.grid(row=2, column=1, columnspan=2, sticky="we", padx=(0, 6), pady=(6, 6))
 		
-		# Left: 提示词（中文）
-		grp_prompt = ttk.LabelFrame(left, text="💬 图片描述（中文，可编辑）", padding=(8, 5))
-		grp_prompt.pack(fill="both", expand=True, padx=0, pady=0)
-		self.img_txt_prompt_cn = tk.Text(grp_prompt, height=10, font=("", 10), wrap=tk.WORD, relief=tk.SOLID, borderwidth=1)
+		# Left: 创建标签页（图片描述 和 即梦AI提示词）
+		prompt_notebook = ttk.Notebook(left)
+		prompt_notebook.pack(fill="both", expand=True, padx=0, pady=0)
+		
+		# 第一个标签页：图片描述
+		tab_img_desc = tk.Frame(prompt_notebook, bg="#2b2b2b")
+		prompt_notebook.add(tab_img_desc, text="  💬 图片描述  ")
+		
+		self.img_txt_prompt_cn = tk.Text(tab_img_desc, height=10, font=("", 10), wrap=tk.WORD, relief=tk.SOLID, borderwidth=1)
 		self.img_txt_prompt_cn.pack(fill="both", expand=True, padx=6, pady=(6, 8))
-		rowp = ttk.Frame(grp_prompt)
+		rowp = ttk.Frame(tab_img_desc)
 		rowp.pack(fill="x", padx=6, pady=(0, 6))
 		self.img_btn_build_from_shot = ttk.Button(rowp, text="✨ 从当前分镜生成", command=self._on_img_prompt_from_current_shot, width=18)
 		self.img_btn_build_from_shot.pack(side=LEFT, padx=(0, 3))
@@ -134,6 +150,31 @@ class ImageMixin:
 		self.img_btn_copy.pack(side=LEFT, padx=3)
 		self.img_btn_clear = ttk.Button(rowp, text="🗑️ 清空", command=self._on_clear_img_prompt, width=8)
 		self.img_btn_clear.pack(side=LEFT, padx=3)
+		
+		# 第二个标签页：即梦AI视频提示词
+		tab_video_prompt = tk.Frame(prompt_notebook, bg="#2b2b2b")
+		prompt_notebook.add(tab_video_prompt, text="  🎬 即梦AI提示词  ")
+		
+		# 简洁的提示信息（放在文本框上方）
+		video_tip_label = tk.Label(tab_video_prompt, 
+								   text="💡 复制下方提示词到即梦AI，使用生成的图片作为第一帧生成5秒视频", 
+								   font=("", 9), fg="#888888", bg="#2b2b2b", anchor="w")
+		video_tip_label.pack(fill="x", padx=6, pady=(6, 4))
+		
+		# 视频提示词文本框
+		self.video_prompt_text = tk.Text(tab_video_prompt, height=10, font=("", 10), 
+										 wrap=tk.WORD, relief=tk.SOLID, borderwidth=1,
+										 bg="#1e1e1e", fg="#e0e0e0")
+		self.video_prompt_text.pack(fill="both", expand=True, padx=6, pady=(0, 8))
+		self.video_prompt_text.insert("1.0", "生成图片后，这里会自动显示适合即梦AI的视频提示词...")
+		self.video_prompt_text.config(state=DISABLED)
+		
+		# 复制按钮
+		video_btn_frame = ttk.Frame(tab_video_prompt)
+		video_btn_frame.pack(fill="x", padx=6, pady=(0, 6))
+		self.video_btn_copy = ttk.Button(video_btn_frame, text="📋 复制视频提示词", 
+										  command=self._on_copy_video_prompt, width=20)
+		self.video_btn_copy.pack(side=LEFT)
 
 		# Right: 参考人物选择（移到这里，更显眼）
 		grp_ref_characters = ttk.LabelFrame(right, text="🎭 参考人物", padding=(8, 5))
@@ -978,6 +1019,13 @@ class ImageMixin:
 						self.update_header_status("图片生成完成", "✅")
 					# 自动保存图片到项目
 					self._auto_save_image_to_project()
+					
+					# 生成即梦AI视频提示词
+					video_prompt = self._generate_video_prompt()
+					self.video_prompt_text.config(state=NORMAL)
+					self.video_prompt_text.delete("1.0", END)
+					self.video_prompt_text.insert("1.0", video_prompt)
+					self.video_prompt_text.config(state=DISABLED)
 				
 				else:
 					# 使用OpenAI兼容API
@@ -1035,15 +1083,22 @@ class ImageMixin:
 					if hasattr(self, 'update_header_status'):
 						self.update_header_status("处理结果 (3/3)", "✅")
 					
-					self.img_last_image = results[0].image
-					self._update_img_preview()
-					self.img_btn_save.configure(state=NORMAL)
-					self.status.set(f"✨ 【{img_type}】风格图片生成成功！提示词：{prompt_en[:40]}...")
-					# 更新顶部状态栏
-					if hasattr(self, 'update_header_status'):
-						self.update_header_status("图片生成完成", "✅")
-					# 自动保存图片到项目
-					self._auto_save_image_to_project()
+				self.img_last_image = results[0].image
+				self._update_img_preview()
+				self.img_btn_save.configure(state=NORMAL)
+				self.status.set(f"✨ 【{img_type}】风格图片生成成功！提示词：{prompt_en[:40]}...")
+				# 更新顶部状态栏
+				if hasattr(self, 'update_header_status'):
+					self.update_header_status("图片生成完成", "✅")
+				# 自动保存图片到项目
+				self._auto_save_image_to_project()
+				
+				# 生成即梦AI视频提示词
+				video_prompt = self._generate_video_prompt()
+				self.video_prompt_text.config(state=NORMAL)
+				self.video_prompt_text.delete("1.0", END)
+				self.video_prompt_text.insert("1.0", video_prompt)
+				self.video_prompt_text.config(state=DISABLED)
 			except Exception as e:
 				import traceback
 				error_detail = traceback.format_exc()
@@ -1354,30 +1409,33 @@ class ImageMixin:
 							shot_text = line[1:].strip()
 						else:
 							shot_text = line
-						shots.append(shot_text)
+					shots.append(shot_text)
 				
-				# 更新所有分镜显示框
+				# 更新分镜列表框
 				if shots:
 					self.status.set(f"✅ 更新分镜显示...")
 					
-					self.img_txt_all_shots.config(state=NORMAL)
-					self.img_txt_all_shots.delete("1.0", END)
-					self.img_txt_all_shots.insert("1.0", "\n".join(shot_lines))
-					self.img_txt_all_shots.config(state=DISABLED)
+					# 更新Listbox
+					self.shots_listbox.config(state=NORMAL)
+					self.shots_listbox.delete(0, END)
+					for i, shot in enumerate(shots):
+						# 显示序号和分镜描述（限制长度以便阅读）
+						display_text = f"{i+1}. {shot[:80]}..." if len(shot) > 80 else f"{i+1}. {shot}"
+						self.shots_listbox.insert(END, display_text)
 					
-					# 更新分镜选择器
-					self.shot_selector['values'] = [f"{i+1}. {shot[:60]}..." if len(shot) > 60 else f"{i+1}. {shot}" for i, shot in enumerate(shots)]
-					self.shot_selector['state'] = 'readonly'
-					self.shot_selector.current(0)
 					# 保存完整的分镜列表
 					self.parsed_shots = shots
+					
+					# 默认选中第一个分镜
+					self.shots_listbox.selection_set(0)
+					self.shots_listbox.activate(0)
 					# 显示第一个分镜
-					self._on_shot_selected(None)
-				
-				self.status.set(f"🎬 已生成{mode_name} {len(shots)} 个分镜（可在下拉框中选择）")
-				# 更新顶部状态栏
-				if hasattr(self, 'update_header_status'):
-					self.update_header_status("分镜生成完成", "✅")
+					self._on_shot_listbox_selected(None)
+					
+					self.status.set(f"🎬 已生成{mode_name} {len(shots)} 个分镜（点击列表中的分镜即可选择）")
+					# 更新顶部状态栏
+					if hasattr(self, 'update_header_status'):
+						self.update_header_status("分镜生成完成", "✅")
 			except Exception as e:
 				messagebox.showerror("错误", str(e))
 				# 更新顶部状态栏
@@ -1389,12 +1447,16 @@ class ImageMixin:
 		import threading
 		threading.Thread(target=task, daemon=True).start()
 	
-	def _on_shot_selected(self, event) -> None:
-		"""当选择分镜时，自动识别并选择参考人物"""
+	def _on_shot_listbox_selected(self, event) -> None:
+		"""当在Listbox中选择分镜时，自动识别并选择参考人物"""
 		if not hasattr(self, 'parsed_shots') or not self.parsed_shots:
 			return
 		
-		selected_index = self.shot_selector.current()
+		selection = self.shots_listbox.curselection()
+		if not selection:
+			return
+		
+		selected_index = selection[0]
 		if selected_index < 0 or selected_index >= len(self.parsed_shots):
 			return
 		
@@ -1407,15 +1469,25 @@ class ImageMixin:
 		# 智能识别并自动选择参考人物（延迟执行以确保UI更新）
 		self.after(50, lambda: self._auto_select_characters_from_shot(current_shot, ""))
 	
+	def _on_shot_selected(self, event) -> None:
+		"""兼容性函数：当使用Combobox选择分镜时（已废弃，保留以防代码引用）"""
+		# 此函数已被 _on_shot_listbox_selected 替代
+		pass
+	
 	def _on_img_prompt_from_current_shot(self) -> None:
 		"""从当前选中的分镜生成中文图片描述"""
 		if not hasattr(self, 'parsed_shots') or not self.parsed_shots:
 			messagebox.showwarning("提示", "请先生成分镜")
 			return
 		
-		selected_index = self.shot_selector.current()
+		selection = self.shots_listbox.curselection()
+		if not selection:
+			messagebox.showwarning("提示", "请先在列表中选择一个分镜")
+			return
+		
+		selected_index = selection[0]
 		if selected_index < 0 or selected_index >= len(self.parsed_shots):
-			messagebox.showwarning("提示", "请先在下拉框中选择一个分镜")
+			messagebox.showwarning("提示", "请先在列表中选择一个分镜")
 			return
 		
 		current_shot = self.parsed_shots[selected_index]
@@ -1761,46 +1833,46 @@ class ImageMixin:
 			# 如果没有当前项目，不自动保存
 			return
 		
-		try:
-			import re
-			import tempfile
-			from datetime import datetime
-			
-			# 获取当前选中的分镜描述作为文件名
-			filename = "image"
-			if hasattr(self, 'parsed_shots') and self.parsed_shots:
-				selected_index = self.shot_selector.current() if hasattr(self, 'shot_selector') else -1
-				if selected_index >= 0 and selected_index < len(self.parsed_shots):
-					shot_desc = self.parsed_shots[selected_index]
-					# 清理文件名：移除特殊字符，只保留中文、英文、数字和空格
-					clean_name = re.sub(r'[^\w\s\u4e00-\u9fff-]', '', shot_desc)
-					# 限制长度，避免文件名过长
-					clean_name = clean_name[:50].strip()
-					if clean_name:
-						filename = clean_name
-			
-			# 添加时间戳避免重名
-			timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-			filename = f"{filename}_{timestamp}.png"
-			
-			# 先保存到临时文件
-			with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
-				self.img_last_image.save(tmp.name, "PNG")
-				temp_path = tmp.name
-			
-			# 保存到项目
-			saved_path = self.current_project.save_image(temp_path, filename)
-			
-			# 删除临时文件
-			import os
-			os.unlink(temp_path)
-			
-			self.status.set(f"✅ 图片已自动保存到项目: {filename}")
-			print(f"图片已自动保存: {saved_path}")
-			
-		except Exception as e:
-			print(f"自动保存图片失败: {e}")
-			# 自动保存失败不弹窗，只打印日志
+	try:
+		import re
+		import tempfile
+		from datetime import datetime
+		
+		# 获取当前选中的分镜描述作为文件名
+		filename = "image"
+		if hasattr(self, 'parsed_shots') and self.parsed_shots:
+			selection = self.shots_listbox.curselection() if hasattr(self, 'shots_listbox') else ()
+			if selection and selection[0] >= 0 and selection[0] < len(self.parsed_shots):
+				shot_desc = self.parsed_shots[selection[0]]
+				# 清理文件名：移除特殊字符，只保留中文、英文、数字和空格
+				clean_name = re.sub(r'[^\w\s\u4e00-\u9fff-]', '', shot_desc)
+				# 限制长度，避免文件名过长
+				clean_name = clean_name[:50].strip()
+				if clean_name:
+					filename = clean_name
+		
+		# 添加时间戳避免重名
+		timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+		filename = f"{filename}_{timestamp}.png"
+		
+		# 先保存到临时文件
+		with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
+			self.img_last_image.save(tmp.name, "PNG")
+			temp_path = tmp.name
+		
+		# 保存到项目
+		saved_path = self.current_project.save_image(temp_path, filename)
+		
+		# 删除临时文件
+		import os
+		os.unlink(temp_path)
+		
+		self.status.set(f"✅ 图片已自动保存到项目: {filename}")
+		print(f"图片已自动保存: {saved_path}")
+		
+	except Exception as e:
+		print(f"自动保存图片失败: {e}")
+		# 自动保存失败不弹窗，只打印日志
 	
 	def _on_img_save(self) -> None:
 		"""手动保存图片到用户选择的位置"""
@@ -1810,10 +1882,10 @@ class ImageMixin:
 		# 默认文件名建议
 		default_name = "image.png"
 		if hasattr(self, 'parsed_shots') and self.parsed_shots:
-			selected_index = self.shot_selector.current() if hasattr(self, 'shot_selector') else -1
-			if selected_index >= 0 and selected_index < len(self.parsed_shots):
+			selection = self.shots_listbox.curselection() if hasattr(self, 'shots_listbox') else ()
+			if selection and selection[0] >= 0 and selection[0] < len(self.parsed_shots):
 				import re
-				shot_desc = self.parsed_shots[selected_index]
+				shot_desc = self.parsed_shots[selection[0]]
 				clean_name = re.sub(r'[^\w\s\u4e00-\u9fff-]', '', shot_desc)
 				clean_name = clean_name[:50].strip()
 				if clean_name:
@@ -2871,4 +2943,163 @@ class ImageMixin:
 				messagebox.showinfo("成功", f"照片副本已保存到：\n{file_path}")
 			except Exception as e:
 				messagebox.showerror("错误", f"保存失败：{str(e)}")
+	
+	def _generate_video_prompt(self) -> str:
+		"""
+		根据当前分镜头描述生成适合即梦AI的视频提示词
+		返回生成的视频提示词文本
+		"""
+		try:
+			# 获取当前选中的分镜描述
+			shot_desc = ""
+			if hasattr(self, 'parsed_shots') and self.parsed_shots:
+				selection = self.shots_listbox.curselection() if hasattr(self, 'shots_listbox') else ()
+				if selection and selection[0] >= 0 and selection[0] < len(self.parsed_shots):
+					shot_desc = self.parsed_shots[selection[0]]
+				
+				if not shot_desc:
+					# 如果没有分镜描述，尝试从提示词文本框获取
+					shot_desc = self.img_txt_prompt_cn.get("1.0", END).strip()
+				
+				if not shot_desc:
+					return "请先选择分镜头或输入图片描述"
+			
+			# 解析分镜头描述，提取关键信息
+			# 分镜头格式通常是：场景 | 内容描述 | 镜头 | 运镜 | 时长
+			parts = shot_desc.split('|')
+			
+			# 提取场景和内容描述
+			scene_info = ""
+			action_info = ""
+			camera_info = ""
+			
+			if len(parts) >= 2:
+				scene_info = parts[0].strip()  # 场景信息
+				action_info = parts[1].strip()  # 动作/内容描述
+				if len(parts) >= 4:
+					camera_info = parts[3].strip()  # 运镜信息
+			else:
+				# 如果不是标准格式，就直接使用原始描述
+				action_info = shot_desc
+			
+			# 生成即梦AI视频提示词
+			# 即梦AI需要强调动作、运动和变化
+			video_prompt_parts = []
+			
+			# 1. 场景设定
+			if scene_info:
+				video_prompt_parts.append(scene_info)
+			
+			# 2. 主要动作和变化（这是视频的核心）
+			if action_info:
+				# 提取动词和动作关键词
+				action_keywords = self._extract_action_keywords(action_info)
+				if action_keywords:
+					video_prompt_parts.append(action_keywords)
+				else:
+					video_prompt_parts.append(action_info)
+			
+			# 3. 镜头运动
+			camera_movements = {
+				"推进": "镜头缓慢推进",
+				"拉远": "镜头缓慢拉远",
+				"平移": "镜头平稳移动",
+				"跟随": "镜头跟随主体",
+				"环绕": "镜头环绕",
+				"固定": "镜头稳定",
+				"摇": "镜头摇动",
+				"升降": "镜头升降"
+			}
+			
+			camera_desc = ""
+			if camera_info:
+				for key, value in camera_movements.items():
+					if key in camera_info:
+						camera_desc = value
+						break
+				if not camera_desc and camera_info != "固定":
+					camera_desc = f"镜头{camera_info}"
+			
+			if camera_desc:
+				video_prompt_parts.append(camera_desc)
+			
+			# 4. 添加视频生成的通用提示
+			# 强调连贯性和流畅性
+			video_enhancement = "画面流畅自然，动作连贯，光影变化自然，5秒视频"
+			video_prompt_parts.append(video_enhancement)
+			
+			# 组合成最终提示词
+			final_prompt = "，".join(video_prompt_parts)
+			
+			# 长度控制（即梦AI通常建议提示词不要太长）
+			if len(final_prompt) > 200:
+				# 如果太长，去掉一些修饰性内容
+				final_prompt = "，".join(video_prompt_parts[:-1])
+				if len(final_prompt) > 200:
+					final_prompt = final_prompt[:200]
+			
+			return final_prompt
+			
+		except Exception as e:
+			print(f"生成视频提示词失败: {e}")
+			import traceback
+			traceback.print_exc()
+			return "生成视频提示词时出错，请检查分镜头描述"
+	
+	def _extract_action_keywords(self, text: str) -> str:
+		"""
+		从文本中提取动作关键词，强化视频动态效果
+		"""
+		# 动作动词列表
+		action_verbs = [
+			"走", "跑", "跳", "飞", "转", "摇", "晃", "飘", "落", "升",
+			"推", "拉", "开", "关", "举", "放", "拿", "抓", "扔", "接",
+			"看", "望", "盯", "瞄", "眨", "笑", "哭", "叫", "喊", "说",
+			"吹", "吸", "呼", "吐", "咬", "舔", "吞", "咽", "吃", "喝",
+			"站", "坐", "躺", "蹲", "跪", "趴", "靠", "倚", "挂", "吊",
+			"打", "踢", "砸", "撞", "碰", "触", "摸", "抚", "拍", "敲",
+			"写", "画", "涂", "刻", "印", "盖", "贴", "撕", "剪", "切",
+			"流", "滴", "洒", "泼", "溅", "喷", "射", "发", "出", "入",
+			"动", "摆", "挥", "舞", "扭", "摇", "震", "颤", "抖", "晃",
+			"变", "化", "换", "转", "改", "移", "迁", "搬", "挪", "移动",
+			"闪", "现", "消", "散", "聚", "合", "分", "裂", "破", "碎",
+			"亮", "暗", "明", "灭", "燃", "烧", "冒", "腾", "升起", "降落",
+			"进", "出", "上", "下", "前", "后", "左", "右", "来", "去",
+			"推开", "拉开", "打开", "关闭", "抬起", "放下", "睁开", "闭上",
+			"转身", "回头", "低头", "抬头", "侧身", "弯腰", "起身", "坐下"
+		]
+		
+		# 查找文本中的动作词
+		found_actions = []
+		for verb in action_verbs:
+			if verb in text:
+				# 找到动作词及其上下文
+				index = text.find(verb)
+				# 提取动作词前后的词语
+				start = max(0, index - 3)
+				end = min(len(text), index + len(verb) + 5)
+				context = text[start:end]
+				found_actions.append(context)
+		
+		# 如果找到动作，强化描述
+		if found_actions:
+			# 去重并组合
+			unique_actions = list(dict.fromkeys(found_actions))
+			return "，".join(unique_actions[:3])  # 最多保留3个动作描述
+		
+		return text
+	
+	def _on_copy_video_prompt(self) -> None:
+		"""复制视频提示词到剪贴板"""
+		try:
+			text = self.video_prompt_text.get("1.0", END).strip()
+			if text and text != "生成图片后，这里会自动显示适合即梦AI的视频提示词...":
+				self.clipboard_clear()
+				self.clipboard_append(text)
+				self.status.set("✅ 视频提示词已复制到剪贴板，可以粘贴到即梦AI中使用")
+				messagebox.showinfo("提示", "视频提示词已复制！\n\n请：\n1. 打开即梦AI\n2. 上传刚生成的图片作为首帧\n3. 粘贴提示词\n4. 生成5秒视频")
+			else:
+				messagebox.showwarning("提示", "请先生成图片，然后会自动生成视频提示词")
+		except Exception as e:
+			messagebox.showerror("错误", f"复制失败: {str(e)}")
 
