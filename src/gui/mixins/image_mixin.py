@@ -11,6 +11,8 @@ from PIL import Image, ImageTk
 from src.clients.deepseek_client import DeepSeekClient
 from src.clients.image_client import OpenAIImageClient
 from ..utils import sanitize as _sanitize
+from .image_styles import IMAGE_TYPES, HUNYUAN_STYLE_MAP
+from .image_helpers import ImagePromptHelper, DescriptionPromptBuilder
 
 
 class ImageMixin:
@@ -115,12 +117,9 @@ class ImageMixin:
 		# 图片类型选择
 		tk.Label(grp_ctx_add, text="图片类型:", font=("", 10)).grid(row=0, column=0, sticky="e", padx=(0, 8), pady=6)
 		self.img_type = tk.StringVar(value="写实照片")
-		# 扩展图片类型，包含更多中国风格；支持手动输入自定义类型
+		# 使用配置文件中的图片类型列表
 		self.combo_img_type = ttk.Combobox(grp_ctx_add, textvariable=self.img_type, font=("", 10), width=20,
-										   values=("写实照片", "日系动漫", "3D渲染", "水彩画", "油画", "素描", 
-												   "赛博朋克", "蒸汽朋克", "像素风", "中国风", "国风插画", 
-												   "古风", "仙侠", "武侠", "水墨画", "工笔画", "敦煌壁画", 
-												   "恐怖", "惊悚", "诡异", "悬疑", "玄幻", "科幻", "魔幻"))
+										   values=IMAGE_TYPES)
 		self.combo_img_type.grid(row=0, column=1, sticky="we", padx=(0, 6), pady=6)
 		# 添加提示文字
 		tk.Label(grp_ctx_add, text="（可手动输入自定义类型）", font=("", 8), fg="gray").grid(row=0, column=2, sticky="w", padx=4)
@@ -154,12 +153,6 @@ class ImageMixin:
 		# 第二个标签页：即梦AI视频提示词
 		tab_video_prompt = tk.Frame(prompt_notebook, bg="#2b2b2b")
 		prompt_notebook.add(tab_video_prompt, text="  🎬 即梦AI提示词  ")
-		
-		# 简洁的提示信息（放在文本框上方）
-		video_tip_label = tk.Label(tab_video_prompt, 
-								   text="💡 复制下方提示词到即梦AI，使用生成的图片作为第一帧生成5秒视频", 
-								   font=("", 9), fg="#888888", bg="#2b2b2b", anchor="w")
-		video_tip_label.pack(fill="x", padx=6, pady=(6, 4))
 		
 		# 视频提示词文本框
 		self.video_prompt_text = tk.Text(tab_video_prompt, height=10, font=("", 10), 
@@ -329,11 +322,11 @@ class ImageMixin:
 		grp_params.pack(fill="x", padx=0, pady=(0, 8))
 		grp_params.columnconfigure(1, weight=1)
 		
-		# 图片风格
-		tk.Label(grp_params, text="图片风格:", font=("", 10)).grid(row=0, column=0, sticky="e", padx=(0, 8), pady=6)
+		# 图片类型/风格
+		tk.Label(grp_params, text="图片类型:", font=("", 10)).grid(row=0, column=0, sticky="e", padx=(0, 8), pady=6)
 		self.char_img_style = tk.StringVar(value="写实照片")
 		self.char_combo_style = ttk.Combobox(grp_params, textvariable=self.char_img_style, font=("", 10),
-											 values=("写实照片", "日系动漫", "3D渲染", "水彩画", "油画", 
+											 values=("写实照片", "淘宝照片", "证件照", "日系动漫", "3D渲染", "水彩画", "油画", 
 													 "中国风", "国风插画", "古风", "仙侠", "武侠"))
 		self.char_combo_style.grid(row=0, column=1, sticky="we", padx=(0, 6), pady=6)
 		
@@ -342,7 +335,7 @@ class ImageMixin:
 		self.char_txt_extra = tk.Text(grp_params, height=3, font=("", 10), 
 									  wrap=tk.WORD, relief=tk.SOLID, borderwidth=1)
 		self.char_txt_extra.grid(row=1, column=1, sticky="we", padx=(0, 6), pady=6)
-		tk.Label(grp_params, text="（可添加姿态、表情、场景等细节）", font=("", 8), fg="gray").grid(
+		tk.Label(grp_params, text="（补充外貌细节，如姿态、表情、发型、配饰等）", font=("", 8), fg="gray").grid(
 			row=2, column=1, sticky="w", padx=(0, 6))
 		
 		# 操作按钮
@@ -664,41 +657,178 @@ class ImageMixin:
 		path = filedialog.askopenfilename(filetypes=[("Images","*.png;*.jpg;*.jpeg;*.webp;*.bmp"),("All","*.*")])
 		if path:
 			self.img_ref_path.set(path)
+	
+	def _prepare_character_enhanced_prompt(self, prompt_cn: str, selected_characters: list) -> str:
+		"""准备包含人物信息的提示词（简化版）"""
+		if not selected_characters:
+			return prompt_cn
+		
+		char_descriptions = []
+		for char in selected_characters:
+			if char.get("description"):
+				char_descriptions.append(f"【{char['name']}】{char['description']}")
+		
+		if char_descriptions:
+			characters_text = "\n".join(char_descriptions)
+			return f"人物特征（需保持一致）：\n{characters_text}\n\n场景描述：\n{prompt_cn}"
+		
+		return prompt_cn
+	
+	def _translate_prompt_to_english(self, prompt_cn: str, img_type: str, selected_characters: list) -> str:
+		"""将中文提示词翻译为英文"""
+		story_api_key = _sanitize(self.api_key.get())
+		if not story_api_key:
+			raise ValueError("请先在'故事生成'页面配置API Key（用于翻译提示词）")
+		
+		client = DeepSeekClient(
+			api_key=story_api_key,
+			base_url=_sanitize(self.base_url.get()),
+			model=_sanitize(self.model.get()),
+		)
+		
+		# 使用辅助类构建翻译指令
+		has_reference_characters = bool(selected_characters)
+		inst = ImagePromptHelper.build_translation_instruction(img_type, has_reference_characters)
+		
+		# 截断过长的中文描述
+		prompt_cn_for_translate = ImagePromptHelper.truncate_text(prompt_cn, 800)
+		
+		# 调用翻译
+		prompt_en = client.chat([
+			{"role": "system", "content": inst},
+			{"role": "user", "content": f"图片类型：{img_type}\n\n请翻译以下中文图片描述为简洁的英文提示词：\n\n{prompt_cn_for_translate}"},
+		], temperature=0.3)
+		
+		# 过滤敏感词并添加安全后缀
+		prompt_en = ImagePromptHelper.filter_sensitive_words(prompt_en)
+		prompt_en = ImagePromptHelper.add_safety_suffix(prompt_en)
+		
+		# 截断过长的英文提示词
+		prompt_en = ImagePromptHelper.truncate_text(prompt_en, 1000, prefer_punct=True)
+		
+		return prompt_en
+	
+	def _generate_with_hunyuan(self, prompt_cn: str, img_type: str) -> Image.Image:
+		"""使用腾讯混元API生成图片"""
+		from src.clients.hunyuan_image_client import HunyuanImageClient
+		
+		secret_id = self.img_api_key.get().strip()
+		secret_key = self.img_secret_key.get().strip()
+		
+		if not secret_id or not secret_key:
+			raise ValueError("请先配置腾讯混元的SecretId和SecretKey")
+		
+		# 优化提示词以适配腾讯混元
+		enhanced_prompt = ImagePromptHelper.optimize_for_hunyuan(prompt_cn, img_type)
+		
+		# 映射分辨率
+		resolution = ImagePromptHelper.map_size_for_hunyuan(self.img_size.get())
+		
+		# 获取风格参数
+		hunyuan_style = HUNYUAN_STYLE_MAP.get(img_type, "201")
+		
+		# 调用API
+		hunyuan_client = HunyuanImageClient(
+			secret_id=secret_id,
+			secret_key=secret_key
+		)
+		
+		self.status.set(f"🚀 正在调用腾讯混元API生成图片...（分辨率{resolution.replace(':', 'x')}）")
+		
+		result = hunyuan_client.generate(
+			prompt=enhanced_prompt,
+			resolution=resolution,
+			style=hunyuan_style,
+			rsp_img_type="base64"
+		)
+		
+		return result.image
+	
+	def _generate_with_openai(self, prompt_en: str, selected_characters: list) -> Image.Image:
+		"""使用OpenAI兼容API生成图片"""
+		model_name = self.img_model.get().strip() or "dall-e-3"
+		img_api_key = self.img_api_key.get().strip()
+		img_base_url = self.img_base_url.get().strip() if hasattr(self, 'img_base_url') else None
+		
+		if not img_api_key:
+			raise ValueError("请先配置图片生成API Key")
+		
+		img_client = OpenAIImageClient(
+			api_key=img_api_key, 
+			model=model_name,
+			base_url=img_base_url
+		)
+		
+		# 使用选中的参考人物照片（优先使用第一个）
+		ref_image_path = None
+		if selected_characters and selected_characters[0].get("photo_path"):
+			ref_image_path = selected_characters[0]["photo_path"]
+			char_names = [c["name"] for c in selected_characters]
+			print(f"📸 使用参考人物：{', '.join(char_names)}")
+		elif self.img_ref_path.get().strip():
+			ref_image_path = self.img_ref_path.get().strip()
+		
+		# 调用API
+		if ref_image_path:
+			self.status.set(f"📸 使用参考图片生成...")
+			results = img_client.generate_with_reference(
+				prompt=prompt_en, 
+				reference_image_path=ref_image_path, 
+				size=self.img_size.get()
+			)
+		else:
+			self.status.set(f"🚀 正在调用OpenAI API生成图片...（大小：{self.img_size.get()}）")
+			results = img_client.generate(prompt=prompt_en, size=self.img_size.get(), n=1)
+		
+		if not results:
+			raise ValueError("生成失败")
+		
+		return results[0].image
+	
+	def _update_after_image_generation(self, img_type: str):
+		"""图片生成成功后的更新操作"""
+		self._update_img_preview()
+		self.img_btn_save.configure(state=NORMAL)
+		self.status.set(f"✨ 【{img_type}】风格图片生成成功！")
+		
+		# 更新顶部状态栏
+		if hasattr(self, 'update_header_status'):
+			self.update_header_status("图片生成完成", "✅")
+		
+		# 自动保存图片到项目
+		self._auto_save_image_to_project()
+		
+		# 生成即梦AI视频提示词
+		video_prompt = self._generate_video_prompt()
+		self.video_prompt_text.config(state=NORMAL)
+		self.video_prompt_text.delete("1.0", END)
+		self.video_prompt_text.insert("1.0", video_prompt)
+		self.video_prompt_text.config(state=DISABLED)
 
 	def _on_img_generate(self) -> None:
-		"""生成图片（自动将中文翻译为英文，支持多人物参考）"""
+		"""生成图片（重构简化版）"""
 		prompt_cn = self.img_txt_prompt_cn.get("1.0", END).strip()
 		if not prompt_cn:
 			messagebox.showwarning("提示", "请先生成或填写图片描述")
 			return
 		
-		# 获取选中的参考人物
+		# 获取图片类型和选中的参考人物
+		img_type = self.img_type.get() if hasattr(self, 'img_type') else "写实照片"
 		selected_characters = self._get_selected_reference_characters()
 		
-		# 如果选择了参考人物，自动将他们的描述添加到提示词中，并强调一致性
-		if selected_characters:
-			char_descriptions = []
-			for char in selected_characters:
-				if char.get("description"):
-					# 强化描述，明确说明要保持一致
-					char_descriptions.append(f"【{char['name']}】必须严格保持以下外貌特征：{char['description']}")
-			
-			if char_descriptions:
-				# 将人物描述添加到原提示词前面，并强调重要性
-				characters_text = "\n".join(char_descriptions)
-				prompt_cn = f"⚠️ 人物外貌一致性要求（最高优先级）：\n{characters_text}\n\n✅ 以上人物特征是强制约束，必须100%符合！画面中的这些人物外貌、服装、发型等所有特征必须与描述完全一致。\n\n场景描述：\n{prompt_cn}"
-				print(f"✅ 已添加 {len(selected_characters)} 个参考人物的描述（强化一致性）")
+		# 准备包含人物信息的提示词
+		prompt_cn = self._prepare_character_enhanced_prompt(prompt_cn, selected_characters)
 		
-		def task(prompt_cn=prompt_cn, selected_characters=selected_characters):
+		def task(prompt_cn=prompt_cn, selected_characters=selected_characters, img_type=img_type):
 			try:
 				self.img_btn_gen.configure(state=DISABLED)
-				self.status.set("🎨 准备生成图片...（初始化）")
-				# 更新顶部状态栏
+				self.status.set("🎨 准备生成图片...")
 				if hasattr(self, 'update_header_status'):
 					self.update_header_status("准备生成图片...", "🎨")
 				
-				# 获取图片类型
-				img_type = self.img_type.get() if hasattr(self, 'img_type') else "写实照片"
+				# 步骤1: 判断使用哪个API提供商
+				current_preset = self.img_api_preset.get()
+				provider = self.img_api_presets.get(current_preset, {}).get("provider", "openai")
 				
 				self.status.set(f"📝 正在翻译【{img_type}】风格图片描述为英文...（步骤1/3）")
 				# 更新顶部状态栏
@@ -753,28 +883,21 @@ class ImageMixin:
 				# 检查是否有参考人物
 				has_reference_characters = selected_characters and len(selected_characters) > 0
 				
+				# 🎯 简化翻译指令，去除过度强调
 				inst = (
-					f"你是专业的图片提示词翻译专家。请将中文图片描述翻译为适合DALL-E、Stable Diffusion等AI绘图工具的英文提示词。\n"
-					f"目标风格：{img_type}\n"
-					f"风格关键词：{style_keyword}\n"
+					f"将中文图片描述翻译为简洁自然的英文提示词，用于{img_type}风格的AI图片生成。\n\n"
 					f"要求：\n"
-					f"1. 保留核心细节（场景、人物、动作、光线、镜头、风格等），但要简洁\n"
-					f"2. 确保翻译体现【{img_type}】的风格特点\n"
-					f"3. 使用专业的图像生成术语（如 cinematic lighting, wide shot, close-up等）\n"
-					f"4. 输出纯英文，不要任何中文或其他语言\n"
-					f"5. 控制在500个英文单词以内，优先保留最重要的视觉元素\n"
+					f"1. 保留核心视觉元素：人物、场景、动作、光线、镜头\n"
+					f"2. 使用自然的描述性语言，避免堆砌关键词\n"
+					f"3. 体现{img_type}的美学特点，添加风格词：{style_keyword}\n"
+					f"4. 控制在200个英文单词以内\n"
+					f"5. 只输出英文提示词，不要解释\n"
 				)
 				
 				if has_reference_characters:
 					inst += (
-						f"\n⚠️ 特别重要：\n"
-						f"- 如果描述中包含「人物外貌一致性要求」或「必须严格保持以下外貌特征」，这些是强制约束！\n"
-						f"- 人物的外貌特征（面部、发型、服装、体型等）描述必须完整保留并放在提示词开头\n"
-						f"- 使用强调性词汇如 \"MUST HAVE\", \"exactly as described\", \"consistent with\" 等\n"
-						f"- 人物特征的权重最高，不可被其他元素稀释\n\n"
+						f"\n注意：如果有人物描述，请准确翻译人物特征（年龄、性别、发型、服装等），保持自然流畅。\n"
 					)
-				
-				inst += f"6. 不要输出任何解释，只输出最终的英文提示词"
 				
 				# 如果中文描述过长，先截断
 				max_cn_length = 800
@@ -2324,9 +2447,12 @@ class ImageMixin:
 		
 		print(f"📁 当前项目: {self.current_project}")
 		
-		# 获取图片风格和额外描述
+		# 获取图片风格/类型和额外描述
 		style = self.char_img_style.get()
 		extra_desc = self.char_txt_extra.get("1.0", END).strip()
+		
+		print(f"🎨 图片风格/类型: {style}")
+		print(f"📝 额外描述: {extra_desc}")
 		
 		# 禁用按钮
 		self.char_btn_gen_photo.config(state=DISABLED)
@@ -2356,55 +2482,74 @@ class ImageMixin:
 							self.after(0, lambda: self.update_header_status("未配置API", "❌"))
 						return
 					
-					# 构建提示词（优化为单人全身照）
+					# 🎯 构建提示词：根据图片类型决定构图
 					prompt_parts = []
 					
-					# 最强调：单人全身照
-					prompt_parts.append("一个人")
-					prompt_parts.append("单人全身照")
-					prompt_parts.append("从头到脚完整展示")
-					prompt_parts.append("站立姿势")
+					# 📸 根据图片风格/类型添加对应的构图要求
+					composition_requirements = {
+						# 需要全身照的类型
+						"写实照片": ["全身照", "从头到脚", "双腿双脚可见", "完整服装", "鞋子可见", "站立姿态", "纯色背景"],
+						"淘宝照片": ["全身照", "从头到脚", "双腿双脚可见", "完整服装展示", "鞋子清晰可见", "正面站立", "纯白背景", "服装细节清晰"],
+						"证件照": ["上半身", "正面免冠", "肩膀以上", "纯色背景", "五官清晰"],
+						"日系动漫": ["全身照", "从头到脚", "双腿双脚可见", "动漫风格", "完整服装", "日系风格"],
+						"3D渲染": ["全身照", "从头到脚", "双腿双脚可见", "3D渲染质感", "完整模型"],
+						"水彩画": ["全身照", "从头到脚", "双腿双脚可见", "水彩风格", "艺术感"],
+						"油画": ["全身照", "从头到脚", "双腿双脚可见", "油画质感", "艺术风格"],
+						"中国风": ["全身照", "从头到脚", "双腿双脚可见", "中国风", "传统服饰完整展示"],
+						"国风插画": ["全身照", "从头到脚", "双腿双脚可见", "国风插画", "传统服饰完整"],
+						"古风": ["全身照", "从头到脚", "双腿双脚可见", "古风", "古装完整展示"],
+						"仙侠": ["全身照", "从头到脚", "双腿双脚可见", "仙侠风格", "飘逸服饰完整"],
+						"武侠": ["全身照", "从头到脚", "双腿双脚可见", "武侠风格", "武侠服饰完整"]
+					}
+					
+					# 获取对应类型的构图要求（默认为全身照）
+					comp_reqs = composition_requirements.get(style, ["全身照", "从头到脚", "双腿双脚可见", "完整服装"])
+					
+					# ⭐ 最高优先级：构图要求（放最前面）
+					for req in comp_reqs:
+						prompt_parts.append(req)
+					
+					# 如果不是证件照，强调不要半身照
+					if style != "证件照":
+						prompt_parts.append("绝对不是半身照")
+						prompt_parts.append("绝对不是上半身")
+						prompt_parts.append("必须包含腿和脚")
 					
 					# 默认中国人外貌（除非描述中明确说明是外国人）
 					if not any(keyword in description for keyword in ["外国", "欧美", "美国", "英国", "法国", "德国", "日本", "韩国", "俄罗斯", "非洲", "印度", "阿拉伯"]):
 						prompt_parts.append("中国人")
 						prompt_parts.append("东亚面孔")
-						prompt_parts.append("中国人特征")
 					
-					# 添加人物特征描述
-					prompt_parts.append(description)
+					# 添加人物特征描述（限制长度，为构图要求留空间）
+					desc_limit = 120  # 为构图要求预留更多空间
+					if len(description) > desc_limit:
+						prompt_parts.append(description[:desc_limit] + "...")
+					else:
+						prompt_parts.append(description)
 					
-					# 添加额外描述
+					# 添加额外描述（如果有）
 					if extra_desc:
-						prompt_parts.append(extra_desc)
+						extra_limit = 60  # 额外描述也限制长度
+						if len(extra_desc) > extra_limit:
+							prompt_parts.append(extra_desc[:extra_limit] + "...")
+						else:
+							prompt_parts.append(extra_desc)
 					
-					# 风格关键词
-					style_keywords = {
-						"写实照片": "高清摄影",
-						"日系动漫": "动漫风",
-						"3D渲染": "3D渲染",
-						"水彩画": "水彩",
-						"油画": "油画质感",
-						"中国风": "中国风",
-						"国风插画": "国风插画",
-						"古风": "古风",
-						"仙侠": "仙侠",
-						"武侠": "武侠"
-					}.get(style, style)
-					
-					prompt_parts.append(style_keywords)
-					
-					# 明确说明不要的内容
-					prompt_parts.append("纯色背景")
-					prompt_parts.append("人物居中")
+					# 画质要求
+					prompt_parts.append("高清")
+					prompt_parts.append("细节清晰")
 					
 					full_prompt = "，".join(prompt_parts)
 					
 					# 限制字符数（腾讯混元限制256字符）
 					if len(full_prompt) > 256:
-						# 保留核心部分：单人全身照 + 特征描述
-						core_prompt = f"一个人，单人全身照，从头到脚完整展示，{description[:180]}，{style_keywords}"
-						full_prompt = core_prompt[:256]
+						# 保留核心部分
+						core_parts = comp_reqs + ["中国人", description[:80]]
+						if extra_desc:
+							core_parts.append(extra_desc[:40])
+						full_prompt = "，".join(core_parts)[:256]
+					
+					print(f"📝 腾讯混元提示词: {full_prompt}")
 					
 					self.after(0, lambda: self.status.set(f"🚀 正在调用腾讯混元API生成\"{character_name}\"的照片..."))
 					
@@ -2437,41 +2582,68 @@ class ImageMixin:
 							self.after(0, lambda: self.update_header_status("未配置API", "❌"))
 						return
 					
-					# 构建提示词（优化为单人全身照）
+					# 🎯 构建提示词：根据图片类型决定构图（英文版）
 					prompt_parts = []
 					
-					# 最强调：单人全身照（英文更准确）
-					prompt_parts.append("single person")
-					prompt_parts.append("full body portrait")
-					prompt_parts.append("standing pose")
-					prompt_parts.append("head to toe")
-					prompt_parts.append("complete figure")
+					# 📸 根据图片风格/类型添加对应的构图要求（英文）
+					composition_requirements_en = {
+						# 需要全身照的类型
+						"写实照片": ["full body shot", "from head to feet", "legs and feet visible", "complete outfit", "shoes visible", "standing pose", "plain background"],
+						"淘宝照片": ["full body shot", "head to feet", "legs and feet visible", "complete outfit display", "shoes clearly visible", "front facing standing", "pure white background", "clothing details clear"],
+						"证件照": ["upper body", "front facing", "shoulders up", "plain background", "clear facial features"],
+						"日系动漫": ["full body shot", "head to feet", "legs and feet visible", "anime style", "complete outfit", "Japanese style"],
+						"3D渲染": ["full body shot", "head to feet", "legs and feet visible", "3D rendering", "complete model"],
+						"水彩画": ["full body shot", "head to feet", "legs and feet visible", "watercolor style", "artistic"],
+						"油画": ["full body shot", "head to feet", "legs and feet visible", "oil painting texture", "artistic style"],
+						"中国风": ["full body shot", "head to feet", "legs and feet visible", "Chinese style", "complete traditional clothing"],
+						"国风插画": ["full body shot", "head to feet", "legs and feet visible", "Chinese illustration", "complete traditional attire"],
+						"古风": ["full body shot", "head to feet", "legs and feet visible", "ancient Chinese style", "complete traditional costume"],
+						"仙侠": ["full body shot", "head to feet", "legs and feet visible", "Chinese fantasy", "complete flowing robes"],
+						"武侠": ["full body shot", "head to feet", "legs and feet visible", "martial arts style", "complete martial attire"]
+					}
+					
+					# 获取对应类型的构图要求（默认为全身照）
+					comp_reqs_en = composition_requirements_en.get(style, ["full body shot", "from head to feet", "legs and feet visible", "complete outfit"])
+					
+					# ⭐ 最高优先级：构图要求（放最前面）
+					for req in comp_reqs_en:
+						prompt_parts.append(req)
+					
+					# 如果不是证件照，强调不要半身照
+					if style != "证件照":
+						prompt_parts.append("ABSOLUTELY NOT half-body")
+						prompt_parts.append("ABSOLUTELY NOT upper-body only")
+						prompt_parts.append("MUST include legs and feet")
 					
 					# 默认中国人外貌（除非描述中明确说明是外国人）
 					if not any(keyword in description for keyword in ["外国", "欧美", "美国", "英国", "法国", "德国", "日本", "韩国", "俄罗斯", "非洲", "印度", "阿拉伯", "American", "European", "Western", "Japanese", "Korean"]):
 						prompt_parts.append("Chinese person")
 						prompt_parts.append("East Asian features")
-						prompt_parts.append("Asian face")
 					
-					# 添加人物特征描述
-					prompt_parts.append(description)
+					# 添加人物特征描述（限制长度）
+					desc_limit = 150
+					if len(description) > desc_limit:
+						prompt_parts.append(description[:desc_limit] + "...")
+					else:
+						prompt_parts.append(description)
 					
-					# 添加额外描述
+					# 添加额外描述（如果有，限制长度）
 					if extra_desc:
-						prompt_parts.append(extra_desc)
+						extra_limit = 80
+						if len(extra_desc) > extra_limit:
+							prompt_parts.append(extra_desc[:extra_limit] + "...")
+						else:
+							prompt_parts.append(extra_desc)
 					
-					# 添加风格
-					prompt_parts.append(f"{style}风格")
-					
-					# 画面要求
+					# 画质要求
 					prompt_parts.append("centered composition")
 					prompt_parts.append("simple background")
 					prompt_parts.append("high quality")
 					prompt_parts.append("detailed")
 					
-					full_prompt = "，".join(prompt_parts)
+					full_prompt = ", ".join(prompt_parts)
 					
-					print(f"生成提示词: {full_prompt[:100]}...")
+					print(f"📝 OpenAI提示词: {full_prompt[:200]}...")
 					
 					self.after(0, lambda: self.status.set(f"🚀 正在调用图片API生成\"{character_name}\"的照片..."))
 					
@@ -2642,6 +2814,72 @@ class ImageMixin:
 		else:
 			project_name = "无项目"
 		print(f"📋 已更新参考人物列表 [项目: {project_name}]：{character_names}")
+	
+	def _extract_core_features(self, description: str) -> str:
+		"""从详细描述中提取核心视觉特征（简洁版）"""
+		if not description:
+			return ""
+		
+		# 提取关键信息的关键词
+		keywords = {
+			"年龄": ["岁", "年轻", "中年", "老年", "青年"],
+			"性别": ["男", "女"],
+			"发型": ["短发", "长发", "卷发", "直发", "马尾", "光头", "秃"],
+			"发色": ["黑发", "白发", "金发", "棕发", "花白"],
+			"体型": ["高大", "瘦弱", "健壮", "魁梧", "苗条", "丰满"],
+			"肤色": ["白皙", "黝黑", "健康", "苍白"],
+			"服装": ["西装", "衬衫", "T恤", "连衣裙", "制服", "工装", "休闲", "正装", "运动"]
+		}
+		
+		core_parts = []
+		desc_lower = description
+		
+		# 提取年龄
+		for word in keywords["年龄"]:
+			if word in desc_lower:
+				# 尝试提取数字+岁
+				import re
+				age_match = re.search(r'(\d+)岁', desc_lower)
+				if age_match:
+					core_parts.append(f"{age_match.group(1)}岁")
+					break
+				elif "年轻" in desc_lower:
+					core_parts.append("年轻")
+					break
+				elif "中年" in desc_lower:
+					core_parts.append("中年")
+					break
+				elif "老年" in desc_lower:
+					core_parts.append("老年")
+					break
+		
+		# 提取性别
+		if "男" in desc_lower and "女" not in desc_lower:
+			core_parts.append("男性")
+		elif "女" in desc_lower:
+			core_parts.append("女性")
+		
+		# 提取发型和发色
+		for word in keywords["发型"]:
+			if word in desc_lower:
+				core_parts.append(word)
+				break
+		for word in keywords["发色"]:
+			if word in desc_lower:
+				core_parts.append(word)
+				break
+		
+		# 提取服装（只保留最显著的）
+		for word in keywords["服装"]:
+			if word in desc_lower:
+				core_parts.append(word)
+				break
+		
+		# 如果没有提取到任何特征，返回简化的原描述（限制长度）
+		if not core_parts:
+			return description[:30] + ("..." if len(description) > 30 else "")
+		
+		return "、".join(core_parts)
 	
 	def _get_selected_reference_characters(self) -> list:
 		"""获取选中的参考人物列表"""
