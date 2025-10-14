@@ -659,18 +659,29 @@ class ImageMixin:
 			self.img_ref_path.set(path)
 	
 	def _prepare_character_enhanced_prompt(self, prompt_cn: str, selected_characters: list) -> str:
-		"""准备包含人物信息的提示词（简化版）"""
+		"""准备包含人物信息的提示词
+		注意：如果有参考人物照片，将使用图生图，不需要描述外貌
+		"""
 		if not selected_characters:
 			return prompt_cn
 		
-		char_descriptions = []
-		for char in selected_characters:
-			if char.get("description"):
-				char_descriptions.append(f"【{char['name']}】{char['description']}")
+		# 检查是否有参考人物照片（将使用图生图）
+		has_photo = any(char.get("photo_path") for char in selected_characters)
 		
-		if char_descriptions:
-			characters_text = "\n".join(char_descriptions)
-			return f"人物特征（需保持一致）：\n{characters_text}\n\n场景描述：\n{prompt_cn}"
+		if has_photo:
+			# 有照片时，只需要动态描述（动作、表情、场景）
+			# 从原描述中移除人物外貌特征，保留动作和场景
+			return f"基于参考图片中的人物，描述场景：\n{prompt_cn}\n\n注意：保持人物外貌不变，只改变动作、表情、场景。"
+		else:
+			# 没有照片时，需要完整的人物描述（文生图）
+			char_descriptions = []
+			for char in selected_characters:
+				if char.get("description"):
+					char_descriptions.append(f"【{char['name']}】{char['description']}")
+			
+			if char_descriptions:
+				characters_text = "\n".join(char_descriptions)
+				return f"人物特征（需保持一致）：\n{characters_text}\n\n场景描述：\n{prompt_cn}"
 		
 		return prompt_cn
 	
@@ -686,9 +697,11 @@ class ImageMixin:
 			model=_sanitize(self.model.get()),
 		)
 		
+		# 检查是否有参考人物照片（图生图模式）
+		has_photo = any(char.get("photo_path") for char in selected_characters if char)
+		
 		# 使用辅助类构建翻译指令
-		has_reference_characters = bool(selected_characters)
-		inst = ImagePromptHelper.build_translation_instruction(img_type, has_reference_characters)
+		inst = ImagePromptHelper.build_translation_instruction(img_type, has_reference_characters=has_photo, is_img2img=has_photo)
 		
 		# 截断过长的中文描述
 		prompt_cn_for_translate = ImagePromptHelper.truncate_text(prompt_cn, 800)
@@ -1657,66 +1670,85 @@ class ImageMixin:
 			if "腾讯混元" in preset_name or "hunyuan" in preset_name.lower():
 				is_hunyuan = True
 		
-		# 根据API类型设置不同的描述详细程度
+		# 🎯 获取是否有参考照片（需要在task函数外部定义，以便inst使用）
+		selected_characters = self._get_selected_reference_characters()
+		has_photo = any(char.get("photo_path") for char in selected_characters if char)
+		
+		# 根据API类型和是否有照片设置不同的描述详细程度
 		if is_hunyuan:
-			# 腾讯混元：简洁版，200字以内（因为API有256字符限制）
-			char_limit = "200字以内"
-			detail_level = "精简但极其精准"
-			inst = (
-				f"你是资深视觉设计师和电影摄影师。基于分镜描述与故事上下文，生成一段超高密度、信息丰富的中文图片描述，"
-				f"用于腾讯混元生成【{img_type}】风格的图片。要求：\n\n"
-				f"【风格】{style_desc}\n\n"
-				f"【必须包含的细节】：\n"
-				f"1. 人物：具体年龄、性别、发型发色、肤色、体型、五官特征、完整服饰描述（颜色+款式+材质）、"
-				f"精确表情（眼神+嘴角+眉头）、详细动作（身体姿势+手部动作+站姿或坐姿）\n"
-				f"2. 环境：具体地点、墙面材质和颜色、地面类型、重要物品的详细描述、空间层次\n"
-				f"3. 光线：光源类型和方向、具体时间、天气、色温、阴影形态\n"
-				f"4. 镜头：具体镜头类型（特写/中景/全景）、拍摄角度（平视/俯视/仰视）、景深、构图方式\n"
-				f"5. 氛围：整体情绪基调\n\n"
-				f"【格式】使用简洁有力的短语，用顿号和逗号连接，每个词都要有具体含义。\n"
-				f"例如：'25岁女性、黑色长发过肩、白色医生制服带胸牌、疲惫眼神眉头紧锁、双手插口袋、站立微驼背、深夜医院走廊、"
-				f"白墙灰绿色地板、顶部惨白日光灯部分闪烁、走廊尽头红色安全出口标志、中景平视浅景深人物居中、寂静压抑氛围'\n\n"
-				f"【要求】\n"
-				f"- 控制在{char_limit}，但必须包含所有关键视觉元素\n"
-				f"- 每个描述都要具体精确，避免'很'、'非常'等模糊词\n"
-				f"- 颜色、材质、尺寸都要明确\n"
-				f"- 符合【{img_type}】风格特点\n"
-				f"- **人物一致性（极其重要）**：\n"
-				f"  · 如果提供了人物设定档案，必须严格按名字匹配每个人物的特征\n"
-				f"  · 只描述当前分镜中出现的人物，不在场的人物不描述\n"
-				f"  · 每个人物的外貌、服饰、体型等特征必须与设定完全一致\n"
-				f"  · 多人物场景要清楚区分每个人，不要混淆特征\n"
-				f"- 只输出描述文本，不要任何格式标记或解释"
-			)
+			# 腾讯混元：简洁版，200字以内
+			char_limit = "180字以内"
+			if has_photo:
+				# 图生图模式：只描述动态元素
+				inst = (
+					f"你是专业视觉设计师。这是图生图模式，参考图片已包含人物外貌。\n"
+					f"生成简洁的中文图片描述，用于腾讯混元生成【{img_type}】风格的图片。\n\n"
+					f"【风格】{style_desc}\n\n"
+					f"【只描述动态元素】：\n"
+					f"1. 动作：具体动作（站立、行走、坐下、蹲下、转身等）、手部动作\n"
+					f"2. 表情：具体表情（微笑、严肃、惊讶、沉思、悲伤等）、眼神\n"
+					f"3. 姿势：身体姿态（挺胸、驼背、放松、紧张等）\n"
+					f"4. 场景：地点、物品、光线、氛围\n"
+					f"5. 镜头：景别（全身照/中景/特写）、角度\n\n"
+					f"【禁止描述】：不要描述年龄、性别、发型、脸型、肤色、体型、服装等外貌特征。\n\n"
+					f"【格式示例】：站立、双手插兜、微笑、办公室、自然光、全身照、中景平视\n\n"
+					f"要求：控制在{char_limit}，只输出描述文本。"
+				)
+			else:
+				# 文生图模式：完整描述
+				inst = (
+					f"你是专业视觉设计师。基于分镜描述，生成简洁精确的中文图片描述，"
+					f"用于腾讯混元生成【{img_type}】风格的图片。\n\n"
+					f"【风格】{style_desc}\n\n"
+					f"【描述元素】：\n"
+					f"1. 人物（如有）：年龄、性别、发型、服饰、表情、动作、姿势\n"
+					f"2. 环境：地点、主要物品、色调\n"
+					f"3. 光线：光源、时间、氛围\n"
+					f"4. 镜头：景别（全身照/中景/特写）、角度、构图\n\n"
+					f"【格式】简洁短语，用顿号和逗号连接。\n"
+					f"示例：25岁女性、黑色长发、白色医生制服、疲惫眼神、双手插口袋、站立、深夜医院走廊、"
+					f"白墙灰地板、顶部日光灯、中景平视、寂静压抑\n\n"
+					f"要求：控制在{char_limit}，如有人物设定请按名字匹配特征，只描述当前分镜中出现的人物。"
+				)
 		else:
-			# OpenAI/DALL-E等：精简版（避免提示词过长）
-			char_limit = "300-500字"
-			detail_level = "详细但精炼，重点突出核心视觉元素"
-			inst = (
-				f"你是专业视觉设计师。基于分镜描述与故事上下文，生成一段**精炼而准确**的中文图片描述，"
-				f"用于生成高质量的【{img_type}】风格图片。\n\n"
-				
-				f"【风格定位】{style_desc}\n\n"
-				
-				f"【核心要求】\n"
-				f"1. 人物（如有）：年龄、性别、发型发色、面容、表情、服饰（颜色+款式）、姿态动作\n"
-				f"2. 环境：具体地点、主要物品、空间感、材质色彩\n"
-				f"3. 光线：光源类型、时间、天气、主色调\n"
-				f"4. 镜头：景别（特写/中景/全景）、角度（平视/俯视/仰视）、构图\n"
-				f"5. 氛围：整体情绪基调\n\n"
-				
-				f"【人物一致性规则】\n"
-				f"- 如提供人物设定，必须严格按名字匹配特征（年龄、发型、服饰等）\n"
-				f"- 只描述当前分镜中出现的人物\n"
-				f"- 多人物时清楚区分，不混淆特征\n"
-				f"- 每次出现保持静态特征一致，只改变表情动作\n\n"
-				
-				f"【输出要求】\n"
-				f"1. 长度：{char_limit}，简洁精炼\n"
-				f"2. 格式：流畅的中文段落，不用Markdown\n"
-				f"3. 具体：使用具体颜色、数字，避免'很'、'非常'等模糊词\n"
-				f"4. 风格：体现【{img_type}】美学特征"
-			)
+			# OpenAI/DALL-E等
+			if has_photo:
+				# 图生图模式：只描述动态元素
+				char_limit = "200-300字"
+				inst = (
+					f"你是专业视觉设计师。这是图生图模式，参考图片已包含人物外貌。\n"
+					f"生成中文图片描述，用于生成高质量的【{img_type}】风格图片。\n\n"
+					f"【风格】{style_desc}\n\n"
+					f"【只描述动态元素】：\n"
+					f"1. 动作：具体动作（站立、行走、坐下、蹲下、转身、跑步等）、手部动作、身体姿势\n"
+					f"2. 表情：具体表情（微笑、严肃、惊讶、沉思、悲伤、愤怒等）、眼神方向\n"
+					f"3. 场景环境：地点、主要物品、背景、光线、天气、氛围\n"
+					f"4. 镜头：景别（全身照/中景/特写）、角度（平视/俯视/仰视）、构图\n\n"
+					f"【禁止描述】：不要描述年龄、性别、发型、脸型、肤色、体型、身高、服装款式颜色等外貌特征。\n\n"
+					f"【输出要求】：\n"
+					f"- 长度：{char_limit}，自然流畅\n"
+					f"- 格式：流畅的中文段落\n"
+					f"- 重点突出动作、表情、场景\n"
+					f"- 必须明确指定镜头景别（全身照/中景/特写）"
+				)
+			else:
+				# 文生图模式：完整描述
+				char_limit = "300-400字"
+				inst = (
+					f"你是专业视觉设计师。基于分镜描述，生成简洁精确的中文图片描述，"
+					f"用于生成高质量的【{img_type}】风格图片。\n\n"
+					f"【风格】{style_desc}\n\n"
+					f"【核心元素】\n"
+					f"1. 人物（如有）：年龄、性别、发型、服饰、表情、动作、姿势\n"
+					f"2. 环境：地点、主要物品、色调\n"
+					f"3. 光线：光源、时间、氛围\n"
+					f"4. 镜头：景别（全身照/中景/特写）、角度、构图\n\n"
+					f"【输出要求】\n"
+					f"- 长度：{char_limit}，自然流畅\n"
+					f"- 如有人物设定，按名字匹配特征\n"
+					f"- 只描述当前分镜中的人物\n"
+					f"- 必须明确指定镜头景别"
+				)
 		
 		# 获取选中的图片描述生成API配置
 		selected_api = self.desc_gen_api.get() if hasattr(self, 'desc_gen_api') else "DeepSeek"
@@ -1737,7 +1769,13 @@ class ImageMixin:
 		def task():
 			try:
 				self.set_busy(True)
-				self.status.set(f"📸 正在使用 {selected_api} 生成{'精简' if is_hunyuan else '详细'}图片描述（第{selected_index+1}个分镜）...")
+				
+				# 🎯 检查是否有参考人物照片（图生图模式）
+				selected_characters = self._get_selected_reference_characters()
+				has_photo = any(char.get("photo_path") for char in selected_characters if char)
+				
+				mode_text = "图生图（只生成动作表情）" if has_photo else "文生图（完整描述）"
+				self.status.set(f"📸 正在使用 {selected_api} 生成图片描述（{mode_text}，第{selected_index+1}个分镜）...")
 				# 更新顶部状态栏
 				if hasattr(self, 'update_header_status'):
 					self.update_header_status("生成图片描述...", "📸")
@@ -1749,11 +1787,22 @@ class ImageMixin:
 				# 根据API类型调整上下文长度
 				context_length = 500 if is_hunyuan else 1000
 				
-				# 构建用户提示词，强调人物一致性
+				# 构建用户提示词
 				user_parts = [f"【目标图片类型】{img_type}\n"]
 				
-				# 人物一致性要求（最重要，放在前面）
-				if roles:
+				# 🎯 根据是否有照片，使用不同的提示策略
+				if has_photo:
+					# 图生图模式：只生成动态元素
+					char_names = [c['name'] for c in selected_characters if c.get('name')]
+					user_parts.append(f"【图生图模式】参考图片已包含人物外貌（{', '.join(char_names)}），只需描述动态元素。\n\n")
+					user_parts.append(f"【重要】不要描述人物的外貌特征（年龄、性别、发型、脸型、肤色、体型、服装等静态特征）。\n")
+					user_parts.append(f"只描述：\n")
+					user_parts.append(f"1. 动作（站立、行走、坐下、转身等具体动作）\n")
+					user_parts.append(f"2. 表情（微笑、严肃、惊讶、沉思等具体表情）\n")
+					user_parts.append(f"3. 姿势（手部动作、身体姿态）\n")
+					user_parts.append(f"4. 场景环境（地点、物品、光线、氛围）\n")
+					user_parts.append(f"5. 镜头景别（全身照/中景/特写）\n\n")
+				elif roles:
 					user_parts.append(f"【‼️ 人物设定档案 - 必须严格遵守】\n{roles}\n\n")
 					user_parts.append(f"⚠️ 人物一致性规则（极其重要）：\n")
 					user_parts.append(f"1. **人物-特征绑定**：以上每个人物的名字与其外貌、服饰特征是永久绑定的\n")
@@ -1781,32 +1830,31 @@ class ImageMixin:
 				if scene:
 					user_parts.append(f"【场景设定】\n{scene}\n\n")
 				
-				# 一致性强调
-				user_parts.append(f"【描述生成要求】\n")
-				user_parts.append(f"1. **识别当前场景人物**：仔细阅读当前分镜描述，识别场景中出现的具体人物（根据名字或角色）\n")
-				user_parts.append(f"2. **匹配人物特征**：为每个出现的人物，从人物设定档案中找到对应的特征\n")
-				user_parts.append(f"3. **只描述在场人物**：只描述当前分镜中实际出现的人物，不在场的人物不要提及\n")
-				user_parts.append(f"4. **保持特征一致**：每个人物的年龄、性别、发型、发色、肤色、体型、五官、服饰必须与设定完全一致\n")
-				user_parts.append(f"5. **动态元素变化**：根据分镜要求，只改变表情、动作、姿态等动态元素，静态特征保持不变\n")
-				user_parts.append(f"6. **多人物区分**：如果场景中有多人，要清楚描述每个人的特征，不要混淆或遗漏\n")
-				user_parts.append(f"7. **服饰一致**：除非分镜明确说明换装，否则服装款式、颜色、材质保持一致\n")
-				user_parts.append(f"8. **细节补充**：如果设定中缺少某些细节，可适当添加，但要符合该人物的身份和场景，且后续保持一致\n\n")
+				# 一致性强调（只在文生图模式下添加）
+				if not has_photo:
+					user_parts.append(f"【描述生成要求】\n")
+					user_parts.append(f"1. **识别当前场景人物**：仔细阅读当前分镜描述，识别场景中出现的具体人物（根据名字或角色）\n")
+					user_parts.append(f"2. **匹配人物特征**：为每个出现的人物，从人物设定档案中找到对应的特征\n")
+					user_parts.append(f"3. **只描述在场人物**：只描述当前分镜中实际出现的人物，不在场的人物不要提及\n")
+					user_parts.append(f"4. **保持特征一致**：每个人物的年龄、性别、发型、发色、肤色、体型、五官、服饰必须与设定完全一致\n")
+					user_parts.append(f"5. **动态元素变化**：根据分镜要求，只改变表情、动作、姿态等动态元素，静态特征保持不变\n")
+					user_parts.append(f"6. **多人物区分**：如果场景中有多人，要清楚描述每个人的特征，不要混淆或遗漏\n")
+					user_parts.append(f"7. **服饰一致**：除非分镜明确说明换装，否则服装款式、颜色、材质保持一致\n")
+					user_parts.append(f"8. **细节补充**：如果设定中缺少某些细节，可适当添加，但要符合该人物的身份和场景，且后续保持一致\n\n")
 				
 				# 生成要求
-				user_parts.append(f"【生成要求】\n")
-				user_parts.append(f"请基于以上信息，生成{detail_level}的中文图片描述（{char_limit}），")
-				user_parts.append(f"充分体现【{img_type}】风格的视觉特点，同时严格保持人物一致性。")
+				user_parts.append(f"请生成中文图片描述（{char_limit}），体现{img_type}风格。")
 				
 				user = "".join(user_parts)
 				resp = client.chat([
-					{"role": "system", "content": inst},
-					{"role": "user", "content": user},
+				{"role": "system", "content": inst},
+				{"role": "user", "content": user},
 				], temperature=max(0.5, self.temperature.get() - 0.1))
 				
 				self.status.set("✅ 更新图片描述...")
-				
+			
 				description = resp.strip()
-				
+			
 				# 根据API类型限制描述长度
 				max_desc_length = 200 if is_hunyuan else 500
 				if len(description) > max_desc_length:
@@ -1817,10 +1865,10 @@ class ImageMixin:
 						description = truncated[:last_punct + 1]
 					else:
 						description = truncated
-				
+			
 				self.img_txt_prompt_cn.delete("1.0", END)
 				self.img_txt_prompt_cn.insert(END, description)
-				
+			
 				# 显示字数统计
 				char_count = len(description)
 				api_type = "腾讯混元简洁版" if is_hunyuan else "精简版"
@@ -1828,7 +1876,7 @@ class ImageMixin:
 				# 更新顶部状态栏
 				if hasattr(self, 'update_header_status'):
 					self.update_header_status("图片描述完成", "✅")
-				
+			
 				# 智能识别并自动选择参考人物
 				self.after(100, lambda: self._auto_select_characters_from_shot(current_shot, description))
 			except Exception as e:
