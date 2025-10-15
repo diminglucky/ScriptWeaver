@@ -13,6 +13,9 @@ from src.clients.image_client import OpenAIImageClient
 from ..utils import sanitize as _sanitize
 from .image_styles import IMAGE_TYPES, HUNYUAN_STYLE_MAP
 from .image_helpers import ImagePromptHelper, DescriptionPromptBuilder
+from .character_prompt_builder import CharacterPromptBuilder
+from .character_manager import CharacterPhotoGallery
+from .character_sheet_builder import CharacterSheetBuilder
 
 
 class ImageMixin:
@@ -241,8 +244,52 @@ class ImageMixin:
 		body.pack(fill=BOTH, expand=True, padx=10, pady=10)
 		left = ttk.Frame(body)
 		left.grid(row=0, column=0, sticky="nsew", padx=(0, 8))
-		right = ttk.Frame(body)
-		right.grid(row=0, column=1, sticky="nsew")
+		
+		# 右侧：使用Canvas实现滚动
+		right_container = ttk.Frame(body)
+		right_container.grid(row=0, column=1, sticky="nsew")
+		
+		# 创建Canvas和滚动条
+		char_canvas = tk.Canvas(right_container, bg="#1e1e1e", highlightthickness=0)
+		char_v_scroll = ttk.Scrollbar(right_container, orient="vertical", command=char_canvas.yview)
+		char_canvas.configure(yscrollcommand=char_v_scroll.set)
+		
+		# 布局Canvas和滚动条
+		char_canvas.pack(side=LEFT, fill=BOTH, expand=True)
+		char_v_scroll.pack(side=RIGHT, fill=Y)
+		
+		# 创建可滚动的内容Frame
+		right = ttk.Frame(char_canvas)
+		char_canvas_window = char_canvas.create_window(0, 0, window=right, anchor="nw")
+		
+		# 绑定事件以更新滚动区域
+		def _on_right_configure(event):
+			char_canvas.configure(scrollregion=char_canvas.bbox("all"))
+			# 设置canvas窗口宽度以匹配canvas宽度
+			canvas_width = event.width
+			char_canvas.itemconfig(char_canvas_window, width=canvas_width)
+		
+		def _on_canvas_configure(event):
+			# 当canvas大小变化时，更新内部窗口宽度
+			canvas_width = event.width
+			char_canvas.itemconfig(char_canvas_window, width=canvas_width)
+		
+		right.bind("<Configure>", _on_right_configure)
+		char_canvas.bind("<Configure>", _on_canvas_configure)
+		
+		# 绑定鼠标滚轮 - 改进版
+		def _on_mousewheel(event):
+			# macOS和Windows有不同的滚轮事件处理
+			if event.num == 5 or event.delta < 0:
+				char_canvas.yview_scroll(1, "units")
+			elif event.num == 4 or event.delta > 0:
+				char_canvas.yview_scroll(-1, "units")
+		
+		# 保存引用以便后续绑定滚轮
+		self._char_scroll_canvas = char_canvas
+		self._char_scroll_right_frame = right
+		self._char_scroll_mousewheel_func = _on_mousewheel
+		
 		body.columnconfigure(0, weight=1)
 		body.columnconfigure(1, weight=1)
 		body.rowconfigure(0, weight=1)
@@ -318,8 +365,14 @@ class ImageMixin:
 		self.char_btn_copy_desc.pack(side=LEFT, padx=(0, 3))
 		
 		# 右侧：生成参数和预览
-		grp_params = ttk.LabelFrame(right, text="🎨 生成参数", padding=(8, 5))
-		grp_params.pack(fill="x", padx=0, pady=(0, 8))
+		# 添加顶部提示
+		tip_header = tk.Frame(right, bg="#1e3a5f", relief=tk.SOLID, borderwidth=1)
+		tip_header.pack(fill="x", padx=0, pady=(0, 10))
+		tk.Label(tip_header, text="🎨 ", font=("", 11, "bold"), fg="#4CAF50", bg="#1e3a5f").pack(side=LEFT, padx=(10, 0))
+		tk.Label(tip_header, text="第二步：设置生成参数", font=("", 10, "bold"), fg="white", bg="#1e3a5f").pack(side=LEFT, padx=(0, 10), pady=8)
+		
+		grp_params = ttk.LabelFrame(right, text="🎨 第一步：基础设置", padding=(12, 8))
+		grp_params.pack(fill="x", padx=0, pady=(0, 12))
 		grp_params.columnconfigure(1, weight=1)
 		
 		# 图片类型/风格
@@ -330,19 +383,182 @@ class ImageMixin:
 													 "中国风", "国风插画", "古风", "仙侠", "武侠"))
 		self.char_combo_style.grid(row=0, column=1, sticky="we", padx=(0, 6), pady=6)
 		
+		# 分隔线
+		separator1 = tk.Frame(grp_params, height=1, bg="#444444")
+		separator1.grid(row=1, column=0, columnspan=2, sticky="ew", pady=10)
+		
+		# 第二步标题
+		step2_label = tk.Label(grp_params, text="📐 第二步：视角选择", font=("", 10, "bold"), fg="#4CAF50")
+		step2_label.grid(row=2, column=0, columnspan=2, sticky="w", padx=0, pady=(8, 4))
+		
+		# 视角选择
+		self.char_view_angle = tk.StringVar(value="front")
+		view_frame = tk.Frame(grp_params, bg="#2b2b2b", relief=tk.SOLID, borderwidth=1)
+		view_frame.grid(row=3, column=0, columnspan=2, sticky="we", padx=0, pady=6)
+		
+		angles = [("👤 正面", "front"), ("👥 侧面", "side"), ("🔙 背面", "back"), ("🔄 斜侧", "three-quarter")]
+		for i, (label, value) in enumerate(angles):
+			rb = tk.Radiobutton(view_frame, text=label, variable=self.char_view_angle, value=value,
+							   bg="#2b2b2b", fg="white", selectcolor="#4CAF50", font=("", 10),
+							   activebackground="#2b2b2b", activeforeground="#4CAF50",
+							   indicatoron=0, width=12, relief=tk.FLAT, bd=2)
+			rb.pack(side=LEFT, padx=2, pady=2, fill="x", expand=True)
+		
+		# 分隔线
+		separator2 = tk.Frame(grp_params, height=1, bg="#444444")
+		separator2.grid(row=4, column=0, columnspan=2, sticky="ew", pady=10)
+		
+		# 第三步标题
+		step3_label = tk.Label(grp_params, text="😊 第三步：表情选择", font=("", 10, "bold"), fg="#FF9800")
+		step3_label.grid(row=5, column=0, columnspan=2, sticky="w", padx=0, pady=(8, 4))
+		
+		# 表情选择
+		self.char_expression = tk.StringVar(value="neutral")
+		expr_frame = tk.Frame(grp_params, bg="#2b2b2b", relief=tk.SOLID, borderwidth=1)
+		expr_frame.grid(row=6, column=0, columnspan=2, sticky="we", padx=0, pady=6)
+		
+		expressions = [
+			("😐 中性", "neutral"),
+			("😊 开心", "happy"),
+			("😢 悲伤", "sad"),
+			("😠 愤怒", "angry"),
+			("😮 惊讶", "surprised")
+		]
+		
+		for i, (label, value) in enumerate(expressions):
+			rb = tk.Radiobutton(expr_frame, text=label, variable=self.char_expression, value=value,
+							   bg="#2b2b2b", fg="white", selectcolor="#FF9800", font=("", 10),
+							   activebackground="#2b2b2b", activeforeground="#FF9800",
+							   indicatoron=0, width=10, relief=tk.FLAT, bd=2)
+			rb.pack(side=LEFT, padx=2, pady=2, fill="x", expand=True)
+		
+		# 分隔线
+		separator3 = tk.Frame(grp_params, height=1, bg="#444444")
+		separator3.grid(row=7, column=0, columnspan=2, sticky="ew", pady=10)
+		
+		# 批量生成选项
+		batch_title = tk.Label(grp_params, text="⚡ 批量生成选项", font=("", 10, "bold"), fg="#2196F3")
+		batch_title.grid(row=8, column=0, columnspan=2, sticky="w", padx=0, pady=(8, 4))
+		
+		batch_frame = tk.Frame(grp_params, bg="#1e3a5f", relief=tk.SOLID, borderwidth=1)
+		batch_frame.grid(row=9, column=0, columnspan=2, sticky="we", padx=0, pady=6)
+		
+		self.char_batch_generate = tk.BooleanVar(value=False)
+		batch_angle_check = tk.Checkbutton(batch_frame, text="🎯 批量生成三视图（正面+侧面+背面）", 
+										   variable=self.char_batch_generate,
+										   bg="#1e3a5f", fg="#4CAF50", selectcolor="#2b2b2b", 
+										   font=("", 10, "bold"), activebackground="#1e3a5f", activeforeground="#4CAF50")
+		batch_angle_check.pack(anchor="w", pady=(8, 4), padx=10)
+		
+		self.char_batch_expressions = tk.BooleanVar(value=False)
+		batch_expr_check = tk.Checkbutton(batch_frame, text="😊 批量生成多表情（中性+开心+悲伤+愤怒+惊讶）", 
+										  variable=self.char_batch_expressions,
+										  bg="#1e3a5f", fg="#FF9800", selectcolor="#2b2b2b", 
+										  font=("", 10, "bold"), activebackground="#1e3a5f", activeforeground="#FF9800")
+		batch_expr_check.pack(anchor="w", pady=(4, 8), padx=10)
+		
+		# 分隔线
+		separator4 = tk.Frame(grp_params, height=1, bg="#444444")
+		separator4.grid(row=10, column=0, columnspan=2, sticky="ew", pady=10)
+		
+		# 服装/造型变体
+		variant_title = tk.Label(grp_params, text="👔 第四步：服装造型（可选）", font=("", 10, "bold"), fg="#9C27B0")
+		variant_title.grid(row=11, column=0, columnspan=2, sticky="w", padx=0, pady=(8, 4))
+		
+		variant_frame = tk.Frame(grp_params, bg="#2b2b2b", relief=tk.SOLID, borderwidth=1)
+		variant_frame.grid(row=12, column=0, columnspan=2, sticky="we", padx=0, pady=6)
+		
+		# 变体模式选择
+		self.char_variant_mode = tk.StringVar(value="none")
+		variant_mode_frame = tk.Frame(variant_frame, bg="#2b2b2b")
+		variant_mode_frame.pack(fill="x", pady=(0, 5))
+		
+		tk.Radiobutton(variant_mode_frame, text="默认", variable=self.char_variant_mode, value="none",
+					   bg="#2b2b2b", fg="white", selectcolor="#444444", font=("", 9)).pack(side=LEFT, padx=(0, 8))
+		tk.Radiobutton(variant_mode_frame, text="预设变体", variable=self.char_variant_mode, value="preset",
+					   bg="#2b2b2b", fg="white", selectcolor="#444444", font=("", 9)).pack(side=LEFT, padx=(0, 8))
+		tk.Radiobutton(variant_mode_frame, text="自定义", variable=self.char_variant_mode, value="custom",
+					   bg="#2b2b2b", fg="white", selectcolor="#444444", font=("", 9)).pack(side=LEFT)
+		
+		# 预设变体选择
+		self.char_variant_preset = tk.StringVar(value="casual")
+		preset_frame = tk.Frame(variant_frame, bg="#2b2b2b")
+		preset_frame.pack(fill="x", pady=(0, 5))
+		
+		variants = [
+			("👔 正装", "formal"),
+			("👕 休闲", "casual"),
+			("🏃 运动", "sport"),
+			("🎭 古装", "traditional"),
+			("🎨 艺术", "artistic"),
+			("💼 职业", "professional")
+		]
+		
+		for i, (label, value) in enumerate(variants):
+			tk.Radiobutton(preset_frame, text=label, variable=self.char_variant_preset, value=value,
+						   bg="#2b2b2b", fg="white", selectcolor="#444444", font=("", 8)).pack(side=LEFT, padx=(0, 5))
+		
+		# 自定义变体描述
+		self.char_variant_custom = tk.Entry(variant_frame, font=("", 9), bg="#3c3c3c", fg="white", relief=tk.SOLID, borderwidth=1)
+		self.char_variant_custom.pack(fill="x")
+		self.char_variant_custom.insert(0, "例如：穿着白色婚纱、戴着黑框眼镜...")
+		self.char_variant_custom.bind("<FocusIn>", lambda e: self.char_variant_custom.delete(0, tk.END) if self.char_variant_custom.get().startswith("例如") else None)
+		
+		# 提示信息移到variant_frame底部
+		tip_variant = tk.Label(variant_frame, text="💡 提示：变体会改变服装/发型/配饰，但保持基本外貌特征", 
+							   font=("", 9), fg="#FFA500", bg="#2b2b2b")
+		tip_variant.pack(fill="x", pady=(5, 8), padx=10)
+		
+		# 分隔线
+		separator5 = tk.Frame(grp_params, height=1, bg="#444444")
+		separator5.grid(row=13, column=0, columnspan=2, sticky="ew", pady=10)
+		
 		# 额外描述
-		tk.Label(grp_params, text="额外描述:", font=("", 10)).grid(row=1, column=0, sticky="ne", padx=(0, 8), pady=6)
+		extra_title = tk.Label(grp_params, text="✨ 第五步：额外细节（可选）", font=("", 10, "bold"), fg="#00BCD4")
+		extra_title.grid(row=14, column=0, columnspan=2, sticky="w", padx=0, pady=(8, 4))
+		
 		self.char_txt_extra = tk.Text(grp_params, height=3, font=("", 10), 
-									  wrap=tk.WORD, relief=tk.SOLID, borderwidth=1)
-		self.char_txt_extra.grid(row=1, column=1, sticky="we", padx=(0, 6), pady=6)
-		tk.Label(grp_params, text="（补充外貌细节，如姿态、表情、发型、配饰等）", font=("", 8), fg="gray").grid(
-			row=2, column=1, sticky="w", padx=(0, 6))
+									  wrap=tk.WORD, relief=tk.SOLID, borderwidth=1, bg="#2b2b2b", fg="white")
+		self.char_txt_extra.grid(row=15, column=0, columnspan=2, sticky="we", padx=0, pady=6)
+		
+		tip_extra = tk.Label(grp_params, text="💡 可补充姿态、背景等细节（不包含服装和表情）", font=("", 9), fg="gray")
+		tip_extra.grid(row=16, column=0, columnspan=2, sticky="w", padx=0)
+		
+		# 分隔线
+		separator6 = tk.Frame(grp_params, height=1, bg="#444444")
+		separator6.grid(row=17, column=0, columnspan=2, sticky="ew", pady=10)
+		
+		# 一致性级别选择
+		consistency_title = tk.Label(grp_params, text="🎯 面部一致性级别（多角度生成时）", font=("", 10, "bold"), fg="#E91E63")
+		consistency_title.grid(row=18, column=0, columnspan=2, sticky="w", padx=0, pady=(8, 4))
+		
+		self.char_consistency_level = tk.StringVar(value="high")
+		consistency_frame = tk.Frame(grp_params, bg="#2b2b2b", relief=tk.SOLID, borderwidth=1)
+		consistency_frame.grid(row=19, column=0, columnspan=2, sticky="we", padx=0, pady=6)
+		
+		consistency_options = [
+			("🔥 最高 - 强力保持脸型五官", "high"),
+			("⚡ 中等 - 平衡一致性", "medium"),
+			("💨 较低 - 允许更多变化", "low")
+		]
+		
+		for i, (label, value) in enumerate(consistency_options):
+			rb = tk.Radiobutton(consistency_frame, text=label, variable=self.char_consistency_level, value=value,
+							   bg="#2b2b2b", fg="white", selectcolor="#E91E63", font=("", 9),
+							   activebackground="#2b2b2b", activeforeground="#E91E63",
+							   indicatoron=0, width=18, relief=tk.FLAT, bd=2)
+			rb.pack(side=LEFT, padx=2, pady=2, fill="x", expand=True)
+		
+		tip_consistency = tk.Label(grp_params, text="💡 推荐使用「最高」级别，确保瓜子脸不会变成方脸！", font=("", 9), fg="#FF9800")
+		tip_consistency.grid(row=20, column=0, columnspan=2, sticky="w", padx=0)
 		
 		# 操作按钮
-		grp_actions = ttk.LabelFrame(right, text="🚀 第三步：生成人物照片", padding=(8, 5))
-		grp_actions.pack(fill="x", padx=0, pady=(0, 8))
+		grp_actions = ttk.LabelFrame(right, text="🚀 第七步：生成照片", padding=(12, 10))
+		grp_actions.pack(fill="x", padx=0, pady=(12, 12))
+		
+		# 第一行：生成和保存
 		action_row = ttk.Frame(grp_actions)
-		action_row.pack(fill="x", padx=6, pady=6)
+		action_row.pack(fill="x", padx=6, pady=(6, 3))
 		self.char_btn_gen_photo = ttk.Button(action_row, text="🎨 生成人物照片", 
 											 command=self._on_generate_character_photo,
 											 state=DISABLED)
@@ -352,8 +568,22 @@ class ImageMixin:
 											  state=DISABLED)
 		self.char_btn_save_photo.pack(side=LEFT, fill="x", expand=True)
 		
+		# 第二行：查看照片管理和生成设定表
+		action_row2 = ttk.Frame(grp_actions)
+		action_row2.pack(fill="x", padx=6, pady=(0, 6))
+		
+		self.char_btn_view_gallery = ttk.Button(action_row2, text="🖼️ 查看所有照片", 
+												command=self._on_view_character_gallery,
+												state=DISABLED)
+		self.char_btn_view_gallery.pack(side=LEFT, fill="x", expand=True, padx=(0, 3))
+		
+		self.char_btn_generate_sheet = ttk.Button(action_row2, text="📋 生成角色设定表", 
+												  command=self._on_generate_character_sheet,
+												  state=DISABLED)
+		self.char_btn_generate_sheet.pack(side=LEFT, fill="x", expand=True, padx=(3, 0))
+		
 		# 预览区域
-		grp_preview = ttk.LabelFrame(right, text="🖼️ 人物照片预览", padding=(8, 5))
+		grp_preview = ttk.LabelFrame(right, text="🖼️ 照片预览", padding=(12, 10))
 		grp_preview.pack(fill=BOTH, expand=True, padx=0, pady=0)
 		
 		# 创建Canvas和滚动条
@@ -386,6 +616,25 @@ class ImageMixin:
 		
 		# 绑定Canvas大小变化事件
 		self.char_canvas.bind('<Configure>', self._on_char_canvas_configure)
+		
+		# 在UI完全构建后绑定滚轮事件
+		def _bind_mousewheel_recursive(widget):
+			"""递归绑定所有子控件的滚轮事件"""
+			widget.bind("<MouseWheel>", self._char_scroll_mousewheel_func)
+			widget.bind("<Button-4>", self._char_scroll_mousewheel_func)
+			widget.bind("<Button-5>", self._char_scroll_mousewheel_func)
+			try:
+				for child in widget.winfo_children():
+					_bind_mousewheel_recursive(child)
+			except:
+				pass
+		
+		# 延迟绑定，确保所有子控件已创建
+		self.after(100, lambda: _bind_mousewheel_recursive(self._char_scroll_right_frame))
+		# 也绑定到canvas
+		self._char_scroll_canvas.bind("<MouseWheel>", self._char_scroll_mousewheel_func)
+		self._char_scroll_canvas.bind("<Button-4>", self._char_scroll_mousewheel_func)
+		self._char_scroll_canvas.bind("<Button-5>", self._char_scroll_mousewheel_func)
 	
 	def _build_image_setup_tab(self) -> None:
 		"""构建图片API配置页面"""
@@ -2004,46 +2253,46 @@ class ImageMixin:
 			# 如果没有当前项目，不自动保存
 			return
 		
-	try:
-		import re
-		import tempfile
-		from datetime import datetime
-		
-		# 获取当前选中的分镜描述作为文件名
-		filename = "image"
-		if hasattr(self, 'parsed_shots') and self.parsed_shots:
-			selection = self.shots_listbox.curselection() if hasattr(self, 'shots_listbox') else ()
-			if selection and selection[0] >= 0 and selection[0] < len(self.parsed_shots):
-				shot_desc = self.parsed_shots[selection[0]]
-				# 清理文件名：移除特殊字符，只保留中文、英文、数字和空格
-				clean_name = re.sub(r'[^\w\s\u4e00-\u9fff-]', '', shot_desc)
-				# 限制长度，避免文件名过长
-				clean_name = clean_name[:50].strip()
-				if clean_name:
-					filename = clean_name
-		
-		# 添加时间戳避免重名
-		timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-		filename = f"{filename}_{timestamp}.png"
-		
-		# 先保存到临时文件
-		with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
-			self.img_last_image.save(tmp.name, "PNG")
-			temp_path = tmp.name
-		
-		# 保存到项目
-		saved_path = self.current_project.save_image(temp_path, filename)
-		
-		# 删除临时文件
-		import os
-		os.unlink(temp_path)
-		
-		self.status.set(f"✅ 图片已自动保存到项目: {filename}")
-		print(f"图片已自动保存: {saved_path}")
-		
-	except Exception as e:
-		print(f"自动保存图片失败: {e}")
-		# 自动保存失败不弹窗，只打印日志
+		try:
+			import re
+			import tempfile
+			from datetime import datetime
+			
+			# 获取当前选中的分镜描述作为文件名
+			filename = "image"
+			if hasattr(self, 'parsed_shots') and self.parsed_shots:
+				selection = self.shots_listbox.curselection() if hasattr(self, 'shots_listbox') else ()
+				if selection and selection[0] >= 0 and selection[0] < len(self.parsed_shots):
+					shot_desc = self.parsed_shots[selection[0]]
+					# 清理文件名：移除特殊字符，只保留中文、英文、数字和空格
+					clean_name = re.sub(r'[^\w\s\u4e00-\u9fff-]', '', shot_desc)
+					# 限制长度，避免文件名过长
+					clean_name = clean_name[:50].strip()
+					if clean_name:
+						filename = clean_name
+			
+			# 添加时间戳避免重名
+			timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+			filename = f"{filename}_{timestamp}.png"
+			
+			# 先保存到临时文件
+			with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
+				self.img_last_image.save(tmp.name, "PNG")
+				temp_path = tmp.name
+			
+			# 保存到项目
+			saved_path = self.current_project.save_image(temp_path, filename)
+			
+			# 删除临时文件
+			import os
+			os.unlink(temp_path)
+			
+			self.status.set(f"✅ 图片已自动保存到项目: {filename}")
+			print(f"图片已自动保存: {saved_path}")
+			
+		except Exception as e:
+			print(f"自动保存图片失败: {e}")
+			# 自动保存失败不弹窗，只打印日志
 	
 	def _on_img_save(self) -> None:
 		"""手动保存图片到用户选择的位置"""
@@ -2285,13 +2534,16 @@ class ImageMixin:
 							characters.append(line)
 				
 				# 更新人物列表
-				self.character_list = [{"name": name, "description": ""} for name in characters]
+				self.character_list = [{"name": name, "description": "", "photo_path": ""} for name in characters]
+				
+				# 立即保存到项目文件
+				self.after(0, lambda: self._save_all_characters_info())
 				
 				# 更新UI（在主线程中）
 				self.after(0, lambda: self._update_character_listbox())
-				self.after(0, lambda: self.status.set(f"✅ 成功提取到 {len(characters)} 个人物"))
+				self.after(0, lambda: self.status.set(f"✅ 成功提取到 {len(characters)} 个人物并已保存"))
 				if hasattr(self, 'update_header_status'):
-					self.after(0, lambda: self.update_header_status("人物提取完成", "✅"))
+					self.after(0, lambda: self.update_header_status("人物提取完成并保存", "✅"))
 				
 			except Exception as e:
 				error_msg = f"提取人物失败: {str(e)}"
@@ -2349,6 +2601,16 @@ class ImageMixin:
 			self.char_btn_gen_photo.config(state=DISABLED)
 		
 		self.char_txt_desc.config(state=DISABLED)
+		
+		# 启用查看照片画廊和生成设定表按钮（只要有项目就可以使用）
+		if self.current_project:
+			self.char_btn_view_gallery.config(state=NORMAL)
+			if hasattr(self, 'char_btn_generate_sheet'):
+				self.char_btn_generate_sheet.config(state=NORMAL)
+		else:
+			self.char_btn_view_gallery.config(state=DISABLED)
+			if hasattr(self, 'char_btn_generate_sheet'):
+				self.char_btn_generate_sheet.config(state=DISABLED)
 		
 		# 启用生成特征描述按钮
 		self.char_btn_gen_desc.config(state=NORMAL)
@@ -2420,9 +2682,12 @@ class ImageMixin:
 				# 更新人物描述
 				self.character_list[index]["description"] = response.strip()
 				
+				# 保存到项目文件
+				self.after(0, lambda: self._save_all_characters_info())
+				
 				# 更新UI
 				self.after(0, lambda: self._update_character_description_display(index))
-				self.after(0, lambda: self.status.set(f"✅ 已生成\"{character_name}\"的特征描述"))
+				self.after(0, lambda: self.status.set(f"✅ 已生成\"{character_name}\"的特征描述并保存"))
 				if hasattr(self, 'update_header_status'):
 					self.after(0, lambda: self.update_header_status("特征描述完成", "✅"))
 				
@@ -2499,233 +2764,327 @@ class ImageMixin:
 		style = self.char_img_style.get()
 		extra_desc = self.char_txt_extra.get("1.0", END).strip()
 		
+		# 获取视角、表情和批量生成选项
+		view_angle = self.char_view_angle.get() if hasattr(self, 'char_view_angle') else "front"
+		expression = self.char_expression.get() if hasattr(self, 'char_expression') else "neutral"
+		batch_generate = self.char_batch_generate.get() if hasattr(self, 'char_batch_generate') else False
+		batch_expressions = self.char_batch_expressions.get() if hasattr(self, 'char_batch_expressions') else False
+		
+		# 获取服装/造型变体选项
+		variant_mode = self.char_variant_mode.get() if hasattr(self, 'char_variant_mode') else "none"
+		variant_preset = self.char_variant_preset.get() if hasattr(self, 'char_variant_preset') else "casual"
+		variant_custom = self.char_variant_custom.get() if hasattr(self, 'char_variant_custom') else ""
+		
+		# 获取一致性级别（用户选择）
+		consistency_level = self.char_consistency_level.get() if hasattr(self, 'char_consistency_level') else "high"
+		
+		# 确定变体值
+		if variant_mode == "preset":
+			variant_value = variant_preset
+		elif variant_mode == "custom":
+			variant_value = variant_custom
+		else:
+			variant_value = ""
+		
 		print(f"🎨 图片风格/类型: {style}")
 		print(f"📝 额外描述: {extra_desc}")
+		print(f"👁️ 视角: {view_angle}")
+		print(f"😊 表情: {expression}")
+		print(f"🎯 批量生成角度: {batch_generate}")
+		print(f"😊 批量生成表情: {batch_expressions}")
+		print(f"👔 服装变体模式: {variant_mode}")
+		if variant_mode != "none":
+			print(f"👔 服装变体值: {variant_value}")
+		print(f"🎯 一致性级别: {consistency_level}")
+		
+		# 角度名称映射
+		angle_names = {
+			"front": "正面",
+			"side": "侧面", 
+			"back": "背面",
+			"three-quarter": "斜侧"
+		}
+		
+		# 表情名称映射
+		expression_names = {
+			"neutral": "中性",
+			"happy": "开心",
+			"sad": "悲伤",
+			"angry": "愤怒",
+			"surprised": "惊讶"
+		}
+		
+		# 确定要生成的视角列表
+		if batch_generate:
+			angles_to_generate = [("front", "正面"), ("side", "侧面"), ("back", "背面")]
+			print(f"📦 批量角度模式：将生成 {len(angles_to_generate)} 个角度")
+		else:
+			angle_name = angle_names.get(view_angle, "正面")
+			angles_to_generate = [(view_angle, angle_name)]
+			print(f"📸 单一角度：{angle_name}")
+		
+		# 确定要生成的表情列表
+		if batch_expressions:
+			expressions_to_generate = [
+				("neutral", "中性"), ("happy", "开心"), ("sad", "悲伤"),
+				("angry", "愤怒"), ("surprised", "惊讶")
+			]
+			print(f"😊 批量表情模式：将生成 {len(expressions_to_generate)} 种表情")
+		else:
+			expression_name = expression_names.get(expression, "中性")
+			expressions_to_generate = [(expression, expression_name)]
+			print(f"😊 单一表情：{expression_name}")
+		
+		# 计算总数量
+		total_count = len(angles_to_generate) * len(expressions_to_generate)
+		print(f"📦 总计将生成：{total_count} 张照片 ({len(angles_to_generate)}角度 × {len(expressions_to_generate)}表情)")
+		
+		# 确定批量生成类型（用于一致性优化）
+		batch_type = "none"
+		if batch_generate and batch_expressions:
+			batch_type = "angle+expression"
+		elif batch_generate:
+			batch_type = "angle"
+		elif batch_expressions:
+			batch_type = "expression"
+		elif variant_mode != "none":
+			batch_type = "variant"
+		
+		print(f"🎯 批量类型: {batch_type}")
+		print(f"🎯 一致性优化: 已启用（medium级别）")
 		
 		# 禁用按钮
 		self.char_btn_gen_photo.config(state=DISABLED)
-		self.status.set(f"🎨 正在生成\"{character_name}\"的照片...")
+		self.status.set(f"🎨 正在生成\"{character_name}\"的照片 (共{total_count}张)...")
 		if hasattr(self, 'update_header_status'):
 			self.update_header_status(f"生成人物照片...", "🎨")
 		
 		def generate_photo_thread():
+			generated_photos = []  # 存储生成的照片信息
+			
 			try:
 				print(f"\n{'='*60}\n开始生成人物照片: {character_name}\n{'='*60}")
+				print(f"📦 将生成 {total_count} 张照片")
 				
 				# 检查是否配置了API
 				img_api_type = self.img_api_type.get() if hasattr(self, 'img_api_type') else "openai"
 				print(f"图片API类型: {img_api_type}")
 				
-				if img_api_type == "hunyuan":
-					# 使用腾讯混元
-					print("使用腾讯混元API")
-					secret_id = self.hunyuan_secret_id.get() if hasattr(self, 'hunyuan_secret_id') else ""
-					secret_key = self.hunyuan_secret_key.get() if hasattr(self, 'hunyuan_secret_key') else ""
-					
-					if not secret_id or not secret_key:
-						print("腾讯混元API密钥未配置")
-						self.after(0, lambda: messagebox.showerror("错误", "请先在配置页面设置腾讯混元API密钥"))
-						self.after(0, lambda: self.status.set("❌ 未配置API密钥"))
+				# 双重循环生成每个角度和表情的组合
+				current_index = 0
+				for angle, angle_name in angles_to_generate:
+					for expr, expr_name in expressions_to_generate:
+						current_index += 1
+						print(f"\n{'='*50}")
+						print(f"📸 [{current_index}/{total_count}] 正在生成：{angle_name}视图 + {expr_name}表情")
+						print(f"{'='*50}\n")
+						
+						# 更新状态
+						self.after(0, lambda i=current_index, a=angle_name, e=expr_name: self.status.set(
+							f"🎨 [{i}/{total_count}] 正在生成\"{character_name}\"的{a}照片（{e}）..."
+						))
 						if hasattr(self, 'update_header_status'):
-							self.after(0, lambda: self.update_header_status("未配置API", "❌"))
-						return
-					
-					# 🎯 构建提示词：根据图片类型决定构图
-					prompt_parts = []
-					
-					# 📸 根据图片风格/类型添加对应的构图要求
-					composition_requirements = {
-						# 需要全身照的类型
-						"写实照片": ["全身照", "从头到脚", "双腿双脚可见", "完整服装", "鞋子可见", "站立姿态", "纯色背景"],
-						"淘宝照片": ["全身照", "从头到脚", "双腿双脚可见", "完整服装展示", "鞋子清晰可见", "正面站立", "纯白背景", "服装细节清晰"],
-						"证件照": ["上半身", "正面免冠", "肩膀以上", "纯色背景", "五官清晰"],
-						"日系动漫": ["全身照", "从头到脚", "双腿双脚可见", "动漫风格", "完整服装", "日系风格"],
-						"3D渲染": ["全身照", "从头到脚", "双腿双脚可见", "3D渲染质感", "完整模型"],
-						"水彩画": ["全身照", "从头到脚", "双腿双脚可见", "水彩风格", "艺术感"],
-						"油画": ["全身照", "从头到脚", "双腿双脚可见", "油画质感", "艺术风格"],
-						"中国风": ["全身照", "从头到脚", "双腿双脚可见", "中国风", "传统服饰完整展示"],
-						"国风插画": ["全身照", "从头到脚", "双腿双脚可见", "国风插画", "传统服饰完整"],
-						"古风": ["全身照", "从头到脚", "双腿双脚可见", "古风", "古装完整展示"],
-						"仙侠": ["全身照", "从头到脚", "双腿双脚可见", "仙侠风格", "飘逸服饰完整"],
-						"武侠": ["全身照", "从头到脚", "双腿双脚可见", "武侠风格", "武侠服饰完整"]
-					}
-					
-					# 获取对应类型的构图要求（默认为全身照）
-					comp_reqs = composition_requirements.get(style, ["全身照", "从头到脚", "双腿双脚可见", "完整服装"])
-					
-					# ⭐ 最高优先级：构图要求（放最前面）
-					for req in comp_reqs:
-						prompt_parts.append(req)
-					
-					# 如果不是证件照，强调不要半身照
-					if style != "证件照":
-						prompt_parts.append("绝对不是半身照")
-						prompt_parts.append("绝对不是上半身")
-						prompt_parts.append("必须包含腿和脚")
-					
-					# 默认中国人外貌（除非描述中明确说明是外国人）
-					if not any(keyword in description for keyword in ["外国", "欧美", "美国", "英国", "法国", "德国", "日本", "韩国", "俄罗斯", "非洲", "印度", "阿拉伯"]):
-						prompt_parts.append("中国人")
-						prompt_parts.append("东亚面孔")
-					
-					# 添加人物特征描述（限制长度，为构图要求留空间）
-					desc_limit = 120  # 为构图要求预留更多空间
-					if len(description) > desc_limit:
-						prompt_parts.append(description[:desc_limit] + "...")
-					else:
-						prompt_parts.append(description)
-					
-					# 添加额外描述（如果有）
-					if extra_desc:
-						extra_limit = 60  # 额外描述也限制长度
-						if len(extra_desc) > extra_limit:
-							prompt_parts.append(extra_desc[:extra_limit] + "...")
+							self.after(0, lambda i=current_index, a=angle_name, e=expr_name: self.update_header_status(
+								f"[{i}/{total_count}] {a}+{e}...", "🎨"
+							))
+						
+						if img_api_type == "hunyuan":
+							# 使用腾讯混元
+							print(f"使用腾讯混元API - {angle_name}视图 + {expr_name}表情")
+							secret_id = self.hunyuan_secret_id.get() if hasattr(self, 'hunyuan_secret_id') else ""
+							secret_key = self.hunyuan_secret_key.get() if hasattr(self, 'hunyuan_secret_key') else ""
+							
+							if not secret_id or not secret_key:
+								print("腾讯混元API密钥未配置")
+								self.after(0, lambda: messagebox.showerror("错误", "请先在配置页面设置腾讯混元API密钥"))
+								self.after(0, lambda: self.status.set("❌ 未配置API密钥"))
+								if hasattr(self, 'update_header_status'):
+									self.after(0, lambda: self.update_header_status("未配置API", "❌"))
+								return
+							
+							# 🎯 使用专业的提示词构建器（使用当前角度、表情、变体和一致性优化）
+							composition = "upper_body" if style == "证件照" else "full_body"
+							
+							full_prompt = CharacterPromptBuilder.build_character_photo_prompt(
+								description=description,
+								style=style,
+								view_angle=angle,  # 使用当前循环的角度
+								expression=expr,   # 使用当前循环的表情
+								composition=composition,
+								extra_details=extra_desc,
+								language="zh",
+								default_nationality="chinese",
+								variant=variant_value,
+								variant_mode=variant_mode,
+								consistency_level=consistency_level,  # 使用用户选择的一致性级别
+								batch_type=batch_type  # 传递批量类型
+							)
+							
+							# 针对腾讯混元优化（限制256字符）
+							full_prompt = CharacterPromptBuilder.optimize_for_api(full_prompt, "hunyuan", 256)
+							
+							print(f"📝 腾讯混元提示词 ({angle_name}+{expr_name}): {full_prompt}")
+						
+							self.after(0, lambda a=angle_name, e=expr_name: self.status.set(f"🚀 正在调用腾讯混元API生成{a}+{e}照片..."))
+							
+							client = HunyuanImageClient(secret_id=secret_id, secret_key=secret_key)
+							result = client.generate(
+								prompt=full_prompt,
+								resolution="1024:1024",
+								style="201"
+							)
+							
+							# 解析base64图片
+							img_base64 = result["ResultImage"]
+							img_data = base64.b64decode(img_base64)
+							img = Image.open(BytesIO(img_data))
+							
 						else:
-							prompt_parts.append(extra_desc)
+							# 使用OpenAI DALL-E或兼容API
+							print(f"使用OpenAI或兼容API - {angle_name}视图 + {expr_name}表情")
+							api_key = self.img_api_key.get()
+							base_url = self.img_base_url.get() if hasattr(self, 'img_base_url') and self.img_base_url.get() else None
+							model = self.img_model.get() if hasattr(self, 'img_model') else "dall-e-3"
+							
+							print(f"API Key存在: {bool(api_key)}, Base URL: {base_url}, Model: {model}")
+							
+							if not api_key:
+								print("图片API密钥未配置")
+								self.after(0, lambda: messagebox.showerror("错误", "请先在'图片生成-配置'页面设置API密钥"))
+								self.after(0, lambda: self.status.set("❌ 未配置API密钥"))
+								if hasattr(self, 'update_header_status'):
+									self.after(0, lambda: self.update_header_status("未配置API", "❌"))
+								return
+							
+							# 🎯 使用专业的提示词构建器（英文版，使用当前角度、表情、变体和一致性优化）
+							composition = "upper_body" if style == "证件照" else "full_body"
+							
+							full_prompt = CharacterPromptBuilder.build_character_photo_prompt(
+								description=description,
+								style=style,
+								view_angle=angle,  # 使用当前循环的角度
+								expression=expr,   # 使用当前循环的表情
+								composition=composition,
+								extra_details=extra_desc,
+								language="en",
+								default_nationality="chinese",
+								variant=variant_value,
+								variant_mode=variant_mode,
+								consistency_level=consistency_level,  # 使用用户选择的一致性级别
+								batch_type=batch_type  # 传递批量类型
+							)
+							
+							# 针对OpenAI优化（DALL-E 3建议1000字符内）
+							full_prompt = CharacterPromptBuilder.optimize_for_api(full_prompt, "openai", 1000)
+							
+							print(f"📝 OpenAI提示词 ({angle_name}+{expr_name}): {full_prompt[:200]}...")
+						
+							self.after(0, lambda a=angle_name, e=expr_name: self.status.set(f"🚀 正在调用图片API生成{a}+{e}照片..."))
+							
+							print(f"创建OpenAIImageClient...")
+							client = OpenAIImageClient(api_key=api_key, base_url=base_url, model=model)
+							print(f"调用generate方法...")
+							results = client.generate(full_prompt, size="1024x1024")
+							print(f"收到结果: {len(results) if results else 0} 张图片")
+							
+							# 获取第一张图片
+							if results:
+								img = results[0].image
+							else:
+								raise RuntimeError("API未返回任何图片")
+						
+						# 保存图片到内存（最后一张用于预览）
+						self.character_last_image = img
+						
+						# 保存当前角度和表情的照片
+						print(f"✅ [{current_index}/{total_count}] {angle_name}+{expr_name}照片生成成功")
 					
-					# 画质要求
-					prompt_parts.append("高清")
-					prompt_parts.append("细节清晰")
+						# 构建文件名（包含角度、表情和变体）
+						filename_parts = [character_name]
+						
+						# 添加角度信息（如果有多个角度或不是正面）
+						if batch_generate or angle != "front":
+							filename_parts.append(angle_name)
+						
+						# 添加表情信息（如果有多种表情或不是中性表情）
+						if batch_expressions or expr != "neutral":
+							filename_parts.append(expr_name)
+						
+						# 添加变体信息（如果使用了变体）
+						if variant_mode == "preset" and variant_value:
+							# 变体名称映射
+							variant_name_map = {
+								"formal": "正装",
+								"casual": "休闲",
+								"sport": "运动",
+								"traditional": "古装",
+								"artistic": "艺术",
+								"professional": "职业"
+							}
+							variant_name = variant_name_map.get(variant_value, variant_value)
+							filename_parts.append(variant_name)
+						elif variant_mode == "custom" and variant_value and not variant_value.startswith("例如"):
+							# 自定义变体，取前10个字符作为标识
+							variant_short = variant_value[:10].replace(" ", "_")
+							filename_parts.append(variant_short)
+						
+						filename = "_".join(filename_parts) + ".png"
+						
+						# 保存照片
+						saved_path = self._auto_save_character_photo_with_name(img, character_name, filename)
+						
+						if saved_path:
+							print(f"💾 已保存: {saved_path}")
+							generated_photos.append({
+								"angle": angle,
+								"angle_name": angle_name,
+								"expression": expr,
+								"expression_name": expr_name,
+								"path": saved_path,
+								"image": img
+							})
 					
-					full_prompt = "，".join(prompt_parts)
-					
-					# 限制字符数（腾讯混元限制256字符）
-					if len(full_prompt) > 256:
-						# 保留核心部分
-						core_parts = comp_reqs + ["中国人", description[:80]]
-						if extra_desc:
-							core_parts.append(extra_desc[:40])
-						full_prompt = "，".join(core_parts)[:256]
-					
-					print(f"📝 腾讯混元提示词: {full_prompt}")
-					
-					self.after(0, lambda: self.status.set(f"🚀 正在调用腾讯混元API生成\"{character_name}\"的照片..."))
-					
-					client = HunyuanImageClient(secret_id=secret_id, secret_key=secret_key)
-					result = client.generate(
-						prompt=full_prompt,
-						resolution="1024:1024",
-						style="201"
-					)
-					
-					# 解析base64图片
-					img_base64 = result["ResultImage"]
-					img_data = base64.b64decode(img_base64)
-					img = Image.open(BytesIO(img_data))
-					
-				else:
-					# 使用OpenAI DALL-E或兼容API
-					print("使用OpenAI或兼容API")
-					api_key = self.img_api_key.get()
-					base_url = self.img_base_url.get() if hasattr(self, 'img_base_url') and self.img_base_url.get() else None
-					model = self.img_model.get() if hasattr(self, 'img_model') else "dall-e-3"
-					
-					print(f"API Key存在: {bool(api_key)}, Base URL: {base_url}, Model: {model}")
-					
-					if not api_key:
-						print("图片API密钥未配置")
-						self.after(0, lambda: messagebox.showerror("错误", "请先在'图片生成-配置'页面设置API密钥"))
-						self.after(0, lambda: self.status.set("❌ 未配置API密钥"))
-						if hasattr(self, 'update_header_status'):
-							self.after(0, lambda: self.update_header_status("未配置API", "❌"))
-						return
-					
-					# 🎯 构建提示词：根据图片类型决定构图（英文版）
-					prompt_parts = []
-					
-					# 📸 根据图片风格/类型添加对应的构图要求（英文）
-					composition_requirements_en = {
-						# 需要全身照的类型
-						"写实照片": ["full body shot", "from head to feet", "legs and feet visible", "complete outfit", "shoes visible", "standing pose", "plain background"],
-						"淘宝照片": ["full body shot", "head to feet", "legs and feet visible", "complete outfit display", "shoes clearly visible", "front facing standing", "pure white background", "clothing details clear"],
-						"证件照": ["upper body", "front facing", "shoulders up", "plain background", "clear facial features"],
-						"日系动漫": ["full body shot", "head to feet", "legs and feet visible", "anime style", "complete outfit", "Japanese style"],
-						"3D渲染": ["full body shot", "head to feet", "legs and feet visible", "3D rendering", "complete model"],
-						"水彩画": ["full body shot", "head to feet", "legs and feet visible", "watercolor style", "artistic"],
-						"油画": ["full body shot", "head to feet", "legs and feet visible", "oil painting texture", "artistic style"],
-						"中国风": ["full body shot", "head to feet", "legs and feet visible", "Chinese style", "complete traditional clothing"],
-						"国风插画": ["full body shot", "head to feet", "legs and feet visible", "Chinese illustration", "complete traditional attire"],
-						"古风": ["full body shot", "head to feet", "legs and feet visible", "ancient Chinese style", "complete traditional costume"],
-						"仙侠": ["full body shot", "head to feet", "legs and feet visible", "Chinese fantasy", "complete flowing robes"],
-						"武侠": ["full body shot", "head to feet", "legs and feet visible", "martial arts style", "complete martial attire"]
-					}
-					
-					# 获取对应类型的构图要求（默认为全身照）
-					comp_reqs_en = composition_requirements_en.get(style, ["full body shot", "from head to feet", "legs and feet visible", "complete outfit"])
-					
-					# ⭐ 最高优先级：构图要求（放最前面）
-					for req in comp_reqs_en:
-						prompt_parts.append(req)
-					
-					# 如果不是证件照，强调不要半身照
-					if style != "证件照":
-						prompt_parts.append("ABSOLUTELY NOT half-body")
-						prompt_parts.append("ABSOLUTELY NOT upper-body only")
-						prompt_parts.append("MUST include legs and feet")
-					
-					# 默认中国人外貌（除非描述中明确说明是外国人）
-					if not any(keyword in description for keyword in ["外国", "欧美", "美国", "英国", "法国", "德国", "日本", "韩国", "俄罗斯", "非洲", "印度", "阿拉伯", "American", "European", "Western", "Japanese", "Korean"]):
-						prompt_parts.append("Chinese person")
-						prompt_parts.append("East Asian features")
-					
-					# 添加人物特征描述（限制长度）
-					desc_limit = 150
-					if len(description) > desc_limit:
-						prompt_parts.append(description[:desc_limit] + "...")
-					else:
-						prompt_parts.append(description)
-					
-					# 添加额外描述（如果有，限制长度）
-					if extra_desc:
-						extra_limit = 80
-						if len(extra_desc) > extra_limit:
-							prompt_parts.append(extra_desc[:extra_limit] + "...")
-						else:
-							prompt_parts.append(extra_desc)
-					
-					# 画质要求
-					prompt_parts.append("centered composition")
-					prompt_parts.append("simple background")
-					prompt_parts.append("high quality")
-					prompt_parts.append("detailed")
-					
-					full_prompt = ", ".join(prompt_parts)
-					
-					print(f"📝 OpenAI提示词: {full_prompt[:200]}...")
-					
-					self.after(0, lambda: self.status.set(f"🚀 正在调用图片API生成\"{character_name}\"的照片..."))
-					
-					print(f"创建OpenAIImageClient...")
-					client = OpenAIImageClient(api_key=api_key, base_url=base_url, model=model)
-					print(f"调用generate方法...")
-					results = client.generate(full_prompt, size="1024x1024")
-					print(f"收到结果: {len(results) if results else 0} 张图片")
-					
-					# 获取第一张图片
-					if results:
-						img = results[0].image
-					else:
-						raise RuntimeError("API未返回任何图片")
-				
-				# 保存图片到内存
-				self.character_last_image = img
-				
-				# 在主线程中执行保存和更新操作
+				# 所有角度生成完毕后，在主线程中更新UI
 				def update_ui_and_save():
-					# 自动保存到characters文件夹
-					saved_path = self._auto_save_character_photo(index, img, character_name)
-					# 更新预览
-					self._update_character_photo_preview(img)
-					# 更新状态
-					if saved_path:
+					# 更新预览（显示最后一张）
+					if generated_photos:
+						last_photo = generated_photos[-1]
+						self._update_character_photo_preview(last_photo["image"])
+						
 						# 获取项目名称
 						if self.current_project:
 							project_name = self.current_project.metadata.get("name", "未命名项目")
 						else:
 							project_name = "未知项目"
-						self.status.set(f"✅ 成功生成并保存\"{character_name}\"的照片到项目 [{project_name}]")
+						
+					# 根据生成数量显示不同的消息
+					if len(generated_photos) > 1:
+						# 构建照片列表描述
+						photo_desc_list = []
+						for p in generated_photos:
+							desc_parts = []
+							if p["angle_name"]:
+								desc_parts.append(p["angle_name"])
+							if p.get("expression_name") and p["expression_name"] != "中性":
+								desc_parts.append(p["expression_name"])
+							photo_desc_list.append("+".join(desc_parts) if desc_parts else "照片")
+						
+						photo_list_str = "、".join(photo_desc_list)
+						self.status.set(f"✅ 成功生成{len(generated_photos)}张照片（{photo_list_str}）并保存到项目 [{project_name}]")
+						
+						# 构建详细消息
+						detail_list = "\n".join([f"• {desc}" for desc in photo_desc_list])
+						messagebox.showinfo("成功", f"已成功生成并保存 {len(generated_photos)} 张照片！\n\n{detail_list}\n\n保存位置：项目/characters/{character_name}_xxx.png")
 					else:
-						self.status.set(f"✅ 成功生成\"{character_name}\"的照片（保存失败：请先创建项目）")
+						photo = generated_photos[0]
+						desc_parts = [photo["angle_name"]]
+						if photo.get("expression_name") and photo["expression_name"] != "中性":
+							desc_parts.append(photo["expression_name"])
+						desc = "+".join(desc_parts)
+						self.status.set(f"✅ 成功生成并保存\"{character_name}\"的{desc}照片到项目 [{project_name}]")
+					
+					if not generated_photos:
+						self.status.set(f"❌ 照片生成失败或未保存")
 					# 启用保存按钮
 					self.char_btn_save_photo.config(state=NORMAL)
 					# 更新参考人物列表
@@ -2760,12 +3119,12 @@ class ImageMixin:
 		threading.Thread(target=generate_photo_thread, daemon=True).start()
 	
 	def _load_project_characters(self) -> None:
-		"""加载当前项目的人物照片和描述到参考列表"""
+		"""加载当前项目的所有人物信息（包括没有照片的人物）"""
 		# 清空之前的人物列表
 		self.character_list.clear()
 		
 		if not self.current_project:
-			print("⚠️ 没有当前项目，无法加载人物照片")
+			print("⚠️ 没有当前项目，无法加载人物信息")
 			self._update_reference_character_list()
 			return
 		
@@ -2777,11 +3136,11 @@ class ImageMixin:
 			characters_dir = self.current_project.project_dir / "characters"
 			
 			if not characters_dir.exists():
-				print(f"📁 项目尚无人物照片文件夹：{characters_dir}")
+				print(f"📁 项目尚无人物文件夹：{characters_dir}")
 				self._update_reference_character_list()
 				return
 			
-			# 读取人物描述信息
+			# 读取人物描述信息（这是主要数据源）
 			characters_info_path = characters_dir / "characters_info.json"
 			characters_info = {}
 			if characters_info_path.exists():
@@ -2792,36 +3151,47 @@ class ImageMixin:
 				except Exception as e:
 					print(f"⚠️ 读取人物描述文件失败：{str(e)}")
 			
-			# 扫描所有 PNG 图片
-			character_photos = list(characters_dir.glob("*.png"))
-			
-			if not character_photos:
-				print(f"📋 项目中暂无人物照片")
+			if not characters_info:
+				print(f"📋 项目中暂无保存的人物信息")
 				self._update_reference_character_list()
 				return
 			
-			# 将照片信息和描述添加到 character_list
-			for photo_path in character_photos:
-				character_name = photo_path.stem  # 文件名（不含扩展名）
+			# 从JSON加载所有人物（包括没有照片的）
+			loaded_count = 0
+			for character_name, char_data in characters_info.items():
+				description = char_data.get("description", "")
+				photo_path = char_data.get("photo_path", "")
 				
-				# 从 JSON 获取描述信息
-				description = ""
-				if character_name in characters_info:
-					description = characters_info[character_name].get("description", "")
+				# 验证照片路径是否有效
+				if photo_path:
+					photo_file = Path(photo_path)
+					if not photo_file.exists():
+						print(f"⚠️ 照片文件不存在：{photo_path}")
+						photo_path = ""  # 重置为空
 				
 				self.character_list.append({
 					"name": character_name,
 					"description": description,
-					"photo_path": str(photo_path)
+					"photo_path": str(photo_path) if photo_path else ""
 				})
+				loaded_count += 1
 			
-			print(f"✅ 已加载项目人物照片：{[p.stem for p in character_photos]}")
+			# 统计有照片的人物数量
+			photo_count = sum(1 for char in self.character_list if char.get("photo_path"))
+			
+			print(f"✅ 已加载 {loaded_count} 个人物（其中 {photo_count} 个有照片）")
+			
+			# 显示人物列表
+			character_names = [char['name'] for char in self.character_list]
+			print(f"✅ 已加载项目人物：{character_names}")
 			
 			# 显示人物描述预览
 			for char in self.character_list:
-				if char["description"]:
-					desc_preview = char["description"][:50] + "..." if len(char["description"]) > 50 else char["description"]
+				desc_preview = char["description"][:80] + "..." if len(char["description"]) > 80 else char["description"]
+				if desc_preview:
 					print(f"   📝 {char['name']}: {desc_preview}")
+				else:
+					print(f"   📝 {char['name']}: （尚无描述）")
 			
 			# 更新列表框显示
 			self._update_character_listbox()
@@ -2830,7 +3200,7 @@ class ImageMixin:
 			self._update_reference_character_list()
 			
 		except Exception as e:
-			print(f"❌ 加载项目人物照片失败：{str(e)}")
+			print(f"❌ 加载项目人物信息失败：{str(e)}")
 			import traceback
 			traceback.print_exc()
 			self._update_reference_character_list()
@@ -3126,6 +3496,45 @@ class ImageMixin:
 		
 		self.char_canvas.coords(self.char_canvas_window, x_offset, y_offset)
 	
+	def _save_all_characters_info(self) -> bool:
+		"""保存所有人物信息到characters_info.json（包括没有照片的人物）"""
+		try:
+			import json
+			from pathlib import Path
+			
+			# 检查是否有当前项目
+			if not self.current_project:
+				print("⚠️ 没有当前项目，无法保存人物信息")
+				return False
+			
+			# 确定保存目录
+			characters_dir = self.current_project.project_dir / "characters"
+			characters_dir.mkdir(parents=True, exist_ok=True)
+			
+			# 构建保存数据
+			characters_info = {}
+			for char in self.character_list:
+				char_name = char.get("name", "")
+				if char_name:
+					characters_info[char_name] = {
+						"description": char.get("description", ""),
+						"photo_path": char.get("photo_path", "")
+					}
+			
+			# 保存到文件
+			characters_info_path = characters_dir / "characters_info.json"
+			with open(characters_info_path, 'w', encoding='utf-8') as f:
+				json.dump(characters_info, f, ensure_ascii=False, indent=2)
+			
+			print(f"💾 已保存 {len(characters_info)} 个人物信息到：{characters_info_path}")
+			return True
+			
+		except Exception as e:
+			print(f"❌ 保存人物信息失败：{str(e)}")
+			import traceback
+			traceback.print_exc()
+			return False
+	
 	def _auto_save_character_photo(self, index: int, img: Image.Image, character_name: str) -> str:
 		"""自动保存人物照片到当前项目的characters文件夹，并保存描述信息"""
 		try:
@@ -3201,6 +3610,38 @@ class ImageMixin:
 			traceback.print_exc()
 			return ""
 	
+	def _auto_save_character_photo_with_name(self, img: Image.Image, character_name: str, filename: str) -> str:
+		"""自动保存人物照片（支持自定义文件名，用于多角度生成）"""
+		try:
+			from pathlib import Path
+			
+			# 检查是否有当前项目
+			if not self.current_project:
+				return ""
+			
+			# 确定保存目录：项目目录/characters/
+			self.character_photos_dir = self.current_project.project_dir / "characters"
+			self.character_photos_dir.mkdir(parents=True, exist_ok=True)
+			
+			# 使用提供的文件名
+			save_path = self.character_photos_dir / filename
+			print(f"💾 保存照片到：{save_path}")
+			
+			img.save(str(save_path))
+			
+			if save_path.exists():
+				print(f"✅ 照片已保存：{save_path} ({save_path.stat().st_size / 1024:.2f} KB)")
+				return str(save_path)
+			else:
+				print(f"❌ 文件保存失败：{save_path}")
+				return ""
+			
+		except Exception as e:
+			print(f"❌ 保存失败：{str(e)}")
+			import traceback
+			traceback.print_exc()
+			return ""
+	
 	def _on_save_character_photo(self) -> None:
 		"""额外保存人物照片副本（可选）"""
 		if not self.character_last_image:
@@ -3229,6 +3670,182 @@ class ImageMixin:
 				messagebox.showinfo("成功", f"照片副本已保存到：\n{file_path}")
 			except Exception as e:
 				messagebox.showerror("错误", f"保存失败：{str(e)}")
+	
+	def _on_view_character_gallery(self) -> None:
+		"""打开人物照片画廊"""
+		selection = self.char_listbox.curselection()
+		if not selection:
+			messagebox.showwarning("提示", "请先选择一个人物！")
+			return
+		
+		if not self.current_project:
+			messagebox.showwarning("提示", "请先创建或打开一个项目！")
+			return
+		
+		index = selection[0]
+		character = self.character_list[index]
+		character_name = character["name"]
+		
+		# 获取characters目录
+		from pathlib import Path
+		characters_dir = Path(self.current_project.project_dir) / "characters"
+		
+		# 打开照片画廊
+		try:
+			gallery = CharacterPhotoGallery(
+				parent=self,
+				character_name=character_name,
+				photos_dir=characters_dir,
+				on_photo_select=lambda path: self.status.set(f"✅ 已选择照片: {path.name}")
+			)
+		except Exception as e:
+			messagebox.showerror("错误", f"打开照片画廊失败：{str(e)}")
+	
+	def _on_generate_character_sheet(self) -> None:
+		"""生成角色设定表"""
+		selection = self.char_listbox.curselection()
+		if not selection:
+			messagebox.showwarning("提示", "请先选择一个人物！")
+			return
+		
+		if not self.current_project:
+			messagebox.showwarning("提示", "请先创建或打开一个项目！")
+			return
+		
+		index = selection[0]
+		character = self.character_list[index]
+		character_name = character["name"]
+		character_description = character.get("description", "")
+		
+		# 获取characters目录
+		from pathlib import Path
+		characters_dir = Path(self.current_project.project_dir) / "characters"
+		
+		if not characters_dir.exists():
+			messagebox.showwarning("提示", f"未找到角色照片目录！\n请先生成人物照片。")
+			return
+		
+		# 弹出布局选择对话框
+		layout_dialog = tk.Toplevel(self)
+		layout_dialog.title("选择角色设定表布局")
+		layout_dialog.geometry("500x400")
+		layout_dialog.configure(bg="#2b2b2b")
+		layout_dialog.transient(self)
+		layout_dialog.grab_set()
+		
+		# 标题
+		title_label = tk.Label(layout_dialog, text=f"为 {character_name} 生成角色设定表", 
+							   font=("", 16, "bold"), bg="#2b2b2b", fg="white")
+		title_label.pack(pady=15)
+		
+		# 布局选择
+		layout_frame = ttk.LabelFrame(layout_dialog, text="📐 选择布局模板", padding=15)
+		layout_frame.pack(fill="both", expand=True, padx=20, pady=(0, 15))
+		
+		selected_layout = tk.StringVar(value="standard_3x5")
+		
+		for layout_key, layout_config in CharacterSheetBuilder.LAYOUTS.items():
+			desc = f"{layout_config['name']}\n（{layout_config['rows']}行 × {layout_config['cols']}列）"
+			rb = tk.Radiobutton(
+				layout_frame, text=desc, variable=selected_layout, value=layout_key,
+				bg="#f0f0f0", font=("", 11), anchor="w", padx=10, pady=8
+			)
+			rb.pack(fill="x", pady=5)
+		
+		# 选项
+		options_frame = ttk.LabelFrame(layout_dialog, text="⚙️ 生成选项", padding=15)
+		options_frame.pack(fill="x", padx=20, pady=(0, 15))
+		
+		show_labels_var = tk.BooleanVar(value=True)
+		show_desc_var = tk.BooleanVar(value=True)
+		
+		tk.Checkbutton(options_frame, text="显示角度和表情标签", variable=show_labels_var,
+					   bg="#f0f0f0", font=("", 10)).pack(anchor="w", pady=3)
+		tk.Checkbutton(options_frame, text="显示角色描述", variable=show_desc_var,
+					   bg="#f0f0f0", font=("", 10)).pack(anchor="w", pady=3)
+		
+		# 按钮
+		btn_frame = ttk.Frame(layout_dialog)
+		btn_frame.pack(fill="x", padx=20, pady=(0, 15))
+		
+		def on_confirm():
+			layout_dialog.destroy()
+			self._generate_sheet_async(
+				character_name, characters_dir, character_description,
+				selected_layout.get(), show_labels_var.get(), show_desc_var.get()
+			)
+		
+		def on_cancel():
+			layout_dialog.destroy()
+		
+		ttk.Button(btn_frame, text="✅ 生成", command=on_confirm).pack(side=LEFT, fill="x", expand=True, padx=(0, 5))
+		ttk.Button(btn_frame, text="❌ 取消", command=on_cancel).pack(side=LEFT, fill="x", expand=True, padx=(5, 0))
+	
+	def _generate_sheet_async(self, character_name: str, characters_dir, character_description: str,
+							  layout: str, show_labels: bool, show_desc: bool):
+		"""异步生成角色设定表"""
+		import threading
+		from pathlib import Path
+		
+		self.status.set(f"🎨 正在生成\"{character_name}\"的角色设定表...")
+		if hasattr(self, 'update_header_status'):
+			self.update_header_status("生成角色设定表...", "🎨")
+		
+		# 禁用按钮
+		if hasattr(self, 'char_btn_generate_sheet'):
+			self.char_btn_generate_sheet.config(state=DISABLED)
+		
+		def generate_thread():
+			try:
+				# 输出路径
+				output_filename = f"{character_name}_角色设定表_{layout}.png"
+				output_path = characters_dir / output_filename
+				
+				# 生成设定表
+				result_path = CharacterSheetBuilder.build_character_sheet(
+					character_name=character_name,
+					photos_dir=characters_dir,
+					output_path=output_path,
+					layout=layout,
+					show_labels=show_labels,
+					show_description=show_desc,
+					character_description=character_description
+				)
+				
+				if result_path:
+					self.after(0, lambda: self.status.set(f"✅ 角色设定表已生成：{output_filename}"))
+					self.after(0, lambda: messagebox.showinfo(
+						"成功",
+						f"角色设定表已生成！\n\n保存位置：\n{result_path}\n\n文件大小：{result_path.stat().st_size / 1024:.1f} KB"
+					))
+					
+					# 自动打开预览
+					try:
+						import subprocess
+						subprocess.run(["open", str(result_path)])
+					except:
+						pass
+				else:
+					self.after(0, lambda: self.status.set("❌ 生成角色设定表失败"))
+					self.after(0, lambda: messagebox.showerror("失败", "生成角色设定表失败！\n请检查是否有足够的照片。"))
+				
+				if hasattr(self, 'update_header_status'):
+					self.after(0, lambda: self.update_header_status("设定表生成完成", "✅"))
+			
+			except Exception as e:
+				import traceback
+				error_detail = traceback.format_exc()
+				print(f"\n❌ 生成角色设定表失败：\n{error_detail}")
+				self.after(0, lambda: self.status.set("❌ 生成失败"))
+				self.after(0, lambda: messagebox.showerror("错误", f"生成角色设定表失败：\n{str(e)}"))
+				if hasattr(self, 'update_header_status'):
+					self.after(0, lambda: self.update_header_status("生成失败", "❌"))
+			
+			finally:
+				if hasattr(self, 'char_btn_generate_sheet'):
+					self.after(0, lambda: self.char_btn_generate_sheet.config(state=NORMAL))
+		
+		threading.Thread(target=generate_thread, daemon=True).start()
 	
 	def _generate_video_prompt(self) -> str:
 		"""
