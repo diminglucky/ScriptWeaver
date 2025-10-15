@@ -60,17 +60,19 @@ class ConsistencyOptimizer:
 	}
 	
 	@classmethod
-	def extract_face_shape(cls, description: str) -> str:
+	def extract_critical_features(cls, description: str) -> Dict[str, str]:
 		"""
-		专门提取脸型特征（这是一致性的关键！）
+		提取最关键的一致性特征（脸型、发型、服装）
 		
 		Args:
 			description: 人物描述
 		
 		Returns:
-			脸型描述（如果找到）
+			关键特征字典 {feature_type: feature_description}
 		"""
-		# 脸型关键词
+		critical_features = {}
+		
+		# 1. 脸型关键词
 		face_shapes = [
 			"瓜子脸", "鹅蛋脸", "圆脸", "方脸", "长脸", "菱形脸", "心形脸",
 			"oval face", "round face", "square face", "heart-shaped face", "diamond face"
@@ -78,13 +80,60 @@ class ConsistencyOptimizer:
 		
 		for shape in face_shapes:
 			if shape in description:
-				# 提取包含脸型的完整描述
 				pattern = rf'[^，。,.\n]*{re.escape(shape)}[^，。,.\n]*'
 				matches = re.findall(pattern, description, re.IGNORECASE)
 				if matches:
-					return matches[0].strip()
+					critical_features["face_shape"] = matches[0].strip()
+					break
 		
-		return ""
+		# 2. 发型关键词（长度+样式）
+		hair_keywords = [
+			"短发", "长发", "中长发", "齐肩", "披肩", "及腰", "马尾", "双马尾", "发髻", "盘发",
+			"直发", "卷发", "波浪", "黑发", "白发", "金发", "棕发", "银发",
+			"short hair", "long hair", "shoulder-length", "ponytail", "bun", 
+			"straight hair", "curly", "wavy", "black hair", "blonde"
+		]
+		
+		hair_desc_parts = []
+		for keyword in hair_keywords:
+			if keyword in description:
+				pattern = rf'[^，。,.\n]*{re.escape(keyword)}[^，。,.\n]*'
+				matches = re.findall(pattern, description, re.IGNORECASE)
+				hair_desc_parts.extend(matches)
+		
+		if hair_desc_parts:
+			# 去重并合并
+			unique_parts = list(set([p.strip() for p in hair_desc_parts]))
+			critical_features["hair"] = "，".join(unique_parts[:3])  # 最多3个描述
+		
+		# 3. 服装关键词（颜色+款式）
+		clothing_keywords = [
+			"西装", "衬衫", "T恤", "连衣裙", "外套", "夹克", "毛衣", "卫衣",
+			"黑色", "白色", "灰色", "蓝色", "红色", "绿色", "粉色", "棕色", "深色", "浅色",
+			"suit", "shirt", "dress", "jacket", "sweater", "coat",
+			"black", "white", "gray", "blue", "red", "green", "pink", "brown", "dark", "light"
+		]
+		
+		clothing_desc_parts = []
+		for keyword in clothing_keywords:
+			if keyword in description:
+				pattern = rf'[^，。,.\n]*{re.escape(keyword)}[^，。,.\n]*'
+				matches = re.findall(pattern, description, re.IGNORECASE)
+				clothing_desc_parts.extend(matches)
+		
+		if clothing_desc_parts:
+			unique_parts = list(set([p.strip() for p in clothing_desc_parts]))
+			critical_features["clothing"] = "，".join(unique_parts[:3])
+		
+		return critical_features
+	
+	@classmethod
+	def extract_face_shape(cls, description: str) -> str:
+		"""
+		专门提取脸型特征（向后兼容）
+		"""
+		critical = cls.extract_critical_features(description)
+		return critical.get("face_shape", "")
 	
 	@classmethod
 	def extract_key_features(cls, description: str) -> Dict[str, List[str]]:
@@ -136,20 +185,23 @@ class ConsistencyOptimizer:
 		# 提取关键特征
 		key_features = cls.extract_key_features(description)
 		
-		# 🎯 特别提取脸型（最关键的一致性特征！）
-		face_shape = cls.extract_face_shape(description)
+		# 🎯 提取最关键的三大特征：脸型、发型、服装
+		critical_features = cls.extract_critical_features(description)
 		
 		# 构建增强描述
 		enhanced_parts = [description]
 		
-		# 🎯 如果有脸型，优先重复（因为用户反馈脸型不一致！）
-		if face_shape:
-			if emphasis_level == "high":
-				# 高级别：重复脸型3次
-				enhanced_parts.extend([face_shape] * 3)
-			elif emphasis_level == "medium":
-				# 中级别：重复脸型2次
-				enhanced_parts.extend([face_shape] * 2)
+		# 🎯 重复最关键的特征（脸型、发型、服装）
+		if emphasis_level == "high":
+			# 高级别：每个特征重复3次
+			for feature_type in ["face_shape", "hair", "clothing"]:
+				if feature_type in critical_features and critical_features[feature_type]:
+					enhanced_parts.extend([critical_features[feature_type]] * 3)
+		elif emphasis_level == "medium":
+			# 中级别：每个特征重复2次
+			for feature_type in ["face_shape", "hair", "clothing"]:
+				if feature_type in critical_features and critical_features[feature_type]:
+					enhanced_parts.extend([critical_features[feature_type]] * 2)
 		
 		# 添加一致性增强词汇
 		boosters = cls.CONSISTENCY_BOOSTERS.get(language, cls.CONSISTENCY_BOOSTERS["zh"])
@@ -236,22 +288,32 @@ class ConsistencyOptimizer:
 		"""
 		# 根据批量类型添加特定提示
 		if batch_type == "angle":
-			# 多角度生成：强调面部、身体和服装的完全一致性
+			# 多角度生成：强调面部、发型、服装的完全一致性
 			if language == "zh":
 				hints = [
 					"完全相同的脸型和五官",
 					"一模一样的面部轮廓",
-					"保持服装和身材完全一致",
+					"完全一致的发型发长",  # ← 新增！强调发型
+					"完全相同的发型",
+					"保持服装颜色和款式完全一致",  # ← 加强！强调服装颜色
+					"相同的衣服",
 					"同一个人的不同角度",
-					"面部特征绝对不变"
+					"面部特征绝对不变",
+					"头发长度和样式不变",  # ← 新增！再次强调头发
+					"服装细节完全相同"  # ← 新增！强调服装细节
 				]
 			else:
 				hints = [
 					"exact same face shape and features",
 					"identical facial contours",
-					"completely consistent clothing and physique",
+					"completely same hairstyle and hair length",  # ← 新增！
+					"exact same hair",
+					"completely consistent clothing color and style",  # ← 加强！
+					"same outfit",
 					"same person from different angles",
-					"absolutely unchanged facial characteristics"
+					"absolutely unchanged facial characteristics",
+					"hair length and style unchanged",  # ← 新增！
+					"clothing details exactly the same"  # ← 新增！
 				]
 		
 		elif batch_type == "expression":
