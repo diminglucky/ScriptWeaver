@@ -9,10 +9,10 @@ from pathlib import Path
 from datetime import datetime
 
 from .theme import Theme, Styles, Icons
-from .mixins.story_mixin import StoryMixin
-from .mixins.image_mixin import ImageMixin
+from .mixins.story_modules import StoryMixin
+from .mixins.image_modules import ImageMixin
 from .mixins.project_mixin import ProjectMixin
-from .mixins.config_mixin import ConfigMixin
+from .mixins.config_modules import ConfigMixin
 from .mixins.kb_mixin import KbMixin
 from .mixins.ui_mixin import UiMixin
 

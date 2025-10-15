@@ -1,0 +1,1262 @@
+"""Image辅助功能"""
+
+from tkinter import BOTH, LEFT, RIGHT, DISABLED, NORMAL, END, VERTICAL, Y, messagebox, filedialog
+import tkinter as tk
+from tkinter import ttk
+import os
+import threading
+from pathlib import Path
+from PIL import Image, ImageTk
+
+from src.clients.deepseek_client import DeepSeekClient
+from src.clients.image_client import OpenAIImageClient
+from ..utils import sanitize as _sanitize
+from .image_styles import IMAGE_TYPES, HUNYUAN_STYLE_MAP
+from .image_helpers import ImagePromptHelper, DescriptionPromptBuilder
+from .character_prompt_builder import CharacterPromptBuilder
+from .character_manager import CharacterPhotoGallery
+from .character_sheet_builder import CharacterSheetBuilder
+
+
+class CharacterOperationsMixin:
+	"""Image character_ops 功能"""
+	
+	def _prepare_character_enhanced_prompt(self, prompt_cn: str, selected_characters: list) -> str:
+		"""准备包含人物信息的提示词
+		注意：如果有参考人物照片，将使用图生图，不需要描述外貌
+		"""
+		if not selected_characters:
+			return prompt_cn
+		
+		# 检查是否有参考人物照片（将使用图生图）
+		has_photo = any(char.get("photo_path") for char in selected_characters)
+		
+		if has_photo:
+			# 有照片时，只需要动态描述（动作、表情、场景）
+			# 从原描述中移除人物外貌特征，保留动作和场景
+			return f"基于参考图片中的人物，描述场景：\n{prompt_cn}\n\n注意：保持人物外貌不变，只改变动作、表情、场景。"
+		else:
+			# 没有照片时，需要完整的人物描述（文生图）
+			char_descriptions = []
+			for char in selected_characters:
+				if char.get("description"):
+					char_descriptions.append(f"【{char['name']}】{char['description']}")
+			
+			if char_descriptions:
+				characters_text = "\n".join(char_descriptions)
+				return f"人物特征（需保持一致）：\n{characters_text}\n\n场景描述：\n{prompt_cn}"
+		
+		return prompt_cn
+	
+	
+	
+	def _on_char_canvas_configure(self, event) -> None:
+		"""处理人物照片Canvas大小变化事件"""
+		if not self.character_last_image:
+			return
+		
+		# 自动调整图片大小以适应Canvas
+		canvas_width = event.width
+		canvas_height = event.height
+		
+		img_width, img_height = self.character_last_image.size
+		
+		# 计算缩放比例
+		width_ratio = canvas_width / img_width
+		height_ratio = canvas_height / img_height
+		scale_ratio = min(width_ratio, height_ratio, 1.0)  # 不放大，只缩小
+		
+		new_w = int(img_width * scale_ratio)
+		new_h = int(img_height * scale_ratio)
+		
+		# 缩放图片
+		img = self.character_last_image.resize((new_w, new_h), Image.Resampling.LANCZOS)
+		
+		# 转换为PhotoImage
+		self.character_preview_photo = ImageTk.PhotoImage(img)
+		
+		# 更新Label
+		self.char_preview.configure(image=self.character_preview_photo, text="")
+		
+		# 更新Canvas的滚动区域
+		self.char_canvas.configure(scrollregion=(0, 0, new_w, new_h))
+		
+		# 居中显示图片
+		if new_w < canvas_width:
+			x_offset = (canvas_width - new_w) // 2
+		else:
+			x_offset = 0
+			
+		if new_h < canvas_height:
+			y_offset = (canvas_height - new_h) // 2
+		else:
+			y_offset = 0
+		
+		self.char_canvas.coords(self.char_canvas_window, x_offset, y_offset)
+	
+	
+	
+	def _on_extract_characters(self) -> None:
+		"""从当前故事中提取人物列表"""
+		import threading
+		
+		# 获取当前故事内容
+		story_text = self.output.get("1.0", END).strip()
+		if not story_text:
+			messagebox.showwarning("提示", "请先生成故事内容！")
+			return
+		
+		# 获取API配置
+		selected_api = self.outline_gen_api.get() if hasattr(self, 'outline_gen_api') else "DeepSeek"
+		if not hasattr(self, 'api_presets') or selected_api not in self.api_presets:
+			messagebox.showerror("错误", f"未找到API配置: {selected_api}，请检查配置页面")
+			return
+		
+		api_config = self.api_presets[selected_api]
+		api_key = _sanitize(api_config.get("key", ""))
+		if not api_key:
+			messagebox.showwarning("提示", f"API Key 为空，请在'故事生成-配置'页面为 {selected_api} 填写后保存")
+			return
+		
+		# 禁用按钮
+		self.char_btn_extract.config(state=DISABLED)
+		self.char_btn_refresh.config(state=DISABLED)
+		self.status.set("🔍 正在分析故事，提取人物列表...")
+		if hasattr(self, 'update_header_status'):
+			self.update_header_status("提取人物中...", "🔍")
+		
+		def extract_thread():
+			try:
+				# 使用DeepSeek提取人物
+				client = DeepSeekClient(
+					api_key=api_key,
+					base_url=_sanitize(api_config.get("base_url", "")),
+					model=_sanitize(api_config.get("model", "")),
+				)
+				
+				prompt = f"""请从以下故事中提取所有关键人物的名字。
+				
+故事内容：
+{story_text}
+
+请以JSON格式返回人物列表，格式如下：
+{{"characters": ["人物1", "人物2", "人物3"]}}
+
+要求：
+1. 只提取有具体名字的人物
+2. 不要提取"他"、"她"、"某人"等代词
+3. 按重要性排序，主要人物在前
+4. 最多提取10个人物
+"""
+				
+				messages = [{"role": "user", "content": prompt}]
+				response = client.chat(messages, temperature=0.3)
+				
+				# 解析JSON响应
+				import json
+				import re
+				
+				# 尝试提取JSON
+				json_match = re.search(r'\{.*\}', response, re.DOTALL)
+				if json_match:
+					data = json.loads(json_match.group())
+					characters = data.get("characters", [])
+				else:
+					# 如果没有JSON，尝试从文本中提取人物名
+					characters = []
+					lines = response.strip().split('\n')
+					for line in lines:
+						line = line.strip()
+						# 移除序号、引号等
+						line = re.sub(r'^\d+[\.\、\s]*', '', line)
+						line = line.strip('"\'「」『』""''').strip()
+						if line and len(line) <= 10:  # 人名通常不会太长
+							characters.append(line)
+				
+				# 更新人物列表
+				self.character_list = [{"name": name, "description": "", "photo_path": ""} for name in characters]
+				
+				# 立即保存到项目文件
+				self.after(0, lambda: self._save_all_characters_info())
+				
+				# 更新UI（在主线程中）
+				self.after(0, lambda: self._update_character_listbox())
+				self.after(0, lambda: self.status.set(f"✅ 成功提取到 {len(characters)} 个人物并已保存"))
+				if hasattr(self, 'update_header_status'):
+					self.after(0, lambda: self.update_header_status("人物提取完成并保存", "✅"))
+				
+			except Exception as e:
+				error_msg = f"提取人物失败: {str(e)}"
+				print(f"提取人物时出错: {error_msg}")
+				self.after(0, lambda: messagebox.showerror("错误", error_msg))
+				self.after(0, lambda: self.status.set("❌ 提取人物失败"))
+				if hasattr(self, 'update_header_status'):
+					self.after(0, lambda: self.update_header_status("提取失败", "❌"))
+			finally:
+				self.after(0, lambda: self.char_btn_extract.config(state=NORMAL))
+				self.after(0, lambda: self.char_btn_refresh.config(state=NORMAL))
+		
+		threading.Thread(target=extract_thread, daemon=True).start()
+	
+	
+	
+	def _update_character_listbox(self) -> None:
+		"""更新人物列表框"""
+		self.char_listbox.delete(0, END)
+		for char in self.character_list:
+			self.char_listbox.insert(END, char["name"])
+		
+		if self.character_list:
+			# 默认选中第一个
+			self.char_listbox.selection_set(0)
+			self.char_listbox.event_generate("<<ListboxSelect>>")
+			
+			# 更新图片创作页面的参考人物下拉框
+			self._update_reference_character_list()
+	
+	
+	
+	def _on_character_selected(self, event=None) -> None:
+		"""当选择人物时的回调"""
+		selection = self.char_listbox.curselection()
+		if not selection:
+			return
+		
+		index = selection[0]
+		
+		# 边界检查
+		if index < 0 or index >= len(self.character_list):
+			print(f"⚠️ 人物索引越界：index={index}, list_len={len(self.character_list)}")
+			return
+		
+		character = self.character_list[index]
+		
+		# 更新特征描述文本框
+		self.char_txt_desc.config(state=NORMAL)
+		self.char_txt_desc.delete("1.0", END)
+		
+		if character["description"]:
+			self.char_txt_desc.insert("1.0", character["description"])
+			self.char_btn_copy_desc.config(state=NORMAL)
+			self.char_btn_gen_photo.config(state=NORMAL)
+		else:
+			self.char_txt_desc.insert("1.0", f"尚未生成特征描述，点击下方按钮为\"{character['name']}\"生成详细特征...")
+			self.char_btn_copy_desc.config(state=DISABLED)
+			self.char_btn_gen_photo.config(state=DISABLED)
+		
+		self.char_txt_desc.config(state=DISABLED)
+		
+		# 启用查看照片画廊和生成设定表按钮（只要有项目就可以使用）
+		if self.current_project:
+			self.char_btn_view_gallery.config(state=NORMAL)
+			if hasattr(self, 'char_btn_generate_sheet'):
+				self.char_btn_generate_sheet.config(state=NORMAL)
+		else:
+			self.char_btn_view_gallery.config(state=DISABLED)
+			if hasattr(self, 'char_btn_generate_sheet'):
+				self.char_btn_generate_sheet.config(state=DISABLED)
+		
+		# 启用生成特征描述按钮
+		self.char_btn_gen_desc.config(state=NORMAL)
+	
+	
+	
+	def _on_generate_character_description(self) -> None:
+		"""生成选中人物的特征描述"""
+		import threading
+		
+		selection = self.char_listbox.curselection()
+		if not selection:
+			return
+		
+		index = selection[0]
+		character = self.character_list[index]
+		character_name = character["name"]
+		
+		# 获取故事内容
+		story_text = self.output.get("1.0", END).strip()
+		
+		# 获取API配置
+		selected_api = self.outline_gen_api.get() if hasattr(self, 'outline_gen_api') else "DeepSeek"
+		if not hasattr(self, 'api_presets') or selected_api not in self.api_presets:
+			messagebox.showerror("错误", f"未找到API配置: {selected_api}")
+			return
+		
+		api_config = self.api_presets[selected_api]
+		api_key = _sanitize(api_config.get("key", ""))
+		if not api_key:
+			messagebox.showwarning("提示", f"API Key 为空，请在'故事生成-配置'页面配置")
+			return
+		
+		# 禁用按钮
+		self.char_btn_gen_desc.config(state=DISABLED)
+		self.status.set(f"✨ 正在分析\"{character_name}\"的特征...")
+		if hasattr(self, 'update_header_status'):
+			self.update_header_status(f"生成特征描述...", "✨")
+		
+		def generate_desc_thread():
+			try:
+				client = DeepSeekClient(
+					api_key=api_key,
+					base_url=_sanitize(api_config.get("base_url", "")),
+					model=_sanitize(api_config.get("model", "")),
+				)
+				
+				prompt = f"""请从以下故事中提取"{character_name}"的详细外貌特征描述。
+
+故事内容：
+{story_text}
+
+请详细描述"{character_name}"的外貌特征，包括：
+1. 性别、年龄段
+2. 面部特征（脸型、五官、表情等）
+3. 身材体型
+4. 发型发色
+5. 穿着打扮
+6. 其他显著特征
+
+要求：
+- 描述要具体、生动，适合用于生成人物肖像画
+- 只描述外貌，不要包含性格、经历等内容
+- 字数控制在150-300字
+- 如果故事中没有明确描述某些特征，可以根据人物设定合理推测
+"""
+				
+				messages = [{"role": "user", "content": prompt}]
+				response = client.chat(messages, temperature=0.7)
+				
+				# 更新人物描述
+				self.character_list[index]["description"] = response.strip()
+				
+				# 保存到项目文件
+				self.after(0, lambda: self._save_all_characters_info())
+				
+				# 更新UI
+				self.after(0, lambda: self._update_character_description_display(index))
+				self.after(0, lambda: self.status.set(f"✅ 已生成\"{character_name}\"的特征描述并保存"))
+				if hasattr(self, 'update_header_status'):
+					self.after(0, lambda: self.update_header_status("特征描述完成", "✅"))
+				
+			except Exception as e:
+				error_msg = f"生成特征描述失败: {str(e)}"
+				print(f"生成特征描述时出错: {error_msg}")
+				self.after(0, lambda: messagebox.showerror("错误", error_msg))
+				self.after(0, lambda: self.status.set("❌ 生成特征描述失败"))
+				if hasattr(self, 'update_header_status'):
+					self.after(0, lambda: self.update_header_status("生成失败", "❌"))
+			finally:
+				self.after(0, lambda: self.char_btn_gen_desc.config(state=NORMAL))
+		
+		threading.Thread(target=generate_desc_thread, daemon=True).start()
+	
+	
+	
+	def _update_character_description_display(self, index: int) -> None:
+		"""更新特征描述显示"""
+		character = self.character_list[index]
+		
+		self.char_txt_desc.config(state=NORMAL)
+		self.char_txt_desc.delete("1.0", END)
+		self.char_txt_desc.insert("1.0", character["description"])
+		self.char_txt_desc.config(state=DISABLED)
+		
+		# 启用相关按钮
+		self.char_btn_copy_desc.config(state=NORMAL)
+		self.char_btn_gen_photo.config(state=NORMAL)
+	
+	
+	
+	def _on_copy_character_description(self) -> None:
+		"""复制特征描述到剪贴板"""
+		description = self.char_txt_desc.get("1.0", END).strip()
+		if description:
+			self.clipboard_clear()
+			self.clipboard_append(description)
+			self.status.set("📋 特征描述已复制到剪贴板")
+	
+	
+	
+	def _on_generate_character_photo(self) -> None:
+		"""生成选中人物的照片"""
+		print("🔔 _on_generate_character_photo 被调用")
+		
+		import threading
+		from src.clients.hunyuan_image_client import HunyuanImageClient
+		import base64
+		from io import BytesIO
+		
+		selection = self.char_listbox.curselection()
+		print(f"📋 当前选择: {selection}")
+		
+		if not selection:
+			print("⚠️ 没有选择人物")
+			messagebox.showwarning("提示", "请先从列表中选择一个人物！")
+			return
+		
+		index = selection[0]
+		character = self.character_list[index]
+		character_name = character["name"]
+		description = character.get("description", "")
+		
+		print(f"👤 选中人物: {character_name}")
+		print(f"📝 描述长度: {len(description) if description else 0}")
+		
+		if not description:
+			messagebox.showwarning("提示", "请先生成人物特征描述！")
+			return
+		
+		# 检查当前项目
+		if not self.current_project:
+			messagebox.showwarning("提示", "请先创建或打开一个项目，人物照片需要保存到项目中！")
+			return
+		
+		print(f"📁 当前项目: {self.current_project}")
+		
+		# 获取图片风格/类型和额外描述
+		style = self.char_img_style.get()
+		extra_desc = self.char_txt_extra.get("1.0", END).strip()
+		
+		# 获取视角、表情和批量生成选项
+		view_angle = self.char_view_angle.get() if hasattr(self, 'char_view_angle') else "front"
+		expression = self.char_expression.get() if hasattr(self, 'char_expression') else "neutral"
+		batch_generate = self.char_batch_generate.get() if hasattr(self, 'char_batch_generate') else False
+		batch_expressions = self.char_batch_expressions.get() if hasattr(self, 'char_batch_expressions') else False
+		
+		# 获取服装/造型变体选项
+		variant_mode = self.char_variant_mode.get() if hasattr(self, 'char_variant_mode') else "none"
+		variant_preset = self.char_variant_preset.get() if hasattr(self, 'char_variant_preset') else "casual"
+		variant_custom = self.char_variant_custom.get() if hasattr(self, 'char_variant_custom') else ""
+		
+		# 获取一致性级别（用户选择）
+		consistency_level = self.char_consistency_level.get() if hasattr(self, 'char_consistency_level') else "high"
+		
+		# 确定变体值
+		if variant_mode == "preset":
+			variant_value = variant_preset
+		elif variant_mode == "custom":
+			variant_value = variant_custom
+		else:
+			variant_value = ""
+		
+		print(f"🎨 图片风格/类型: {style}")
+		print(f"📝 额外描述: {extra_desc}")
+		print(f"👁️ 视角: {view_angle}")
+		print(f"😊 表情: {expression}")
+		print(f"🎯 批量生成角度: {batch_generate}")
+		print(f"😊 批量生成表情: {batch_expressions}")
+		print(f"👔 服装变体模式: {variant_mode}")
+		if variant_mode != "none":
+			print(f"👔 服装变体值: {variant_value}")
+		print(f"🎯 一致性级别: {consistency_level}")
+		
+		# 角度名称映射
+		angle_names = {
+			"front": "正面",
+			"side": "侧面", 
+			"back": "背面",
+			"three-quarter": "斜侧"
+		}
+		
+		# 表情名称映射
+		expression_names = {
+			"neutral": "中性",
+			"happy": "开心",
+			"sad": "悲伤",
+			"angry": "愤怒",
+			"surprised": "惊讶"
+		}
+		
+		# 确定要生成的视角列表
+		if batch_generate:
+			angles_to_generate = [("front", "正面"), ("side", "侧面"), ("back", "背面")]
+			print(f"📦 批量角度模式：将生成 {len(angles_to_generate)} 个角度")
+		else:
+			angle_name = angle_names.get(view_angle, "正面")
+			angles_to_generate = [(view_angle, angle_name)]
+			print(f"📸 单一角度：{angle_name}")
+		
+		# 确定要生成的表情列表
+		if batch_expressions:
+			expressions_to_generate = [
+				("neutral", "中性"), ("happy", "开心"), ("sad", "悲伤"),
+				("angry", "愤怒"), ("surprised", "惊讶")
+			]
+			print(f"😊 批量表情模式：将生成 {len(expressions_to_generate)} 种表情")
+		else:
+			expression_name = expression_names.get(expression, "中性")
+			expressions_to_generate = [(expression, expression_name)]
+			print(f"😊 单一表情：{expression_name}")
+		
+		# 计算总数量
+		total_count = len(angles_to_generate) * len(expressions_to_generate)
+		print(f"📦 总计将生成：{total_count} 张照片 ({len(angles_to_generate)}角度 × {len(expressions_to_generate)}表情)")
+		
+		# 确定批量生成类型（用于一致性优化）
+		batch_type = "none"
+		if batch_generate and batch_expressions:
+			batch_type = "angle+expression"
+		elif batch_generate:
+			batch_type = "angle"
+		elif batch_expressions:
+			batch_type = "expression"
+		elif variant_mode != "none":
+			batch_type = "variant"
+		
+		print(f"🎯 批量类型: {batch_type}")
+		print(f"🎯 一致性优化: 已启用（medium级别）")
+		
+		# 禁用按钮
+		self.char_btn_gen_photo.config(state=DISABLED)
+		self.status.set(f"🎨 正在生成\"{character_name}\"的照片 (共{total_count}张)...")
+		if hasattr(self, 'update_header_status'):
+			self.update_header_status(f"生成人物照片...", "🎨")
+		
+		def generate_photo_thread():
+			generated_photos = []  # 存储生成的照片信息
+			
+			try:
+				print(f"\n{'='*60}\n开始生成人物照片: {character_name}\n{'='*60}")
+				print(f"📦 将生成 {total_count} 张照片")
+				
+				# 检查是否配置了API
+				img_api_type = self.img_api_type.get() if hasattr(self, 'img_api_type') else "openai"
+				print(f"图片API类型: {img_api_type}")
+				
+				# 双重循环生成每个角度和表情的组合
+				current_index = 0
+				for angle, angle_name in angles_to_generate:
+					for expr, expr_name in expressions_to_generate:
+						current_index += 1
+						print(f"\n{'='*50}")
+						print(f"📸 [{current_index}/{total_count}] 正在生成：{angle_name}视图 + {expr_name}表情")
+						print(f"{'='*50}\n")
+						
+						# 更新状态
+						self.after(0, lambda i=current_index, a=angle_name, e=expr_name: self.status.set(
+							f"🎨 [{i}/{total_count}] 正在生成\"{character_name}\"的{a}照片（{e}）..."
+						))
+						if hasattr(self, 'update_header_status'):
+							self.after(0, lambda i=current_index, a=angle_name, e=expr_name: self.update_header_status(
+								f"[{i}/{total_count}] {a}+{e}...", "🎨"
+							))
+						
+						if img_api_type == "hunyuan":
+							# 使用腾讯混元
+							print(f"使用腾讯混元API - {angle_name}视图 + {expr_name}表情")
+							secret_id = self.hunyuan_secret_id.get() if hasattr(self, 'hunyuan_secret_id') else ""
+							secret_key = self.hunyuan_secret_key.get() if hasattr(self, 'hunyuan_secret_key') else ""
+							
+							if not secret_id or not secret_key:
+								print("腾讯混元API密钥未配置")
+								self.after(0, lambda: messagebox.showerror("错误", "请先在配置页面设置腾讯混元API密钥"))
+								self.after(0, lambda: self.status.set("❌ 未配置API密钥"))
+								if hasattr(self, 'update_header_status'):
+									self.after(0, lambda: self.update_header_status("未配置API", "❌"))
+								return
+							
+							# 🎯 使用专业的提示词构建器（使用当前角度、表情、变体和一致性优化）
+							composition = "upper_body" if style == "证件照" else "full_body"
+							
+							full_prompt = CharacterPromptBuilder.build_character_photo_prompt(
+								description=description,
+								style=style,
+								view_angle=angle,  # 使用当前循环的角度
+								expression=expr,   # 使用当前循环的表情
+								composition=composition,
+								extra_details=extra_desc,
+								language="zh",
+								default_nationality="chinese",
+								variant=variant_value,
+								variant_mode=variant_mode,
+								consistency_level=consistency_level,  # 使用用户选择的一致性级别
+								batch_type=batch_type  # 传递批量类型
+							)
+							
+							# 针对腾讯混元优化（限制256字符）
+							full_prompt = CharacterPromptBuilder.optimize_for_api(full_prompt, "hunyuan", 256)
+							
+							print(f"📝 腾讯混元提示词 ({angle_name}+{expr_name}): {full_prompt}")
+						
+							self.after(0, lambda a=angle_name, e=expr_name: self.status.set(f"🚀 正在调用腾讯混元API生成{a}+{e}照片..."))
+							
+							client = HunyuanImageClient(secret_id=secret_id, secret_key=secret_key)
+							result = client.generate(
+								prompt=full_prompt,
+								resolution="1024:1024",
+								style="201"
+							)
+							
+							# 解析base64图片
+							img_base64 = result["ResultImage"]
+							img_data = base64.b64decode(img_base64)
+							img = Image.open(BytesIO(img_data))
+							
+						else:
+							# 使用OpenAI DALL-E或兼容API
+							print(f"使用OpenAI或兼容API - {angle_name}视图 + {expr_name}表情")
+							api_key = self.img_api_key.get()
+							base_url = self.img_base_url.get() if hasattr(self, 'img_base_url') and self.img_base_url.get() else None
+							model = self.img_model.get() if hasattr(self, 'img_model') else "dall-e-3"
+							
+							print(f"API Key存在: {bool(api_key)}, Base URL: {base_url}, Model: {model}")
+							
+							if not api_key:
+								print("图片API密钥未配置")
+								self.after(0, lambda: messagebox.showerror("错误", "请先在'图片生成-配置'页面设置API密钥"))
+								self.after(0, lambda: self.status.set("❌ 未配置API密钥"))
+								if hasattr(self, 'update_header_status'):
+									self.after(0, lambda: self.update_header_status("未配置API", "❌"))
+								return
+							
+							# 🎯 使用专业的提示词构建器（英文版，使用当前角度、表情、变体和一致性优化）
+							composition = "upper_body" if style == "证件照" else "full_body"
+							
+							full_prompt = CharacterPromptBuilder.build_character_photo_prompt(
+								description=description,
+								style=style,
+								view_angle=angle,  # 使用当前循环的角度
+								expression=expr,   # 使用当前循环的表情
+								composition=composition,
+								extra_details=extra_desc,
+								language="en",
+								default_nationality="chinese",
+								variant=variant_value,
+								variant_mode=variant_mode,
+								consistency_level=consistency_level,  # 使用用户选择的一致性级别
+								batch_type=batch_type  # 传递批量类型
+							)
+							
+							# 针对OpenAI优化（DALL-E 3建议1000字符内）
+							full_prompt = CharacterPromptBuilder.optimize_for_api(full_prompt, "openai", 1000)
+							
+							print(f"📝 OpenAI提示词 ({angle_name}+{expr_name}): {full_prompt[:200]}...")
+						
+							self.after(0, lambda a=angle_name, e=expr_name: self.status.set(f"🚀 正在调用图片API生成{a}+{e}照片..."))
+							
+							print(f"创建OpenAIImageClient...")
+							client = OpenAIImageClient(api_key=api_key, base_url=base_url, model=model)
+							print(f"调用generate方法...")
+							results = client.generate(full_prompt, size="1024x1024")
+							print(f"收到结果: {len(results) if results else 0} 张图片")
+							
+							# 获取第一张图片
+							if results:
+								img = results[0].image
+							else:
+								raise RuntimeError("API未返回任何图片")
+						
+						# 保存图片到内存（最后一张用于预览）
+						self.character_last_image = img
+						
+						# 保存当前角度和表情的照片
+						print(f"✅ [{current_index}/{total_count}] {angle_name}+{expr_name}照片生成成功")
+					
+						# 构建文件名（包含角度、表情和变体）
+						filename_parts = [character_name]
+						
+						# 添加角度信息（如果有多个角度或不是正面）
+						if batch_generate or angle != "front":
+							filename_parts.append(angle_name)
+						
+						# 添加表情信息（如果有多种表情或不是中性表情）
+						if batch_expressions or expr != "neutral":
+							filename_parts.append(expr_name)
+						
+						# 添加变体信息（如果使用了变体）
+						if variant_mode == "preset" and variant_value:
+							# 变体名称映射
+							variant_name_map = {
+								"formal": "正装",
+								"casual": "休闲",
+								"sport": "运动",
+								"traditional": "古装",
+								"artistic": "艺术",
+								"professional": "职业"
+							}
+							variant_name = variant_name_map.get(variant_value, variant_value)
+							filename_parts.append(variant_name)
+						elif variant_mode == "custom" and variant_value and not variant_value.startswith("例如"):
+							# 自定义变体，取前10个字符作为标识
+							variant_short = variant_value[:10].replace(" ", "_")
+							filename_parts.append(variant_short)
+						
+						filename = "_".join(filename_parts) + ".png"
+						
+						# 保存照片
+						saved_path = self._auto_save_character_photo_with_name(img, character_name, filename)
+						
+						if saved_path:
+							print(f"💾 已保存: {saved_path}")
+							generated_photos.append({
+								"angle": angle,
+								"angle_name": angle_name,
+								"expression": expr,
+								"expression_name": expr_name,
+								"path": saved_path,
+								"image": img
+							})
+					
+				# 所有角度生成完毕后，在主线程中更新UI
+				def update_ui_and_save():
+					# 更新预览（显示最后一张）
+					if generated_photos:
+						last_photo = generated_photos[-1]
+						self._update_character_photo_preview(last_photo["image"])
+						
+						# 获取项目名称
+						if self.current_project:
+							project_name = self.current_project.metadata.get("name", "未命名项目")
+						else:
+							project_name = "未知项目"
+						
+					# 根据生成数量显示不同的消息
+					if len(generated_photos) > 1:
+						# 构建照片列表描述
+						photo_desc_list = []
+						for p in generated_photos:
+							desc_parts = []
+							if p["angle_name"]:
+								desc_parts.append(p["angle_name"])
+							if p.get("expression_name") and p["expression_name"] != "中性":
+								desc_parts.append(p["expression_name"])
+							photo_desc_list.append("+".join(desc_parts) if desc_parts else "照片")
+						
+						photo_list_str = "、".join(photo_desc_list)
+						self.status.set(f"✅ 成功生成{len(generated_photos)}张照片（{photo_list_str}）并保存到项目 [{project_name}]")
+						
+						# 构建详细消息
+						detail_list = "\n".join([f"• {desc}" for desc in photo_desc_list])
+						messagebox.showinfo("成功", f"已成功生成并保存 {len(generated_photos)} 张照片！\n\n{detail_list}\n\n保存位置：项目/characters/{character_name}_xxx.png")
+					else:
+						photo = generated_photos[0]
+						desc_parts = [photo["angle_name"]]
+						if photo.get("expression_name") and photo["expression_name"] != "中性":
+							desc_parts.append(photo["expression_name"])
+						desc = "+".join(desc_parts)
+						self.status.set(f"✅ 成功生成并保存\"{character_name}\"的{desc}照片到项目 [{project_name}]")
+					
+					if not generated_photos:
+						self.status.set(f"❌ 照片生成失败或未保存")
+					# 启用保存按钮
+					self.char_btn_save_photo.config(state=NORMAL)
+					# 更新参考人物列表
+					self._update_reference_character_list()
+					# 更新顶部状态
+					if hasattr(self, 'update_header_status'):
+						self.update_header_status("照片生成完成", "✅")
+				
+				self.after(0, update_ui_and_save)
+				
+			except Exception as e:
+				import traceback
+				error_detail = traceback.format_exc()
+				error_msg = f"生成照片失败: {str(e)}"
+				print(f"\n{'='*60}\n生成人物照片时发生错误：\n{error_detail}\n{'='*60}\n")
+				
+				# 显示更详细的错误信息
+				if "401" in str(e) or "authentication" in str(e).lower():
+					error_msg = "API密钥无效或已过期，请检查配置"
+				elif "timeout" in str(e).lower():
+					error_msg = "API请求超时，请检查网络连接"
+				elif "rate" in str(e).lower() or "quota" in str(e).lower():
+					error_msg = "API配额用尽或请求频率过高"
+				
+				self.after(0, lambda msg=error_msg: messagebox.showerror("生成失败", msg))
+				self.after(0, lambda: self.status.set("❌ 生成照片失败"))
+				if hasattr(self, 'update_header_status'):
+					self.after(0, lambda: self.update_header_status("生成失败", "❌"))
+			finally:
+				self.after(0, lambda: self.char_btn_gen_photo.config(state=NORMAL))
+		
+		threading.Thread(target=generate_photo_thread, daemon=True).start()
+	
+	
+	
+	def _load_project_characters(self) -> None:
+		"""加载当前项目的所有人物信息（包括没有照片的人物）"""
+		# 清空之前的人物列表
+		self.character_list.clear()
+		
+		if not self.current_project:
+			print("⚠️ 没有当前项目，无法加载人物信息")
+			self._update_reference_character_list()
+			return
+		
+		try:
+			import json
+			from pathlib import Path
+			
+			# 获取项目的 characters 文件夹
+			characters_dir = self.current_project.project_dir / "characters"
+			
+			if not characters_dir.exists():
+				print(f"📁 项目尚无人物文件夹：{characters_dir}")
+				self._update_reference_character_list()
+				return
+			
+			# 读取人物描述信息（这是主要数据源）
+			characters_info_path = characters_dir / "characters_info.json"
+			characters_info = {}
+			if characters_info_path.exists():
+				try:
+					with open(characters_info_path, 'r', encoding='utf-8') as f:
+						characters_info = json.load(f)
+					print(f"📖 已加载人物描述文件：{characters_info_path}")
+				except Exception as e:
+					print(f"⚠️ 读取人物描述文件失败：{str(e)}")
+			
+			if not characters_info:
+				print(f"📋 项目中暂无保存的人物信息")
+				self._update_reference_character_list()
+				return
+			
+			# 从JSON加载所有人物（包括没有照片的）
+			loaded_count = 0
+			for character_name, char_data in characters_info.items():
+				description = char_data.get("description", "")
+				photo_path = char_data.get("photo_path", "")
+				
+				# 验证照片路径是否有效
+				if photo_path:
+					photo_file = Path(photo_path)
+					if not photo_file.exists():
+						print(f"⚠️ 照片文件不存在：{photo_path}")
+						photo_path = ""  # 重置为空
+				
+				self.character_list.append({
+					"name": character_name,
+					"description": description,
+					"photo_path": str(photo_path) if photo_path else ""
+				})
+				loaded_count += 1
+			
+			# 统计有照片的人物数量
+			photo_count = sum(1 for char in self.character_list if char.get("photo_path"))
+			
+			print(f"✅ 已加载 {loaded_count} 个人物（其中 {photo_count} 个有照片）")
+			
+			# 显示人物列表
+			character_names = [char['name'] for char in self.character_list]
+			print(f"✅ 已加载项目人物：{character_names}")
+			
+			# 显示人物描述预览
+			for char in self.character_list:
+				desc_preview = char["description"][:80] + "..." if len(char["description"]) > 80 else char["description"]
+				if desc_preview:
+					print(f"   📝 {char['name']}: {desc_preview}")
+				else:
+					print(f"   📝 {char['name']}: （尚无描述）")
+			
+			# 更新列表框显示
+			self._update_character_listbox()
+			
+			# 更新参考人物列表
+			self._update_reference_character_list()
+			
+		except Exception as e:
+			print(f"❌ 加载项目人物信息失败：{str(e)}")
+			import traceback
+			traceback.print_exc()
+			self._update_reference_character_list()
+	
+	
+	
+	def _update_reference_character_list(self) -> None:
+		"""更新图片创作页面的参考人物列表（仅当前项目，支持多选）"""
+		# 清空列表框
+		self.ref_character_listbox.delete(0, END)
+		
+		# 添加"不使用参考"选项
+		self.ref_character_listbox.insert(END, "❌ 不使用参考")
+		
+		# 只显示当前项目中已生成照片的人物
+		character_names = ["不使用参考"]
+		for char in self.character_list:
+			photo_path = char.get("photo_path")
+			if photo_path:
+				# 验证照片文件是否存在
+				from pathlib import Path
+				if Path(photo_path).exists():
+					character_names.append(char["name"])
+					self.ref_character_listbox.insert(END, f"✅ {char['name']}")
+				else:
+					print(f"⚠️ 人物照片不存在：{photo_path}")
+		
+		# 获取项目名称
+		if self.current_project:
+			project_name = self.current_project.metadata.get("name", "未命名项目")
+		else:
+			project_name = "无项目"
+		print(f"📋 已更新参考人物列表 [项目: {project_name}]：{character_names}")
+	
+	
+	
+	def _get_selected_reference_characters(self) -> list:
+		"""获取选中的参考人物列表"""
+		selected_indices = self.ref_character_listbox.curselection()
+		selected_characters = []
+		
+		for idx in selected_indices:
+			item_text = self.ref_character_listbox.get(idx)
+			# 去除前面的emoji和空格
+			if item_text.startswith("✅ "):
+				char_name = item_text[2:].strip()
+				# 查找对应人物的照片路径和描述
+				for char in self.character_list:
+					if char["name"] == char_name and char.get("photo_path"):
+						selected_characters.append({
+							"name": char_name,
+							"photo_path": char["photo_path"],
+							"description": char.get("description", "")
+						})
+						break
+		
+		return selected_characters
+	
+	
+	
+	def _update_character_photo_preview(self, img: Image.Image) -> None:
+		"""更新人物照片预览"""
+		canvas_width = self.char_canvas.winfo_width()
+		canvas_height = self.char_canvas.winfo_height()
+		
+		# 如果Canvas还没有初始化大小，使用默认值
+		if canvas_width <= 1:
+			canvas_width = 400
+		if canvas_height <= 1:
+			canvas_height = 400
+		
+		img_width, img_height = img.size
+		
+		# 计算缩放比例
+		width_ratio = canvas_width / img_width
+		height_ratio = canvas_height / img_height
+		scale_ratio = min(width_ratio, height_ratio, 1.0)
+		
+		new_w = int(img_width * scale_ratio)
+		new_h = int(img_height * scale_ratio)
+		
+		# 缩放图片
+		resized_img = img.resize((new_w, new_h), Image.Resampling.LANCZOS)
+		
+		# 转换为PhotoImage
+		self.character_preview_photo = ImageTk.PhotoImage(resized_img)
+		
+		# 更新Label
+		self.char_preview.configure(image=self.character_preview_photo, text="")
+		
+		# 更新Canvas的滚动区域
+		self.char_canvas.configure(scrollregion=(0, 0, new_w, new_h))
+		
+		# 居中显示
+		if new_w < canvas_width:
+			x_offset = (canvas_width - new_w) // 2
+		else:
+			x_offset = 0
+		
+		if new_h < canvas_height:
+			y_offset = (canvas_height - new_h) // 2
+		else:
+			y_offset = 0
+		
+		self.char_canvas.coords(self.char_canvas_window, x_offset, y_offset)
+	
+	
+	
+	def _save_all_characters_info(self) -> bool:
+		"""保存所有人物信息到characters_info.json（包括没有照片的人物）"""
+		try:
+			import json
+			from pathlib import Path
+			
+			# 检查是否有当前项目
+			if not self.current_project:
+				print("⚠️ 没有当前项目，无法保存人物信息")
+				return False
+			
+			# 确定保存目录
+			characters_dir = self.current_project.project_dir / "characters"
+			characters_dir.mkdir(parents=True, exist_ok=True)
+			
+			# 构建保存数据
+			characters_info = {}
+			for char in self.character_list:
+				char_name = char.get("name", "")
+				if char_name:
+					characters_info[char_name] = {
+						"description": char.get("description", ""),
+						"photo_path": char.get("photo_path", "")
+					}
+			
+			# 保存到文件
+			characters_info_path = characters_dir / "characters_info.json"
+			with open(characters_info_path, 'w', encoding='utf-8') as f:
+				json.dump(characters_info, f, ensure_ascii=False, indent=2)
+			
+			print(f"💾 已保存 {len(characters_info)} 个人物信息到：{characters_info_path}")
+			return True
+			
+		except Exception as e:
+			print(f"❌ 保存人物信息失败：{str(e)}")
+			import traceback
+			traceback.print_exc()
+			return False
+	
+	
+	
+	def _auto_save_character_photo(self, index: int, img: Image.Image, character_name: str) -> str:
+		"""自动保存人物照片到当前项目的characters文件夹，并保存描述信息"""
+		try:
+			import re
+			import json
+			from pathlib import Path
+			
+			# 检查是否有当前项目
+			if not self.current_project:
+				messagebox.showwarning("提示", "请先创建或打开一个项目，人物照片将保存到项目目录中")
+				return ""
+			
+			# 确定保存目录：项目目录/characters/
+			self.character_photos_dir = self.current_project.project_dir / "characters"
+			
+			# 确保文件夹存在
+			if not self.character_photos_dir.exists():
+				print(f"📁 创建人物照片文件夹：{self.character_photos_dir}")
+			self.character_photos_dir.mkdir(parents=True, exist_ok=True)
+			
+			# 验证文件夹创建成功
+			if not self.character_photos_dir.exists():
+				print(f"❌ 文件夹创建失败：{self.character_photos_dir}")
+				return ""
+			
+			# 生成文件名（只使用人物名称，不加时间戳，这样同一人物会覆盖旧照片）
+			clean_name = re.sub(r'[^\w\s\u4e00-\u9fff-]', '', character_name)
+			filename = f"{clean_name}.png"
+			
+			save_path = self.character_photos_dir / filename
+			print(f"💾 准备保存到：{save_path}")
+			
+			img.save(str(save_path))
+			
+			# 验证文件保存成功
+			if not save_path.exists():
+				print(f"❌ 文件保存失败：{save_path}")
+				return ""
+			
+			# 更新人物列表中的照片路径
+			self.character_list[index]["photo_path"] = str(save_path)
+			
+			# 保存人物描述到 JSON 文件
+			characters_info_path = self.character_photos_dir / "characters_info.json"
+			
+			# 读取现有的描述信息（如果存在）
+			characters_info = {}
+			if characters_info_path.exists():
+				try:
+					with open(characters_info_path, 'r', encoding='utf-8') as f:
+						characters_info = json.load(f)
+				except:
+					pass
+			
+			# 更新当前人物的描述
+			characters_info[character_name] = {
+				"description": self.character_list[index].get("description", ""),
+				"photo_path": str(save_path)
+			}
+			
+			# 保存到文件
+			with open(characters_info_path, 'w', encoding='utf-8') as f:
+				json.dump(characters_info, f, ensure_ascii=False, indent=2)
+			
+			print(f"✅ 人物照片已自动保存到项目：{save_path}")
+			print(f"📊 文件大小：{save_path.stat().st_size / 1024:.2f} KB")
+			print(f"💾 人物描述已保存到：{characters_info_path}")
+			return str(save_path)
+			
+		except Exception as e:
+			print(f"❌ 自动保存失败：{str(e)}")
+			import traceback
+			traceback.print_exc()
+			return ""
+	
+	
+	
+	def _auto_save_character_photo_with_name(self, img: Image.Image, character_name: str, filename: str) -> str:
+		"""自动保存人物照片（支持自定义文件名，用于多角度生成）"""
+		try:
+			from pathlib import Path
+			
+			# 检查是否有当前项目
+			if not self.current_project:
+				return ""
+			
+			# 确定保存目录：项目目录/characters/
+			self.character_photos_dir = self.current_project.project_dir / "characters"
+			self.character_photos_dir.mkdir(parents=True, exist_ok=True)
+			
+			# 使用提供的文件名
+			save_path = self.character_photos_dir / filename
+			print(f"💾 保存照片到：{save_path}")
+			
+			img.save(str(save_path))
+			
+			if save_path.exists():
+				print(f"✅ 照片已保存：{save_path} ({save_path.stat().st_size / 1024:.2f} KB)")
+				return str(save_path)
+			else:
+				print(f"❌ 文件保存失败：{save_path}")
+				return ""
+			
+		except Exception as e:
+			print(f"❌ 保存失败：{str(e)}")
+			import traceback
+			traceback.print_exc()
+			return ""
+	
+	
+	
+	def _on_save_character_photo(self) -> None:
+		"""额外保存人物照片副本（可选）"""
+		if not self.character_last_image:
+			messagebox.showwarning("提示", "没有可保存的照片")
+			return
+		
+		selection = self.char_listbox.curselection()
+		if not selection:
+			return
+		
+		index = selection[0]
+		character = self.character_list[index]
+		character_name = character["name"]
+		
+		# 弹出保存对话框，允许用户保存副本到其他位置
+		file_path = filedialog.asksaveasfilename(
+			defaultextension=".png",
+			filetypes=[("PNG图片", "*.png"), ("JPEG图片", "*.jpg"), ("所有文件", "*.*")],
+			initialfile=f"{character_name}_photo.png"
+		)
+		
+		if file_path:
+			try:
+				self.character_last_image.save(file_path)
+				self.status.set(f"✅ 照片副本已保存：{file_path}")
+				messagebox.showinfo("成功", f"照片副本已保存到：\n{file_path}")
+			except Exception as e:
+				messagebox.showerror("错误", f"保存失败：{str(e)}")
+	
+	
+	
+	def _on_view_character_gallery(self) -> None:
+		"""打开人物照片画廊"""
+		selection = self.char_listbox.curselection()
+		if not selection:
+			messagebox.showwarning("提示", "请先选择一个人物！")
+			return
+		
+		if not self.current_project:
+			messagebox.showwarning("提示", "请先创建或打开一个项目！")
+			return
+		
+		index = selection[0]
+		character = self.character_list[index]
+		character_name = character["name"]
+		
+		# 获取characters目录
+		from pathlib import Path
+		characters_dir = Path(self.current_project.project_dir) / "characters"
+		
+		# 打开照片画廊
+		try:
+			gallery = CharacterPhotoGallery(
+				parent=self,
+				character_name=character_name,
+				photos_dir=characters_dir,
+				on_photo_select=lambda path: self.status.set(f"✅ 已选择照片: {path.name}")
+			)
+		except Exception as e:
+			messagebox.showerror("错误", f"打开照片画廊失败：{str(e)}")
+	
+	
+	
+	def _on_generate_character_sheet(self) -> None:
+		"""生成角色设定表"""
+		selection = self.char_listbox.curselection()
+		if not selection:
+			messagebox.showwarning("提示", "请先选择一个人物！")
+			return
+		
+		if not self.current_project:
+			messagebox.showwarning("提示", "请先创建或打开一个项目！")
+			return
+		
+		index = selection[0]
+		character = self.character_list[index]
+		character_name = character["name"]
+		character_description = character.get("description", "")
+		
+		# 获取characters目录
+		from pathlib import Path
+		characters_dir = Path(self.current_project.project_dir) / "characters"
+		
+		if not characters_dir.exists():
+			messagebox.showwarning("提示", f"未找到角色照片目录！\n请先生成人物照片。")
+			return
+		
+		# 弹出布局选择对话框
+		layout_dialog = tk.Toplevel(self)
+		layout_dialog.title("选择角色设定表布局")
+		layout_dialog.geometry("500x400")
+		layout_dialog.configure(bg="#2b2b2b")
+		layout_dialog.transient(self)
+		layout_dialog.grab_set()
+		
+		# 标题
+		title_label = tk.Label(layout_dialog, text=f"为 {character_name} 生成角色设定表", 
+							   font=("", 16, "bold"), bg="#2b2b2b", fg="white")
+		title_label.pack(pady=15)
+		
+		# 布局选择
+		layout_frame = ttk.LabelFrame(layout_dialog, text="📐 选择布局模板", padding=15)
+		layout_frame.pack(fill="both", expand=True, padx=20, pady=(0, 15))
+		
+		selected_layout = tk.StringVar(value="standard_3x5")
+		
+		for layout_key, layout_config in CharacterSheetBuilder.LAYOUTS.items():
+			desc = f"{layout_config['name']}\n（{layout_config['rows']}行 × {layout_config['cols']}列）"
+			rb = tk.Radiobutton(
+				layout_frame, text=desc, variable=selected_layout, value=layout_key,
+				bg="#f0f0f0", font=("", 11), anchor="w", padx=10, pady=8
+			)
+			rb.pack(fill="x", pady=5)
+		
+		# 选项
+		options_frame = ttk.LabelFrame(layout_dialog, text="⚙️ 生成选项", padding=15)
+		options_frame.pack(fill="x", padx=20, pady=(0, 15))
+		
+		show_labels_var = tk.BooleanVar(value=True)
+		show_desc_var = tk.BooleanVar(value=True)
+		
+		tk.Checkbutton(options_frame, text="显示角度和表情标签", variable=show_labels_var,
+					   bg="#f0f0f0", font=("", 10)).pack(anchor="w", pady=3)
+		tk.Checkbutton(options_frame, text="显示角色描述", variable=show_desc_var,
+					   bg="#f0f0f0", font=("", 10)).pack(anchor="w", pady=3)
+		
+		# 按钮
+		btn_frame = ttk.Frame(layout_dialog)
+		btn_frame.pack(fill="x", padx=20, pady=(0, 15))
+		
+		def on_confirm():
+			layout_dialog.destroy()
+			self._generate_sheet_async(
+				character_name, characters_dir, character_description,
+				selected_layout.get(), show_labels_var.get(), show_desc_var.get()
+			)
+		
+		def on_cancel():
+			layout_dialog.destroy()
+		
+		ttk.Button(btn_frame, text="✅ 生成", command=on_confirm).pack(side=LEFT, fill="x", expand=True, padx=(0, 5))
+		ttk.Button(btn_frame, text="❌ 取消", command=on_cancel).pack(side=LEFT, fill="x", expand=True, padx=(5, 0))
+	
+	
+	

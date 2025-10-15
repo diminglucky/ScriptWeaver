@@ -43,6 +43,13 @@ class OpenAIImageClient:
                 n=n,
                 response_format="b64_json"
             )
+            
+            # 检查响应是否有效
+            if resp is None:
+                raise RuntimeError("API调用返回None，可能是网络问题或API服务异常")
+            if not hasattr(resp, 'data') or resp.data is None:
+                raise RuntimeError("API响应中缺少data字段，可能是API格式不兼容")
+            
             results: List[ImageResult] = []
             for d in resp.data:
                 b64 = d.b64_json
@@ -53,13 +60,20 @@ class OpenAIImageClient:
         except Exception as e:
             # 如果 base64 失败，尝试 URL 格式（V-API 默认格式）
             error_msg = str(e).lower()
-            if "response_format" in error_msg or "format" in error_msg:
+            if "response_format" in error_msg or "format" in error_msg or "b64_json" in error_msg:
                 resp = self.client.images.generate(
                     model=self.model, 
                     prompt=prompt, 
                     size=size, 
                     n=n
                 )
+                
+                # 检查响应是否有效
+                if resp is None:
+                    raise RuntimeError("API调用返回None，可能是网络问题或API服务异常")
+                if not hasattr(resp, 'data') or resp.data is None:
+                    raise RuntimeError("API响应中缺少data字段，可能是API格式不兼容")
+                
                 results: List[ImageResult] = []
                 for d in resp.data:
                     # 从 URL 下载图片
