@@ -466,6 +466,27 @@ class ImageViewer(tk.Toplevel):
             canvas.image = photo  # 保持引用
             
             canvas.config(scrollregion=canvas.bbox("all"))
+
+            # 绑定鼠标滚轮以支持上下/左右滚动（兼容 macOS/Windows/Linux）
+            def _on_mousewheel(event):
+                # Shift + 滚轮 => 水平滚动
+                shift_pressed = bool(event.state & 0x0001)
+                if event.delta:
+                    delta_units = int(-1 * event.delta / 120) if event.delta else 0
+                    if shift_pressed:
+                        canvas.xview_scroll(delta_units, "units")
+                    else:
+                        canvas.yview_scroll(delta_units, "units")
+                elif getattr(event, "num", None) in (4, 5):
+                    # Linux: Button-4 上滚, Button-5 下滚
+                    if shift_pressed:
+                        canvas.xview_scroll(-1 if event.num == 4 else 1, "units")
+                    else:
+                        canvas.yview_scroll(-1 if event.num == 4 else 1, "units")
+
+            canvas.bind("<MouseWheel>", _on_mousewheel)
+            canvas.bind("<Button-4>", _on_mousewheel)
+            canvas.bind("<Button-5>", _on_mousewheel)
             
             # 底部信息栏
             info_bar = tk.Frame(self, bg="#1e1e1e", height=40)
