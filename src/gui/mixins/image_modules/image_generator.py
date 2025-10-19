@@ -293,7 +293,69 @@ class ImageGeneratorMixin:
 					self.update_header_status("正在生成图片 (2/3)", "🎨")
 				
 				# 3. 使用对应的客户端生成图片
-				if provider == "hunyuan":
+				if provider == "sd":
+					# 使用本地Stable Diffusion
+					from src.clients.sd_client import StableDiffusionClient
+					
+					self.status.set(f"🖼️ 使用本地SD生成【{img_type}】风格图片...（步骤2/3）")
+					if hasattr(self, 'update_header_status'):
+						self.update_header_status("Stable Diffusion生成中 (2/3)", "🖼️")
+					
+					sd_base_url = self.img_base_url.get().strip() or "http://localhost:7860"
+					sd_client = StableDiffusionClient(base_url=sd_base_url)
+					
+					# 解析尺寸
+					size = self.img_size.get()
+					if 'x' in size:
+						width, height = map(int, size.split('x'))
+					else:
+						width = height = 512
+					
+					# 设置默认负面提示词
+					negative_prompt = "nsfw, lowres, bad anatomy, bad hands, text, error, missing fingers, extra digit, fewer digits, cropped, worst quality, low quality, normal quality, jpeg artifacts, signature, watermark, username, blurry"
+					
+					# 检查是否有参考图片（图生图）
+					ref_image_path = None
+					if selected_characters and selected_characters[0].get("photo_path"):
+						ref_image_path = selected_characters[0]["photo_path"]
+					elif self.img_ref_path.get().strip():
+						ref_image_path = self.img_ref_path.get().strip()
+					
+					if ref_image_path:
+						# 图生图模式
+						self.status.set(f"🖼️ 使用SD图生图模式...（参考图片）")
+						from PIL import Image as PILImage
+						ref_img = PILImage.open(ref_image_path).convert("RGB")
+						
+						images = sd_client.img2img(
+							init_image=ref_img,
+							prompt=prompt_en,
+							negative_prompt=negative_prompt,
+							denoising_strength=0.75,
+							width=width,
+							height=height,
+							steps=20,
+							cfg_scale=7.0
+						)
+					else:
+						# 文生图模式
+						images = sd_client.txt2img(
+							prompt=prompt_en,
+							negative_prompt=negative_prompt,
+							width=width,
+							height=height,
+							steps=20,
+							cfg_scale=7.0,
+							sampler_name="Euler a"
+						)
+					
+					if not images:
+						messagebox.showerror("错误", "SD生成失败")
+						return
+					
+					img = images[0]
+					
+				elif provider == "hunyuan":
 					# 使用腾讯混元API
 					from src.clients.hunyuan_image_client import HunyuanImageClient
 					

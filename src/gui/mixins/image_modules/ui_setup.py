@@ -81,6 +81,12 @@ class ImageUISetupTabMixin:
 		tk.Label(grp_api, text="API预设:").grid(row=1, column=0, sticky="e", padx=6, pady=4)
 		self.img_api_preset = tk.StringVar(value="OpenAI (DALL-E)")
 		self.img_api_presets = {
+			"本地 Stable Diffusion": {
+				"base_url": os.getenv("SD_BASE_URL", "http://localhost:7860"),
+				"model": "sd-local",
+				"key": "",
+				"provider": "sd"
+			},
 			"OpenAI (DALL-E)": {
 				"base_url": "https://api.openai.com/v1",
 				"model": "dall-e-3",
