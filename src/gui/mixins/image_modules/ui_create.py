@@ -35,15 +35,15 @@ class ImageUICreateTabMixin:
 		# 将所有按钮放在一行
 		rowf = ttk.Frame(grp_shots)
 		rowf.pack(fill="x", padx=6, pady=(6, 8))
-		self.img_btn_recommend = ttk.Button(rowf, text="🤖 智能推荐", command=self._on_recommend_video_mode, width=10, takefocus=False)
+		self.img_btn_recommend = ttk.Button(rowf, text="🤖 智能推荐", command=self._on_recommend_video_mode, width=14, takefocus=False)
 		self.img_btn_recommend.pack(side=LEFT, padx=(0, 4))
-		self.img_btn_extract_brief = ttk.Button(rowf, text="🎬 简短(8-12)", command=lambda: self._on_img_extract_shots(mode="brief"), width=11, takefocus=False)
+		self.img_btn_extract_brief = ttk.Button(rowf, text="🎬 简短(8-12秒)", command=lambda: self._on_img_extract_shots(mode="brief"), width=16, takefocus=False)
 		self.img_btn_extract_brief.pack(side=LEFT, padx=(0, 4))
-		self.img_btn_extract_video = ttk.Button(rowf, text="🎬 平衡(15-25)", command=lambda: self._on_img_extract_shots(mode="video"), width=12, takefocus=False)
+		self.img_btn_extract_video = ttk.Button(rowf, text="🎬 平衡(15-25秒)", command=lambda: self._on_img_extract_shots(mode="video"), width=17, takefocus=False)
 		self.img_btn_extract_video.pack(side=LEFT, padx=(0, 4))
-		self.img_btn_extract_normal = ttk.Button(rowf, text="🎬 标准(15-22)", command=lambda: self._on_img_extract_shots(mode="normal"), width=12, takefocus=False)
+		self.img_btn_extract_normal = ttk.Button(rowf, text="🎬 标准(15-22秒)", command=lambda: self._on_img_extract_shots(mode="normal"), width=17, takefocus=False)
 		self.img_btn_extract_normal.pack(side=LEFT, padx=(0, 4))
-		self.img_btn_extract_detailed = ttk.Button(rowf, text="🎬 精细(25-40)", command=lambda: self._on_img_extract_shots(mode="detailed"), width=12, takefocus=False)
+		self.img_btn_extract_detailed = ttk.Button(rowf, text="🎬 精细(25-40秒)", command=lambda: self._on_img_extract_shots(mode="detailed"), width=17, takefocus=False)
 		self.img_btn_extract_detailed.pack(side=LEFT, padx=(0, 4))
 		
 		# 使用Listbox显示分镜列表
@@ -103,11 +103,11 @@ class ImageUICreateTabMixin:
 		self.img_txt_prompt_cn.pack(fill="both", expand=True, padx=6, pady=(6, 8))
 		rowp = ttk.Frame(tab_img_desc)
 		rowp.pack(fill="x", padx=6, pady=(0, 6))
-		self.img_btn_build_from_shot = ttk.Button(rowp, text="✨ 从当前分镜生成", command=self._on_img_prompt_from_current_shot, width=18)
+		self.img_btn_build_from_shot = ttk.Button(rowp, text="✨ 从当前分镜生成", command=self._on_img_prompt_from_current_shot, width=20)
 		self.img_btn_build_from_shot.pack(side=LEFT, padx=(0, 3))
-		self.img_btn_copy = ttk.Button(rowp, text="📋 复制", command=self._on_copy_img_prompt, width=8)
+		self.img_btn_copy = ttk.Button(rowp, text="📋 复制", command=self._on_copy_img_prompt, width=10)
 		self.img_btn_copy.pack(side=LEFT, padx=3)
-		self.img_btn_clear = ttk.Button(rowp, text="🗑️ 清空", command=self._on_clear_img_prompt, width=8)
+		self.img_btn_clear = ttk.Button(rowp, text="🗑️ 清空", command=self._on_clear_img_prompt, width=10)
 		self.img_btn_clear.pack(side=LEFT, padx=3)
 		
 		# 第二个标签页：即梦AI视频提示词
@@ -126,7 +126,7 @@ class ImageUICreateTabMixin:
 		video_btn_frame = ttk.Frame(tab_video_prompt)
 		video_btn_frame.pack(fill="x", padx=6, pady=(0, 6))
 		self.video_btn_copy = ttk.Button(video_btn_frame, text="📋 复制视频提示词", 
-										  command=self._on_copy_video_prompt, width=20)
+										  command=self._on_copy_video_prompt, width=22)
 		self.video_btn_copy.pack(side=LEFT)
 
 		# Right: 参考人物选择（移到这里，更显眼）
@@ -151,10 +151,12 @@ class ImageUICreateTabMixin:
 		grp_actions.pack(fill="x", padx=0, pady=(0, 8))
 		action_row = ttk.Frame(grp_actions)
 		action_row.pack(fill="x", padx=6, pady=6)
+		action_row.columnconfigure(0, weight=1)
+		action_row.columnconfigure(1, weight=1)
 		self.img_btn_gen = ttk.Button(action_row, text="🎨 生成图片", command=self._on_img_generate)
-		self.img_btn_gen.pack(side=LEFT, padx=(0, 6), fill="x", expand=True)
+		self.img_btn_gen.grid(row=0, column=0, padx=(0, 3), sticky="ew")
 		self.img_btn_save = ttk.Button(action_row, text="💾 保存", command=self._on_img_save, state=DISABLED)
-		self.img_btn_save.pack(side=LEFT, fill="x", expand=True)
+		self.img_btn_save.grid(row=0, column=1, padx=(3, 0), sticky="ew")
 
 		grp_preview = ttk.LabelFrame(right, text="🖼️ 预览", padding=(8, 5))
 		grp_preview.pack(fill=BOTH, expand=True, padx=0, pady=0)

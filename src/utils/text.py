@@ -75,7 +75,7 @@ def try_chat_api(key: str, base_url: str, model: str) -> tuple[bool, str]:
 	"""测试聊天API是否可用"""
 	try:
 		from openai import OpenAI
-		client = OpenAI(api_key=key, base_url=base_url, timeout=20)
+		client = OpenAI(api_key=key, base_url=base_url, timeout=200)
 		resp = client.chat.completions.create(
 			model=model,
 			messages=[{"role": "user", "content": "ping"}],

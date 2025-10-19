@@ -9,7 +9,7 @@ from openai import OpenAI
 class DeepSeekClient:
 	"""Thin wrapper for DeepSeek's OpenAI-compatible chat API."""
 
-	def __init__(self, api_key: Optional[str] = None, base_url: Optional[str] = None, model: Optional[str] = None, timeout_seconds: int = 120) -> None:
+	def __init__(self, api_key: Optional[str] = None, base_url: Optional[str] = None, model: Optional[str] = None, timeout_seconds: int = 300) -> None:
 		self.api_key = api_key or os.getenv("DEEPSEEK_API_KEY", "")
 		if not self.api_key:
 			raise RuntimeError("Missing DEEPSEEK_API_KEY. Create .env and export it.")

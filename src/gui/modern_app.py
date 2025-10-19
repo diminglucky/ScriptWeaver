@@ -167,8 +167,8 @@ class ModernApp(tk.Tk, ProjectMixin, StoryMixin, ImageMixin, KbMixin, ConfigMixi
             foreground=Theme.TEXT_PRIMARY,
             borderwidth=0,
             relief="flat",
-            padding=[24, 12],  # 增大按钮
-            font=(Theme.FONT_FAMILY, 13, "normal")  # 增大字体
+            padding=[28, 14],  # 增大按钮padding，防止文字被遮挡
+            font=(Theme.FONT_FAMILY, 12, "normal")  # 字体大小
         )
         self.ttk_style.map(
             "TButton",

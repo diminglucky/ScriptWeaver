@@ -1,10 +1,17 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 启动现代化UI版本 - AI Story Creator Pro
 """
 import os
 import sys
 from pathlib import Path
+
+# 设置Windows控制台UTF-8编码
+if sys.platform == "win32":
+    import io
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
 
 # 禁用不必要的警告
 os.environ.setdefault("TRANSFORMERS_NO_TF", "1")
