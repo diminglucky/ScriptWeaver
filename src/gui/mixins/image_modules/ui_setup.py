@@ -18,9 +18,10 @@ class ImageUISetupTabMixin:
 	def _build_image_setup_tab(self) -> None:
 		"""构建图片API配置页面"""
 		# 创建Canvas和滚动条来支持内容滚动
-		canvas = tk.Canvas(self.image_tab_setup, bg="#2b2b2b", highlightthickness=0)
+		from ...theme import Theme
+		canvas = tk.Canvas(self.image_tab_setup, bg=Theme.BG_SECONDARY, highlightthickness=0)
 		scrollbar = ttk.Scrollbar(self.image_tab_setup, orient="vertical", command=canvas.yview)
-		scrollable_frame = tk.Frame(canvas, bg="#2b2b2b")
+		scrollable_frame = tk.Frame(canvas, bg=Theme.BG_SECONDARY)
 		
 		scrollable_frame.bind(
 			"<Configure>",
@@ -70,12 +71,12 @@ class ImageUISetupTabMixin:
 		grp_api.columnconfigure(5, weight=1)
 		
 		# 添加说明文字
-		usage_frame = tk.Frame(grp_api, bg="#2b2b2b")
+		usage_frame = tk.Frame(grp_api, bg=Theme.BG_SECONDARY)
 		usage_frame.grid(row=0, column=0, columnspan=6, sticky="w", padx=6, pady=(4, 8))
-		tk.Label(usage_frame, text="📌 用途：", fg="#FF9800", font=("", 9, "bold"), bg="#2b2b2b").pack(side=LEFT)
-		tk.Label(usage_frame, text="分镜图片生成", fg="gray", font=("", 9), bg="#2b2b2b").pack(side=LEFT, padx=(0, 3))
-		tk.Label(usage_frame, text="•", fg="gray", font=("", 9), bg="#2b2b2b").pack(side=LEFT)
-		tk.Label(usage_frame, text="人物肖像生成", fg="#4CAF50", font=("", 9, "bold"), bg="#2b2b2b").pack(side=LEFT, padx=3)
+		tk.Label(usage_frame, text="📌 用途：", fg="#FF9800", font=("", 9, "bold"), bg=Theme.BG_SECONDARY).pack(side=LEFT)
+		tk.Label(usage_frame, text="分镜图片生成", fg=Theme.TEXT_SECONDARY, font=("", 9), bg=Theme.BG_SECONDARY).pack(side=LEFT, padx=(0, 3))
+		tk.Label(usage_frame, text="•", fg=Theme.TEXT_SECONDARY, font=("", 9), bg=Theme.BG_SECONDARY).pack(side=LEFT)
+		tk.Label(usage_frame, text="人物肖像生成", fg="#4CAF50", font=("", 9, "bold"), bg=Theme.BG_SECONDARY).pack(side=LEFT, padx=3)
 		
 		# API预设下拉框
 		tk.Label(grp_api, text="API预设:").grid(row=1, column=0, sticky="e", padx=6, pady=4)
@@ -145,7 +146,7 @@ class ImageUISetupTabMixin:
 				  font=("", 9), bg="#d32f2f", fg="white", relief=tk.FLAT, padx=8, pady=3, cursor="hand2")
 		btn_delete_img_preset.grid(row=1, column=3, padx=(2, 6), sticky="w")
 		
-		tk.Label(grp_api, text="提示: 可保存/删除自定义预设", fg="gray", font=("", 9)).grid(row=1, column=4, sticky="w", padx=6)
+		tk.Label(grp_api, text="提示: 可保存/删除自定义预设", fg=Theme.TEXT_SECONDARY, font=("", 9)).grid(row=1, column=4, sticky="w", padx=6)
 
 		tk.Label(grp_api, text="API Key / SecretId:").grid(row=2, column=0, sticky="e", padx=6, pady=4)
 		self.img_entry_key = tk.Entry(grp_api, textvariable=self.img_api_key, show="*")
@@ -187,20 +188,20 @@ class ImageUISetupTabMixin:
 		self.img_combo_size.grid(row=0, column=1, sticky="w", padx=6, pady=4)
 		
 		# 提示文字
-		hint_frame = tk.Frame(grp_params, bg="#2b2b2b")
+		hint_frame = tk.Frame(grp_params, bg=Theme.BG_SECONDARY)
 		hint_frame.grid(row=1, column=0, columnspan=2, sticky="w", padx=6, pady=(0, 4))
-		tk.Label(hint_frame, text="方形: ", fg="gray", font=("", 9), bg="#2b2b2b").pack(side=LEFT)
-		tk.Label(hint_frame, text="256x256, 512x512, 768x768, 1024x1024", fg="#90CAF9", font=("", 9), bg="#2b2b2b").pack(side=LEFT)
+		tk.Label(hint_frame, text="方形: ", fg=Theme.TEXT_SECONDARY, font=("", 9), bg=Theme.BG_SECONDARY).pack(side=LEFT)
+		tk.Label(hint_frame, text="256x256, 512x512, 768x768, 1024x1024", fg="#90CAF9", font=("", 9), bg=Theme.BG_SECONDARY).pack(side=LEFT)
 		
-		hint_frame2 = tk.Frame(grp_params, bg="#2b2b2b")
+		hint_frame2 = tk.Frame(grp_params, bg=Theme.BG_SECONDARY)
 		hint_frame2.grid(row=2, column=0, columnspan=2, sticky="w", padx=6, pady=(0, 4))
-		tk.Label(hint_frame2, text="竖版: ", fg="gray", font=("", 9), bg="#2b2b2b").pack(side=LEFT)
-		tk.Label(hint_frame2, text="1024x1792, 360x640, 720x1280, 1080x1920", fg="#A5D6A7", font=("", 9), bg="#2b2b2b").pack(side=LEFT)
+		tk.Label(hint_frame2, text="竖版: ", fg=Theme.TEXT_SECONDARY, font=("", 9), bg=Theme.BG_SECONDARY).pack(side=LEFT)
+		tk.Label(hint_frame2, text="1024x1792, 360x640, 720x1280, 1080x1920", fg="#A5D6A7", font=("", 9), bg=Theme.BG_SECONDARY).pack(side=LEFT)
 		
-		hint_frame3 = tk.Frame(grp_params, bg="#2b2b2b")
+		hint_frame3 = tk.Frame(grp_params, bg=Theme.BG_SECONDARY)
 		hint_frame3.grid(row=3, column=0, columnspan=2, sticky="w", padx=6, pady=(0, 6))
-		tk.Label(hint_frame3, text="横版: ", fg="gray", font=("", 9), bg="#2b2b2b").pack(side=LEFT)
-		tk.Label(hint_frame3, text="1792x1024, 640x360, 1280x720, 1920x1080", fg="#FFCC80", font=("", 9), bg="#2b2b2b").pack(side=LEFT)
+		tk.Label(hint_frame3, text="横版: ", fg=Theme.TEXT_SECONDARY, font=("", 9), bg=Theme.BG_SECONDARY).pack(side=LEFT)
+		tk.Label(hint_frame3, text="1792x1024, 640x360, 1280x720, 1920x1080", fg="#FFCC80", font=("", 9), bg=Theme.BG_SECONDARY).pack(side=LEFT)
 		
 		# 辅助功能API配置（分镜头生成和图片描述生成）
 		grp_assist_api = ttk.LabelFrame(scrollable_frame, text="🤖 辅助功能 API 配置（使用聊天模型）")
@@ -209,7 +210,7 @@ class ImageUISetupTabMixin:
 		
 		# 说明文字
 		tk.Label(grp_assist_api, text="选择用于生成分镜头、图片描述和人物肖像的聊天API（使用故事生成页面配置的API Key）", 
-				 fg="gray", font=("", 9)).grid(row=0, column=0, columnspan=2, sticky="w", padx=6, pady=(4, 8))
+				 fg=Theme.TEXT_SECONDARY, font=("", 9)).grid(row=0, column=0, columnspan=2, sticky="w", padx=6, pady=(4, 8))
 		
 		# 分镜头生成API选择
 		tk.Label(grp_assist_api, text="分镜头生成API:").grid(row=1, column=0, sticky="e", padx=6, pady=4)
@@ -230,11 +231,11 @@ class ImageUISetupTabMixin:
 		# 人物肖像生成API选择（文本处理部分）
 		tk.Label(grp_assist_api, text="人物肖像生成API:").grid(row=3, column=0, sticky="e", padx=6, pady=4)
 		# 添加说明性文字
-		api_desc_frame = tk.Frame(grp_assist_api, bg="#2b2b2b")
+		api_desc_frame = tk.Frame(grp_assist_api, bg=Theme.BG_SECONDARY)
 		api_desc_frame.grid(row=3, column=1, sticky="w", padx=6, pady=4)
-		tk.Label(api_desc_frame, text="使用", fg="gray", font=("", 9), bg="#2b2b2b").pack(side=LEFT)
-		tk.Label(api_desc_frame, text="上方「图片生成 API 配置」", fg="#4CAF50", font=("", 9, "bold"), bg="#2b2b2b").pack(side=LEFT)
-		tk.Label(api_desc_frame, text="中的图片API", fg="gray", font=("", 9), bg="#2b2b2b").pack(side=LEFT)
+		tk.Label(api_desc_frame, text="使用", fg=Theme.TEXT_SECONDARY, font=("", 9), bg=Theme.BG_SECONDARY).pack(side=LEFT)
+		tk.Label(api_desc_frame, text="上方「图片生成 API 配置」", fg="#4CAF50", font=("", 9, "bold"), bg=Theme.BG_SECONDARY).pack(side=LEFT)
+		tk.Label(api_desc_frame, text="中的图片API", fg=Theme.TEXT_SECONDARY, font=("", 9), bg=Theme.BG_SECONDARY).pack(side=LEFT)
 		
 		# 保存按钮
 		btn_save_assist_api = tk.Button(grp_assist_api, text="💾 保存辅助API配置", command=self._save_assist_api_config,
@@ -246,11 +247,11 @@ class ImageUISetupTabMixin:
 		grp_log.pack(fill="x", padx=15, pady=(8, 15))
 		
 		# 工具栏
-		toolbar = tk.Frame(grp_log, bg="#2b2b2b")
+		toolbar = tk.Frame(grp_log, bg=Theme.BG_CARD)
 		toolbar.pack(fill="x", padx=5, pady=(5, 0))
 		
 		tk.Label(toolbar, text="💡 提示：点击上方'API测试'按钮查看详细测试结果", 
-				fg="#90CAF9", font=("", 9), bg="#2b2b2b").pack(side=LEFT, padx=5)
+				fg=Theme.INFO, font=("", 9), bg=Theme.BG_CARD).pack(side=LEFT, padx=5)
 		
 		btn_clear_log = tk.Button(toolbar, text="🗑️ 清空日志", 
 								  command=lambda: self.img_test_log.delete("1.0", END),
@@ -259,7 +260,7 @@ class ImageUISetupTabMixin:
 		btn_clear_log.pack(side=RIGHT, padx=5)
 		
 		# 日志文本框容器（调整为更合理的高度200px）
-		log_container = tk.Frame(grp_log, bg="#1e1e1e", relief=tk.SUNKEN, bd=1, height=200)
+		log_container = tk.Frame(grp_log, bg=Theme.SURFACE_DARK, relief=tk.SUNKEN, bd=1, height=200)
 		log_container.pack(fill="both", padx=5, pady=5)
 		log_container.pack_propagate(False)  # 防止子组件改变容器大小
 		
@@ -270,7 +271,7 @@ class ImageUISetupTabMixin:
 		# 日志文本框 - 固定高度
 		self.img_test_log = tk.Text(log_container, wrap="word", 
 									yscrollcommand=scroll_y.set,
-									bg="#1e1e1e", fg="#d4d4d4", 
+									bg=Theme.SURFACE_DARK, fg="#d4d4d4", 
 									font=("Consolas", 10), relief=tk.FLAT,
 									padx=10, pady=10)
 		self.img_test_log.pack(fill="both", expand=True)

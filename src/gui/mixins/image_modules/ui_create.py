@@ -10,6 +10,7 @@ from src.clients.deepseek_client import DeepSeekClient
 from src.clients.image_client import OpenAIImageClient
 from src.utils.text import sanitize as _sanitize
 from ...helpers.image_styles import IMAGE_TYPES, HUNYUAN_STYLE_MAP
+from ...theme import Theme
 
 
 class ImageUICreateTabMixin:
@@ -35,19 +36,19 @@ class ImageUICreateTabMixin:
 		# 将所有按钮放在一行
 		rowf = ttk.Frame(grp_shots)
 		rowf.pack(fill="x", padx=6, pady=(6, 8))
-		self.img_btn_recommend = ttk.Button(rowf, text="🤖 智能推荐", command=self._on_recommend_video_mode, width=14, takefocus=False)
+		self.img_btn_recommend = ttk.Button(rowf, text="🤖 智能推荐", command=self._on_recommend_video_mode, width=14, takefocus=False, style="TButton")
 		self.img_btn_recommend.pack(side=LEFT, padx=(0, 4))
-		self.img_btn_extract_brief = ttk.Button(rowf, text="🎬 简短(8-12秒)", command=lambda: self._on_img_extract_shots(mode="brief"), width=16, takefocus=False)
+		self.img_btn_extract_brief = ttk.Button(rowf, text="🎬 简短(8-12秒)", command=lambda: self._on_img_extract_shots(mode="brief"), width=16, takefocus=False, style="TButton")
 		self.img_btn_extract_brief.pack(side=LEFT, padx=(0, 4))
-		self.img_btn_extract_video = ttk.Button(rowf, text="🎬 平衡(15-25秒)", command=lambda: self._on_img_extract_shots(mode="video"), width=17, takefocus=False)
+		self.img_btn_extract_video = ttk.Button(rowf, text="🎬 平衡(15-25秒)", command=lambda: self._on_img_extract_shots(mode="video"), width=17, takefocus=False, style="TButton")
 		self.img_btn_extract_video.pack(side=LEFT, padx=(0, 4))
-		self.img_btn_extract_normal = ttk.Button(rowf, text="🎬 标准(15-22秒)", command=lambda: self._on_img_extract_shots(mode="normal"), width=17, takefocus=False)
+		self.img_btn_extract_normal = ttk.Button(rowf, text="🎬 标准(15-22秒)", command=lambda: self._on_img_extract_shots(mode="normal"), width=17, takefocus=False, style="TButton")
 		self.img_btn_extract_normal.pack(side=LEFT, padx=(0, 4))
-		self.img_btn_extract_detailed = ttk.Button(rowf, text="🎬 精细(25-40秒)", command=lambda: self._on_img_extract_shots(mode="detailed"), width=17, takefocus=False)
+		self.img_btn_extract_detailed = ttk.Button(rowf, text="🎬 精细(25-40秒)", command=lambda: self._on_img_extract_shots(mode="detailed"), width=17, takefocus=False, style="TButton")
 		self.img_btn_extract_detailed.pack(side=LEFT, padx=(0, 4))
 		
 		# 使用Listbox显示分镜列表
-		shots_list_frame = tk.Frame(grp_shots, bg="#2b2b2b")
+		shots_list_frame = tk.Frame(grp_shots, bg=Theme.BG_SECONDARY)
 		shots_list_frame.pack(fill="both", expand=True, padx=6, pady=(0, 6))
 		
 		# 添加滚动条
@@ -55,7 +56,7 @@ class ImageUICreateTabMixin:
 		self.shots_listbox = tk.Listbox(shots_list_frame, font=("", 10), 
 										 yscrollcommand=shots_scrollbar.set,
 										 relief=tk.SOLID, borderwidth=1,
-										 height=8, bg="#1e1e1e", fg="white",
+										 height=8, bg=Theme.SURFACE_DARK, fg="white",
 										 selectbackground="#4CAF50", selectforeground="white")
 		shots_scrollbar.config(command=self.shots_listbox.yview)
 		
@@ -96,28 +97,28 @@ class ImageUICreateTabMixin:
 		prompt_notebook.pack(fill="both", expand=True, padx=0, pady=0)
 		
 		# 第一个标签页：图片描述
-		tab_img_desc = tk.Frame(prompt_notebook, bg="#2b2b2b")
+		tab_img_desc = tk.Frame(prompt_notebook, bg=Theme.BG_SECONDARY)
 		prompt_notebook.add(tab_img_desc, text="  💬 图片描述  ")
 		
 		self.img_txt_prompt_cn = tk.Text(tab_img_desc, height=10, font=("", 10), wrap=tk.WORD, relief=tk.SOLID, borderwidth=1)
 		self.img_txt_prompt_cn.pack(fill="both", expand=True, padx=6, pady=(6, 8))
 		rowp = ttk.Frame(tab_img_desc)
 		rowp.pack(fill="x", padx=6, pady=(0, 6))
-		self.img_btn_build_from_shot = ttk.Button(rowp, text="✨ 从当前分镜生成", command=self._on_img_prompt_from_current_shot, width=20)
+		self.img_btn_build_from_shot = ttk.Button(rowp, text="✨ 从当前分镜生成", command=self._on_img_prompt_from_current_shot, width=20, style="Accent.TButton")
 		self.img_btn_build_from_shot.pack(side=LEFT, padx=(0, 3))
-		self.img_btn_copy = ttk.Button(rowp, text="📋 复制", command=self._on_copy_img_prompt, width=10)
+		self.img_btn_copy = ttk.Button(rowp, text="📋 复制", command=self._on_copy_img_prompt, width=10, style="TButton")
 		self.img_btn_copy.pack(side=LEFT, padx=3)
-		self.img_btn_clear = ttk.Button(rowp, text="🗑️ 清空", command=self._on_clear_img_prompt, width=10)
+		self.img_btn_clear = ttk.Button(rowp, text="🗑️ 清空", command=self._on_clear_img_prompt, width=10, style="Ghost.TButton")
 		self.img_btn_clear.pack(side=LEFT, padx=3)
 		
 		# 第二个标签页：即梦AI视频提示词
-		tab_video_prompt = tk.Frame(prompt_notebook, bg="#2b2b2b")
+		tab_video_prompt = tk.Frame(prompt_notebook, bg=Theme.BG_SECONDARY)
 		prompt_notebook.add(tab_video_prompt, text="  🎬 即梦AI提示词  ")
 		
 		# 视频提示词文本框
 		self.video_prompt_text = tk.Text(tab_video_prompt, height=10, font=("", 10), 
 										 wrap=tk.WORD, relief=tk.SOLID, borderwidth=1,
-										 bg="#1e1e1e", fg="#e0e0e0")
+										 bg=Theme.SURFACE_DARK, fg="#e0e0e0")
 		self.video_prompt_text.pack(fill="both", expand=True, padx=6, pady=(0, 8))
 		self.video_prompt_text.insert("1.0", "生成图片后，这里会自动显示适合即梦AI的视频提示词...")
 		self.video_prompt_text.config(state=DISABLED)
@@ -126,7 +127,7 @@ class ImageUICreateTabMixin:
 		video_btn_frame = ttk.Frame(tab_video_prompt)
 		video_btn_frame.pack(fill="x", padx=6, pady=(0, 6))
 		self.video_btn_copy = ttk.Button(video_btn_frame, text="📋 复制视频提示词", 
-										  command=self._on_copy_video_prompt, width=22)
+										  command=self._on_copy_video_prompt, width=22, style="TButton")
 		self.video_btn_copy.pack(side=LEFT)
 
 		# Right: 参考人物选择（移到这里，更显眼）
@@ -134,12 +135,12 @@ class ImageUICreateTabMixin:
 		grp_ref_characters.pack(fill="both", expand=False, padx=0, pady=(0, 8))
 		
 		# 使用Listbox支持多选
-		ref_list_frame = tk.Frame(grp_ref_characters, bg="#2b2b2b")
+		ref_list_frame = tk.Frame(grp_ref_characters, bg=Theme.BG_SECONDARY)
 		ref_list_frame.pack(fill="both", expand=True, padx=6, pady=6)
 		
 		self.ref_character_listbox = tk.Listbox(ref_list_frame, height=8, font=("", 10), 
 												selectmode=tk.MULTIPLE, exportselection=False,
-												bg="#1e1e1e", fg="white", selectbackground="#4CAF50",
+												bg=Theme.SURFACE_DARK, fg="white", selectbackground="#4CAF50",
 												relief=tk.SOLID, borderwidth=1)
 		self.ref_character_listbox.pack(side=LEFT, fill=BOTH, expand=True)
 		
@@ -153,9 +154,9 @@ class ImageUICreateTabMixin:
 		action_row.pack(fill="x", padx=6, pady=6)
 		action_row.columnconfigure(0, weight=1)
 		action_row.columnconfigure(1, weight=1)
-		self.img_btn_gen = ttk.Button(action_row, text="🎨 生成图片", command=self._on_img_generate)
+		self.img_btn_gen = ttk.Button(action_row, text="🎨 生成图片", command=self._on_img_generate, style="Accent.TButton")
 		self.img_btn_gen.grid(row=0, column=0, padx=(0, 3), sticky="ew")
-		self.img_btn_save = ttk.Button(action_row, text="💾 保存", command=self._on_img_save, state=DISABLED)
+		self.img_btn_save = ttk.Button(action_row, text="💾 保存", command=self._on_img_save, state=DISABLED, style="TButton")
 		self.img_btn_save.grid(row=0, column=1, padx=(3, 0), sticky="ew")
 
 		grp_preview = ttk.LabelFrame(right, text="🖼️ 预览", padding=(8, 5))
@@ -170,7 +171,7 @@ class ImageUICreateTabMixin:
 		h_scroll = ttk.Scrollbar(preview_frame, orient="horizontal")
 		
 		# 创建Canvas
-		self.img_canvas = tk.Canvas(preview_frame, bg="#2b2b2b", 
+		self.img_canvas = tk.Canvas(preview_frame, bg=Theme.BG_SECONDARY, 
 									 yscrollcommand=v_scroll.set,
 									 xscrollcommand=h_scroll.set,
 									 highlightthickness=0)

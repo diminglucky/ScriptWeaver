@@ -12,6 +12,7 @@ from src.clients.deepseek_client import DeepSeekClient
 from src.kb.ingest import KnowledgeBaseIngestor, IngestConfig
 from src.kb.search import KnowledgeBaseSearcher, SearchConfig
 from src.utils.text import sanitize as _sanitize
+from ...theme import Theme
 
 
 class StoryUIBuilderMixin:
@@ -25,8 +26,8 @@ class StoryUIBuilderMixin:
 		self.story_notebook.pack(fill=BOTH, expand=True, padx=10, pady=10)
 		
 		# 创建各个子页面
-		self.story_tab_create = tk.Frame(self.story_notebook, bg="#2b2b2b")
-		self.story_tab_setup = tk.Frame(self.story_notebook, bg="#2b2b2b")
+		self.story_tab_create = tk.Frame(self.story_notebook, bg=Theme.BG_SECONDARY)
+		self.story_tab_setup = tk.Frame(self.story_notebook, bg=Theme.BG_SECONDARY)
 		
 		self.story_notebook.add(self.story_tab_create, text="  ✍️ 创作  ")
 		self.story_notebook.add(self.story_tab_setup, text="  ⚙️ 配置  ")
@@ -39,9 +40,9 @@ class StoryUIBuilderMixin:
 	def _build_story_setup_tab(self) -> None:
 		"""构建配置标签页"""
 		# 创建Canvas和滚动条来支持内容滚动
-		canvas = tk.Canvas(self.story_tab_setup, bg="#2b2b2b", highlightthickness=0)
+		canvas = tk.Canvas(self.story_tab_setup, bg=Theme.BG_SECONDARY, highlightthickness=0)
 		scrollbar = ttk.Scrollbar(self.story_tab_setup, orient="vertical", command=canvas.yview)
-		scrollable_frame = tk.Frame(canvas, bg="#2b2b2b")
+		scrollable_frame = tk.Frame(canvas, bg=Theme.BG_SECONDARY)
 		
 		scrollable_frame.bind(
 			"<Configure>",
@@ -133,10 +134,10 @@ class StoryUIBuilderMixin:
 		grp_api.columnconfigure(1, weight=1)
 		
 		# API预设下拉框（第一行）
-		row_preset = tk.Frame(grp_api, bg="#2b2b2b")
+		row_preset = tk.Frame(grp_api, bg=Theme.BG_CARD)
 		row_preset.grid(row=0, column=0, columnspan=2, sticky="we", padx=8, pady=(8, 6))
 		
-		tk.Label(row_preset, text="API预设:", bg="#2b2b2b").pack(side=LEFT, padx=(0, 8))
+		tk.Label(row_preset, text="API预设:", bg=Theme.BG_CARD, fg=Theme.TEXT_PRIMARY).pack(side=LEFT, padx=(0, 8))
 		
 		self.api_preset = tk.StringVar(value="自定义")
 		self.api_presets = {
@@ -211,10 +212,10 @@ class StoryUIBuilderMixin:
 		self.entry_base.grid(row=2, column=1, sticky="we", padx=(0, 8))
 		
 		# Model + 操作按钮（第四行）
-		row_model = tk.Frame(grp_api, bg="#2b2b2b")
+		row_model = tk.Frame(grp_api, bg=Theme.BG_CARD)
 		row_model.grid(row=3, column=0, columnspan=2, sticky="we", padx=8, pady=(6, 8))
 		
-		tk.Label(row_model, text="Model:", bg="#2b2b2b").pack(side=LEFT, padx=(0, 8))
+		tk.Label(row_model, text="Model:", bg=Theme.BG_CARD, fg=Theme.TEXT_PRIMARY).pack(side=LEFT, padx=(0, 8))
 		self.entry_model = tk.Entry(row_model, textvariable=self.model, width=25)
 		self.entry_model.pack(side=LEFT, padx=(0, 15))
 		
@@ -232,7 +233,7 @@ class StoryUIBuilderMixin:
 		
 		# 说明文字
 		tk.Label(grp_assist_api, text="💡 提示：选择用于生成目录和故事的API（使用上方配置的API Key）", 
-				 fg="#90CAF9", font=("", 9), bg="#2b2b2b").grid(row=0, column=0, columnspan=2, sticky="w", padx=8, pady=(8, 10))
+				 fg=Theme.INFO, font=("", 9), bg=Theme.BG_CARD).grid(row=0, column=0, columnspan=2, sticky="w", padx=8, pady=(8, 10))
 		
 		# 目录生成API选择
 		tk.Label(grp_assist_api, text="目录生成API:").grid(row=1, column=0, sticky="e", padx=(8, 4), pady=8)
@@ -251,7 +252,7 @@ class StoryUIBuilderMixin:
 		self.combo_story_gen_api.grid(row=2, column=1, sticky="w", padx=(0, 8))
 		
 		# 保存按钮（居中显示）
-		btn_frame = tk.Frame(grp_assist_api, bg="#2b2b2b")
+		btn_frame = tk.Frame(grp_assist_api, bg=Theme.BG_CARD)
 		btn_frame.grid(row=3, column=0, columnspan=2, padx=8, pady=(8, 8))
 		btn_save_story_assist_api = tk.Button(btn_frame, text="💾 保存故事创作API配置", command=self._save_story_assist_api_config,
 									   font=("", 10, "bold"), bg="#4CAF50", fg="white", relief=tk.FLAT, 
@@ -263,11 +264,11 @@ class StoryUIBuilderMixin:
 		grp_log.pack(fill="x", padx=15, pady=(8, 15))
 		
 		# 工具栏
-		toolbar = tk.Frame(grp_log, bg="#2b2b2b")
+		toolbar = tk.Frame(grp_log, bg=Theme.BG_CARD)
 		toolbar.pack(fill="x", padx=5, pady=(5, 0))
 		
 		tk.Label(toolbar, text="💡 提示：点击上方'API测试'按钮查看详细测试结果", 
-				fg="#90CAF9", font=("", 9), bg="#2b2b2b").pack(side=LEFT, padx=5)
+				fg=Theme.INFO, font=("", 9), bg=Theme.BG_CARD).pack(side=LEFT, padx=5)
 		
 		btn_clear_log = tk.Button(toolbar, text="🗑️ 清空日志", 
 								  command=lambda: self.story_test_log.delete("1.0", END),
@@ -276,7 +277,7 @@ class StoryUIBuilderMixin:
 		btn_clear_log.pack(side=RIGHT, padx=5)
 		
 		# 日志文本框容器（调整为更合理的高度200px）
-		log_container = tk.Frame(grp_log, bg="#1e1e1e", relief=tk.SUNKEN, bd=1, height=200)
+		log_container = tk.Frame(grp_log, bg=Theme.SURFACE_DARK, relief=tk.FLAT, bd=0, height=200)
 		log_container.pack(fill="both", padx=5, pady=5)
 		log_container.pack_propagate(False)  # 防止子组件改变容器大小
 		
@@ -287,7 +288,7 @@ class StoryUIBuilderMixin:
 		# 日志文本框 - 固定高度
 		self.story_test_log = tk.Text(log_container, wrap="word", 
 									yscrollcommand=scroll_y.set,
-									bg="#1e1e1e", fg="#d4d4d4", 
+									bg=Theme.SURFACE_DARK, fg=Theme.TEXT_PRIMARY, 
 									font=("Consolas", 10), relief=tk.FLAT,
 									padx=10, pady=10)
 		self.story_test_log.pack(fill="both", expand=True)
@@ -308,55 +309,50 @@ class StoryUIBuilderMixin:
 		self.story_tab_create.columnconfigure(1, weight=1)
 
 		# 第一行：种类 + 风格 + 按钮
-		row1_frame = tk.Frame(self.story_tab_create, bg="#2b2b2b")
+		row1_frame = tk.Frame(self.story_tab_create, bg=Theme.BG_SECONDARY)
 		row1_frame.grid(row=0, column=0, columnspan=2, sticky="we", padx=15, pady=(15, 12))
 		
 		# 左侧：种类
-		tk.Label(row1_frame, text="📚 种类:", font=("", 12, "bold"), bg="#2b2b2b", fg="#ffffff").pack(side=LEFT, padx=(0, 8))
+		tk.Label(row1_frame, text="📚 种类:", font=("", 12, "bold"), bg=Theme.BG_SECONDARY, fg=Theme.TEXT_PRIMARY).pack(side=LEFT, padx=(0, 8))
 		self.combo_category = ttk.Combobox(row1_frame, textvariable=self.category, width=12, 
 										   values=("爱情", "悬疑", "职场", "科幻", "成长", "亲情", "社会观察", "校园", "历史", "奇幻"),
 										   font=("", 12))
 		self.combo_category.pack(side=LEFT, padx=(0, 20))
 		
 		# 中间：风格
-		tk.Label(row1_frame, text="🎨 风格:", font=("", 12, "bold"), bg="#2b2b2b", fg="#ffffff").pack(side=LEFT, padx=(0, 8))
+		tk.Label(row1_frame, text="🎨 风格:", font=("", 12, "bold"), bg=Theme.BG_SECONDARY, fg=Theme.TEXT_PRIMARY).pack(side=LEFT, padx=(0, 8))
 		self.entry_style = tk.Entry(row1_frame, textvariable=self.style, width=45, font=("", 12),
-									 relief=tk.FLAT, borderwidth=0, bg="#1e1e1e", fg="#ffffff",
-									 insertbackground="white", selectbackground="#ffffff", selectforeground="#000000",
-									 highlightthickness=0)
-		self.entry_style.pack(side=LEFT, padx=(0, 6))
+									 relief=tk.FLAT, borderwidth=1, bg=Theme.SURFACE, fg=Theme.TEXT_PRIMARY,
+									 insertbackground=Theme.PRIMARY, selectbackground=Theme.PRIMARY, selectforeground=Theme.TEXT_ON_PRIMARY,
+									 highlightthickness=1, highlightbackground=Theme.BORDER, highlightcolor=Theme.BORDER_FOCUS)
+		self.entry_style.pack(side=LEFT, padx=(0, 6), ipady=4)
 		self.btn_add_style = tk.Button(row1_frame, text="➕", command=self._show_style_menu,
-									   font=("", 11, "bold"), bg="#000000", fg="#ffffff", relief=tk.FLAT,
-									   padx=10, pady=4, cursor="hand2", activebackground="#000000", activeforeground="#ffffff")
+									   font=("", 11, "bold"), bg=Theme.BG_HOVER, fg=Theme.TEXT_PRIMARY, relief=tk.FLAT,
+									   padx=10, pady=6, cursor="hand2", activebackground=Theme.BG_SELECTED, activeforeground=Theme.TEXT_PRIMARY)
 		self.btn_add_style.pack(side=LEFT, padx=(0, 20))
 		
 		# 右侧：快捷按钮组
-		btn_frame = tk.Frame(row1_frame, bg="#1e1e1e")
+		btn_frame = tk.Frame(row1_frame, bg=Theme.BG_SECONDARY)
 		btn_frame.pack(side=RIGHT)
-		self.btn_outline = tk.Button(btn_frame, text="📋 生成目录", command=self.on_generate_outline, 
-									  font=("", 13, "bold"), bg="#000000", fg="#ffffff", relief=tk.FLAT, 
-									  padx=18, pady=10, cursor="hand2", activebackground="#000000", activeforeground="#ffffff")
+		self.btn_outline = ttk.Button(btn_frame, text="📋 生成目录", command=self.on_generate_outline, style="TButton")
 		self.btn_outline.pack(side=LEFT, padx=4)
-		self.btn_generate = tk.Button(btn_frame, text="🚀 生成故事", command=self.on_generate, 
-									   font=("", 13, "bold"), bg="#000000", fg="#ffffff", relief=tk.FLAT, 
-									   padx=18, pady=10, cursor="hand2", activebackground="#000000", activeforeground="#ffffff")
+		self.btn_generate = ttk.Button(btn_frame, text="🚀 生成故事", command=self.on_generate, style="Accent.TButton")
 		self.btn_generate.pack(side=LEFT, padx=4)
-		tk.Button(btn_frame, text="💾 保存为...", command=self.on_save_as, font=("", 13, "bold"), 
-				  bg="#000000", fg="#ffffff", relief=tk.FLAT, padx=18, pady=10, cursor="hand2", 
-				  activebackground="#000000", activeforeground="#ffffff").pack(side=LEFT, padx=4)
+		ttk.Button(btn_frame, text="💾 保存为...", command=self.on_save_as, style="Ghost.TButton").pack(side=LEFT, padx=4)
 
 		# 第二行：创作需求（改为多行文本框）
-		tk.Label(self.story_tab_create, text="💡 创作需求:", font=("", 12, "bold"), bg="#2b2b2b", fg="#ffffff").grid(row=1, column=0, sticky="nw", padx=(15, 10), pady=(0, 4))
+		tk.Label(self.story_tab_create, text="💡 创作需求:", font=("", 12, "bold"), bg=Theme.BG_SECONDARY, fg=Theme.TEXT_PRIMARY).grid(row=1, column=0, sticky="nw", padx=(15, 10), pady=(0, 4))
 		
 		# 创建文本框容器
-		prompt_frame = tk.Frame(self.story_tab_create, bg="#2b2b2b")
+		prompt_frame = tk.Frame(self.story_tab_create, bg=Theme.BG_SECONDARY)
 		prompt_frame.grid(row=1, column=1, sticky="we", padx=(0, 15), pady=(0, 12))
 		
 		# 多行文本框
-		self.prompt_text = tk.Text(prompt_frame, height=3, font=("", 14), wrap=tk.WORD, 
-								   relief=tk.FLAT, borderwidth=0, bg="#000000", fg="#ffffff",
-								   insertbackground="white", selectbackground="#ffffff", selectforeground="#000000",
-								   padx=10, pady=8, spacing1=3, spacing3=3, highlightthickness=0)
+		self.prompt_text = tk.Text(prompt_frame, height=3, font=("", 12), wrap=tk.WORD, 
+								   relief=tk.FLAT, borderwidth=1, bg=Theme.SURFACE, fg=Theme.TEXT_PRIMARY,
+								   insertbackground=Theme.PRIMARY, selectbackground=Theme.PRIMARY, selectforeground=Theme.TEXT_ON_PRIMARY,
+								   padx=12, pady=10, spacing1=3, spacing3=3, highlightthickness=1, 
+								   highlightbackground=Theme.BORDER, highlightcolor=Theme.BORDER_FOCUS)
 		self.prompt_text.pack(fill="both", expand=True)
 		
 		# 提示文字
@@ -370,52 +366,43 @@ class StoryUIBuilderMixin:
 		self.prompt = tk.Entry(self.story_tab_create)  # 隐藏但保持引用
 		
 		# 第三行：章节控制
-		tk.Label(self.story_tab_create, text="📖 章节:", font=("", 12, "bold"), bg="#2b2b2b", fg="#ffffff").grid(row=2, column=0, sticky="nw", padx=(15, 10), pady=(0, 4))
+		tk.Label(self.story_tab_create, text="📖 章节:", font=("", 12, "bold"), bg=Theme.BG_SECONDARY, fg=Theme.TEXT_PRIMARY).grid(row=2, column=0, sticky="nw", padx=(15, 10), pady=(0, 4))
 		
 		self.current_section_index = tk.IntVar(value=0)
 		
 		# 创建一个样式来设置Combobox的颜色
 		style = ttk.Style()
-		style.configure('Chapter.TCombobox', foreground='#ffffff', fieldbackground='#000000', background='#000000', 
-						borderwidth=0, relief='flat')
+		style.configure('Chapter.TCombobox', foreground=Theme.TEXT_PRIMARY, fieldbackground=Theme.SURFACE, background=Theme.SURFACE, 
+						borderwidth=1, relief='flat')
 		style.map('Chapter.TCombobox', 
-				  fieldbackground=[('readonly', '#000000')],
-				  selectbackground=[('readonly', '#000000')],
-				  selectforeground=[('readonly', '#ffffff')])
+				  fieldbackground=[('readonly', Theme.SURFACE)],
+				  selectbackground=[('readonly', Theme.PRIMARY)],
+				  selectforeground=[('readonly', Theme.TEXT_ON_PRIMARY)])
 		
-		chapter_frame = tk.Frame(self.story_tab_create, bg="#2b2b2b")
+		chapter_frame = tk.Frame(self.story_tab_create, bg=Theme.BG_SECONDARY)
 		chapter_frame.grid(row=2, column=1, sticky="we", padx=(0, 15), pady=(0, 15))
 		
 		self.section_selector = ttk.Combobox(chapter_frame, textvariable=self.current_section_index, 
-											 state="readonly", font=("", 14), 
+											 state="readonly", font=("", 12), 
 											 style='Chapter.TCombobox')
 		self.section_selector.pack(side=LEFT, fill="both", expand=True, padx=(0, 10))
 		self.section_selector['values'] = ["请先生成目录"]
 		
 		# 配置下拉列表的样式
-		self.option_add('*TCombobox*Listbox.font', ('', 14))
-		self.option_add('*TCombobox*Listbox.foreground', '#ffffff')
-		self.option_add('*TCombobox*Listbox.background', '#000000')
-		self.option_add('*TCombobox*Listbox.selectBackground', '#ffffff')
-		self.option_add('*TCombobox*Listbox.selectForeground', '#000000')
+		self.option_add('*TCombobox*Listbox.font', ('', 12))
+		self.option_add('*TCombobox*Listbox.foreground', Theme.TEXT_PRIMARY)
+		self.option_add('*TCombobox*Listbox.background', Theme.SURFACE)
+		self.option_add('*TCombobox*Listbox.selectBackground', Theme.PRIMARY)
+		self.option_add('*TCombobox*Listbox.selectForeground', Theme.TEXT_ON_PRIMARY)
 		
-		self.btn_generate_section = tk.Button(chapter_frame, text="📝 生成选中章节", command=self.on_generate_section, 
-											   state=DISABLED, font=("", 12, "bold"), bg="#000000", fg="#ffffff",
-											   relief=tk.FLAT, padx=15, pady=8, cursor="hand2",
-											   activebackground="#000000", activeforeground="#ffffff",
-											   disabledforeground="#666666")
+		self.btn_generate_section = ttk.Button(chapter_frame, text="📝 生成选中章节", command=self.on_generate_section, style="Accent.TButton")
+		self.btn_generate_section.state(["disabled"])  # 初始禁用
 		self.btn_generate_section.pack(side=LEFT, padx=4)
-		self.btn_continue_next = tk.Button(chapter_frame, text="⏭️ 继续下一章", command=self.on_continue_next_section, 
-										   state=DISABLED, font=("", 12, "bold"), bg="#000000", fg="#ffffff",
-										   relief=tk.FLAT, padx=15, pady=8, cursor="hand2",
-										   activebackground="#000000", activeforeground="#ffffff",
-										   disabledforeground="#666666")
+		self.btn_continue_next = ttk.Button(chapter_frame, text="⏭️ 继续下一章", command=self.on_continue_next_section, style="TButton")
+		self.btn_continue_next.state(["disabled"])  # 初始禁用
 		self.btn_continue_next.pack(side=LEFT, padx=4)
-		self.btn_auto_generate = tk.Button(chapter_frame, text="🔄 自动连续生成", command=self.on_auto_generate_all, 
-											state=DISABLED, font=("", 12, "bold"), bg="#000000", fg="#ffffff",
-											relief=tk.FLAT, padx=15, pady=8, cursor="hand2",
-											activebackground="#000000", activeforeground="#ffffff",
-											disabledforeground="#666666")
+		self.btn_auto_generate = ttk.Button(chapter_frame, text="🔄 自动连续生成", command=self.on_auto_generate_all, style="Ghost.TButton")
+		self.btn_auto_generate.state(["disabled"])  # 初始禁用
 		self.btn_auto_generate.pack(side=LEFT, padx=4)
 		
 		# 预设风格标签（用于快速选择）
@@ -444,11 +431,12 @@ class StoryUIBuilderMixin:
 
 		# Output area + status bar (使用grid布局保持一致)
 		self.output = scrolledtext.ScrolledText(self.story_tab_create, wrap=tk.WORD,
-												 font=("", 13), bg="#000000", fg="#ffffff",
-												 insertbackground="white", selectbackground="#ffffff", selectforeground="#000000",
-												 relief=tk.FLAT, borderwidth=0, highlightthickness=0,
-												 padx=15, pady=15)
-		self.output.grid(row=3, column=0, columnspan=2, sticky="nsew", padx=0, pady=0)
+												 font=("", 12), bg=Theme.SURFACE, fg=Theme.TEXT_PRIMARY,
+												 insertbackground=Theme.PRIMARY, selectbackground=Theme.PRIMARY, selectforeground=Theme.TEXT_ON_PRIMARY,
+												 relief=tk.FLAT, borderwidth=1, highlightthickness=1,
+												 highlightbackground=Theme.BORDER, highlightcolor=Theme.BORDER_FOCUS,
+												 padx=16, pady=16)
+		self.output.grid(row=3, column=0, columnspan=2, sticky="nsew", padx=15, pady=(0, 10))
 		
 		self.status = tk.StringVar(value="就绪")
 		status_bar = ttk.Label(self.story_tab_create, textvariable=self.status, anchor="w")

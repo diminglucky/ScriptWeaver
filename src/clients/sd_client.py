@@ -236,3 +236,4 @@ class StableDiffusionClient:
         except Exception as e:
             return False, f"错误: {str(e)}"
 
+

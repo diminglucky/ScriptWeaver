@@ -23,10 +23,21 @@ class ModernApp(tk.Tk, ProjectMixin, StoryMixin, ImageMixin, KbMixin, ConfigMixi
     def __init__(self):
         super().__init__()
         
-        # 窗口配置
-        self.title("AI Story Creator Pro - 智能故事创作平台")
-        self.geometry("1400x900")
-        self.minsize(1200, 700)
+        # 窗口配置 - 简约专业
+        self.title("AI Story Creator Pro")
+        
+        # 使用舒适的尺寸：1500x850 (更精致的比例)
+        window_width = 1500
+        window_height = 850
+        
+        # 窗口居中显示
+        screen_width = self.winfo_screenwidth()
+        screen_height = self.winfo_screenheight()
+        x = (screen_width - window_width) // 2
+        y = (screen_height - window_height) // 2
+        
+        self.geometry(f"{window_width}x{window_height}+{x}+{y}")
+        self.minsize(1200, 700)  # 最小尺寸
         
         # 设置窗口背景色
         self.configure(bg=Theme.BG_PRIMARY)
@@ -37,6 +48,9 @@ class ModernApp(tk.Tk, ProjectMixin, StoryMixin, ImageMixin, KbMixin, ConfigMixi
         
         # 初始化所有必需的变量（原有功能需要）
         self._init_variables()
+        
+        # 统一Tk基础组件的暗色默认配色
+        self._setup_tk_defaults()
         
         # 应用现代化样式
         self._setup_modern_styles()
@@ -92,266 +106,255 @@ class ModernApp(tk.Tk, ProjectMixin, StoryMixin, ImageMixin, KbMixin, ConfigMixi
         self.generated_content: str = ""
     
     def _setup_modern_styles(self):
-        """设置现代化ttk组件样式"""
+        """设置现代化ttk组件样式 - 极致美学"""
         self.ttk_style = ttk.Style()
         self.ttk_style.theme_use('clam')
         
-        # 配置Notebook（主选项卡） - 大小始终保持一致
+        # 配置Notebook（主选项卡） - 精致的标签页设计
         self.ttk_style.configure(
             "TNotebook",
             background=Theme.BG_PRIMARY,
             borderwidth=0,
             relief="flat",
-            tabmargins=[0, 0, 0, 0]  # 移除额外边距
+            tabmargins=[0, 0, 0, 0]
         )
         self.ttk_style.configure(
             "TNotebook.Tab",
-            background=Theme.BG_SECONDARY,
+            background=Theme.BG_PRIMARY,
             foreground=Theme.TEXT_SECONDARY,
-            padding=[32, 16],  # 固定padding
+            padding=[16, 8],  # 更紧凑的padding
             borderwidth=0,
             focuscolor="none",
-            lightcolor=Theme.BG_SECONDARY,
-            darkcolor=Theme.BG_SECONDARY,
-            bordercolor=Theme.BG_SECONDARY,
-            font=(Theme.FONT_FAMILY, 13, "normal")
+            lightcolor=Theme.BG_PRIMARY,
+            darkcolor=Theme.BG_PRIMARY,
+            bordercolor=Theme.BG_PRIMARY,
+            font=(Theme.FONT_FAMILY, 11, "normal")  # 更小的字体
         )
         self.ttk_style.map(
             "TNotebook.Tab",
             background=[
-                ("selected", Theme.SURFACE),
+                ("selected", Theme.BG_SECONDARY),
                 ("active", Theme.BG_HOVER),
-                ("!active", Theme.BG_SECONDARY)
+                ("!active", Theme.BG_PRIMARY)
             ],
             foreground=[
-                ("selected", Theme.TEXT_PRIMARY),
+                ("selected", Theme.TEXT_PRIMARY),  # 选中时使用主文本色
                 ("active", Theme.TEXT_PRIMARY),
                 ("!active", Theme.TEXT_SECONDARY)
             ],
-            # 确保所有状态的 padding 一致
             padding=[
-                ("selected", [32, 16]),
-                ("active", [32, 16]),
-                ("!active", [32, 16])
+                ("selected", [16, 8]),
+                ("active", [16, 8]),
+                ("!active", [16, 8])
             ]
         )
         
-        # 配置Frame
+        # 配置Frame - 更精致的背景
         self.ttk_style.configure(
             "TFrame",
-            background=Theme.BG_SECONDARY,
+            background=Theme.BG_CARD,
             borderwidth=0
         )
         
-        # 配置LabelFrame - 卡片式设计
+        # 配置LabelFrame - 精致卡片设计
         self.ttk_style.configure(
             "TLabelframe",
-            background=Theme.SURFACE,
+            background=Theme.BG_CARD,
             foreground=Theme.TEXT_PRIMARY,
-            borderwidth=1,
-            bordercolor=Theme.BORDER,
+            borderwidth=0,
             relief="flat"
         )
         self.ttk_style.configure(
             "TLabelframe.Label",
-            background=Theme.SURFACE,
+            background=Theme.BG_CARD,
             foreground=Theme.TEXT_PRIMARY,
-            font=(Theme.FONT_FAMILY, Theme.FONT_SIZE_MEDIUM, "bold"),
-            padding=[8, 4]
+            font=(Theme.FONT_FAMILY, 12, "normal"),  # 更小的字体
+            padding=[12, 6]  # 更紧凑的padding
         )
         
-        # 配置Button - 更大更舒适
+        # 配置Button - 更合理的紧凑中性色（默认）
         self.ttk_style.configure(
             "TButton",
-            background=Theme.PRIMARY,
+            background=Theme.SURFACE_LIGHT,
             foreground=Theme.TEXT_PRIMARY,
-            borderwidth=0,
+            borderwidth=1,
             relief="flat",
-            padding=[28, 14],  # 增大按钮padding，防止文字被遮挡
-            font=(Theme.FONT_FAMILY, 12, "normal")  # 字体大小
+            padding=[10, 6],
+            font=(Theme.FONT_FAMILY, 11, "normal")
         )
         self.ttk_style.map(
             "TButton",
+            background=[
+                ("active", Theme.BG_HOVER),
+                ("pressed", Theme.BG_TERTIARY),
+                ("disabled", Theme.BG_TERTIARY)
+            ],
+            foreground=[
+                ("disabled", Theme.TEXT_DISABLED)
+            ]
+        )
+
+        # 强调按钮（主操作）
+        self.ttk_style.configure(
+            "Accent.TButton",
+            background=Theme.PRIMARY,
+            foreground="#FFFFFF",
+            borderwidth=0,
+            relief="flat",
+            padding=[12, 6],
+            font=(Theme.FONT_FAMILY, 11, "normal")
+        )
+        self.ttk_style.map(
+            "Accent.TButton",
             background=[
                 ("active", Theme.PRIMARY_LIGHT),
                 ("pressed", Theme.PRIMARY_DARK),
                 ("disabled", Theme.BG_TERTIARY)
             ],
             foreground=[
-                ("active", Theme.TEXT_PRIMARY),
                 ("disabled", Theme.TEXT_DISABLED)
             ]
         )
-        
-        # 配置Entry
+
+        # 幽灵按钮（最小视觉重量）
         self.ttk_style.configure(
-            "TEntry",
-            fieldbackground=Theme.BG_TERTIARY,
-            foreground=Theme.TEXT_PRIMARY,
-            borderwidth=1,
-            insertcolor=Theme.TEXT_PRIMARY
+            "Ghost.TButton",
+            background=Theme.BG_PRIMARY,
+            foreground=Theme.TEXT_SECONDARY,
+            borderwidth=0,
+            relief="flat",
+            padding=[8, 4],
+            font=(Theme.FONT_FAMILY, 11, "normal")
+        )
+        self.ttk_style.map(
+            "Ghost.TButton",
+            background=[
+                ("active", Theme.BG_HOVER),
+                ("pressed", Theme.BG_TERTIARY)
+            ],
+            foreground=[
+                ("active", Theme.TEXT_PRIMARY)
+            ]
         )
         
-        # 配置Combobox
+        # 配置Entry - 精致输入框
+        self.ttk_style.configure(
+            "TEntry",
+            fieldbackground=Theme.SURFACE,
+            foreground=Theme.TEXT_PRIMARY,
+            borderwidth=1,  # 更细的边框
+            bordercolor=Theme.BORDER,
+            insertcolor=Theme.PRIMARY,
+            padding=[8, 4]  # 更紧凑的padding
+        )
+        self.ttk_style.map(
+            "TEntry",
+            fieldbackground=[("focus", Theme.SURFACE_DARK)],
+            bordercolor=[("focus", Theme.BORDER_FOCUS)]
+        )
+        
+        # 配置Combobox - 精致下拉框
         self.ttk_style.configure(
             "TCombobox",
-            fieldbackground=Theme.BG_TERTIARY,
-            background=Theme.BG_TERTIARY,
+            fieldbackground=Theme.SURFACE,
+            background=Theme.SURFACE,
             foreground=Theme.TEXT_PRIMARY,
-            borderwidth=1,
+            borderwidth=1,  # 更细的边框
+            bordercolor=Theme.BORDER,
+            arrowcolor=Theme.TEXT_ACCENT,
+            padding=[8, 4]  # 更紧凑的padding
+        )
+        self.ttk_style.map(
+            "TCombobox",
+            fieldbackground=[("focus", Theme.SURFACE_DARK)],
+            bordercolor=[("focus", Theme.BORDER_FOCUS)],
+            arrowcolor=[("focus", Theme.PRIMARY_LIGHT)]
+        )
+        
+        # 配置Treeview - 深色风格
+        self.ttk_style.configure(
+            "Treeview",
+            background=Theme.BG_TERTIARY,
+            fieldbackground=Theme.BG_TERTIARY,
+            foreground=Theme.TEXT_PRIMARY,
+            borderwidth=0
+        )
+        self.ttk_style.map(
+            "Treeview",
+            background=[("selected", Theme.PRIMARY)],
+            foreground=[("selected", Theme.TEXT_ON_PRIMARY)]
+        )
+        self.ttk_style.configure(
+            "Treeview.Heading",
+            background=Theme.BG_PRIMARY,
+            foreground=Theme.TEXT_SECONDARY,
+            relief="flat"
+        )
+        self.ttk_style.map(
+            "Treeview.Heading",
+            background=[("active", Theme.BG_HOVER)],
+            foreground=[("active", Theme.TEXT_PRIMARY)]
+        )
+        
+        # 配置Scrollbar - 深色风格（ttk）
+        self.ttk_style.configure(
+            "TScrollbar",
+            background=Theme.BG_TERTIARY,
+            troughcolor=Theme.BG_SECONDARY,
+            bordercolor=Theme.BORDER,
             arrowcolor=Theme.TEXT_SECONDARY
         )
     
     def _create_modern_header(self):
-        """创建现代化顶部标题栏 - 专业设计"""
-        # 主标题栏容器
-        header = tk.Frame(self, bg=Theme.BG_PRIMARY, height=64)
+        """创建简约顶部栏 - PyCharm风格"""
+        # 主标题栏容器 - 简约高度
+        header = tk.Frame(self, bg=Theme.BG_PRIMARY, height=48)
         header.pack(fill="x", side="top")
         header.pack_propagate(False)
         
-        # 左侧：Logo和标题
+        # 左侧：简约标题
         left_frame = tk.Frame(header, bg=Theme.BG_PRIMARY)
-        left_frame.pack(side="left", padx=24, pady=12)
+        left_frame.pack(side="left", padx=20, pady=12)
         
-        # 精致的应用图标
-        icon_canvas = tk.Canvas(
-            left_frame,
-            width=40,
-            height=40,
-            bg=Theme.BG_PRIMARY,
-            highlightthickness=0
-        )
-        icon_canvas.pack(side="left", padx=(0, 16))
-        
-        # 绘制带渐变效果的图标
-        icon_canvas.create_oval(
-            0, 0, 40, 40,
-            fill=Theme.PRIMARY,
-            outline="",
-            width=0
-        )
-        # 内圈发光效果
-        icon_canvas.create_oval(
-            4, 4, 36, 36,
-            fill="",
-            outline=Theme.PRIMARY_LIGHT,
-            width=2
-        )
-        # 图标
-        icon_canvas.create_text(
-            20, 20,
-            text="✨",
-            font=(Theme.FONT_FAMILY, 18),
-            fill=Theme.TEXT_PRIMARY
-        )
-        
-        # 标题区域
-        title_frame = tk.Frame(left_frame, bg=Theme.BG_PRIMARY)
-        title_frame.pack(side="left")
-        
-        # 主标题
+        # 简约标题 - 无图标
         main_title = tk.Label(
-            title_frame,
+            left_frame,
             text="AI Story Creator Pro",
-            font=(Theme.FONT_FAMILY, 18, "bold"),
+            font=(Theme.FONT_FAMILY, 12, "normal"),  # 更小的字体
             bg=Theme.BG_PRIMARY,
             fg=Theme.TEXT_PRIMARY
         )
         main_title.pack(anchor="w")
         
-        # 副标题
-        subtitle = tk.Label(
-            title_frame,
-            text="智能创作平台",
+        # 右侧：简约状态指示
+        right_frame = tk.Frame(header, bg=Theme.BG_PRIMARY)
+        right_frame.pack(side="right", padx=20, pady=12)
+        
+        # 简约状态文本
+        self.header_status_text = tk.Label(
+            right_frame,
+            text="就绪",
             font=(Theme.FONT_FAMILY, 11),
             bg=Theme.BG_PRIMARY,
-            fg=Theme.TEXT_HINT
-        )
-        subtitle.pack(anchor="w")
-        
-        # 右侧：状态提示和用户信息
-        right_frame = tk.Frame(header, bg=Theme.BG_PRIMARY)
-        right_frame.pack(side="right", padx=24, pady=12)
-        
-        # 创建一个容器来放置状态提示和用户信息
-        right_container = tk.Frame(right_frame, bg=Theme.BG_PRIMARY)
-        right_container.pack(side="left")
-        
-        # 状态提示区域（在用户卡片左边）
-        status_card = tk.Frame(
-            right_container,
-            bg=Theme.SURFACE,
-            relief="flat"
-        )
-        status_card.pack(side="left", padx=(0, 12))
-        
-        # 状态内容
-        status_inner = tk.Frame(status_card, bg=Theme.SURFACE)
-        status_inner.pack(padx=16, pady=8)
-        
-        # 状态图标（会根据状态动态更新）
-        self.header_status_icon = tk.Label(
-            status_inner,
-            text="✅",
-            font=(Theme.FONT_FAMILY, 14),
-            bg=Theme.SURFACE,
             fg=Theme.TEXT_SECONDARY
-        )
-        self.header_status_icon.pack(side="left", padx=(0, 8))
-        
-        # 状态文本
-        self.header_status_text = tk.Label(
-            status_inner,
-            text="就绪",
-            font=(Theme.FONT_FAMILY, Theme.FONT_SIZE_NORMAL),
-            bg=Theme.SURFACE,
-            fg=Theme.TEXT_PRIMARY
         )
         self.header_status_text.pack(side="left")
         
-        # 用户卡片（带微妙背景）
-        user_card = tk.Frame(
-            right_container,
-            bg=Theme.SURFACE,
-            relief="flat"
-        )
-        user_card.pack(side="left")
-        
-        # 内部内容
-        user_inner = tk.Frame(user_card, bg=Theme.SURFACE)
-        user_inner.pack(padx=16, pady=8)
-        
-        tk.Label(
-            user_inner,
-            text="👤",
-            font=(Theme.FONT_FAMILY, 16),
-            bg=Theme.SURFACE,
-            fg=Theme.TEXT_SECONDARY
-        ).pack(side="left", padx=(0, 10))
-        
-        tk.Label(
-            user_inner,
-            text="diming",
-            font=(Theme.FONT_FAMILY, Theme.FONT_SIZE_NORMAL),
-            bg=Theme.SURFACE,
-            fg=Theme.TEXT_PRIMARY
-        ).pack(side="left")
-        
-        # 微妙的分隔线（渐变效果）
-        separator = tk.Frame(self, bg=Theme.DIVIDER, height=1)
+        # 简约分隔线
+        separator = tk.Frame(self, bg=Theme.BORDER, height=1)
         separator.pack(fill="x")
     
     def _apply_modern_theme(self):
-        """将现代化主题应用到已创建的组件"""
+        """将现代化主题应用到已创建的组件 - 和谐美学"""
         # 应用到主notebook
         if hasattr(self, 'notebook'):
             self.notebook.configure(style="TNotebook")
-            # 添加边距，让选项卡更有呼吸感
-            self.notebook.pack_configure(padx=0, pady=0)
+            # 紧凑边距 - PyCharm风格
+            self.notebook.pack_configure(padx=12, pady=(8, 12))
             
-            # 更新页面背景 - 使用更深的背景色
+            # 更新页面背景 - 使用和谐的背景色
             for page in [self.page_project, self.page_story, self.page_image]:
-                page.configure(bg=Theme.BG_CARD)
+                page.configure(bg=Theme.BG_SECONDARY)
                 self._apply_theme_to_children(page)
         
         # 优化内部notebook（story_notebook等）
@@ -380,11 +383,21 @@ class ModernApp(tk.Tk, ProjectMixin, StoryMixin, ImageMixin, KbMixin, ConfigMixi
                 if current_bg in ["#2b2b2b", "#1e1e1e", "SystemButtonFace", ""]:
                     widget.configure(bg=Theme.BG_SECONDARY)
             elif widget_class == "Text":
-                # 保持原有的Text配置
-                pass
+                widget.configure(
+                    bg=Theme.SURFACE,
+                    fg=Theme.TEXT_PRIMARY,
+                    insertbackground=Theme.PRIMARY,
+                    selectbackground=Theme.PRIMARY,
+                    selectforeground=Theme.TEXT_ON_PRIMARY
+                )
             elif widget_class == "Entry":
-                # 保持原有的Entry配置
-                pass
+                widget.configure(
+                    bg=Theme.SURFACE,
+                    fg=Theme.TEXT_PRIMARY,
+                    insertbackground=Theme.PRIMARY
+                )
+            elif widget_class == "Canvas":
+                widget.configure(bg=Theme.BG_SECONDARY)
             
             # 递归处理子组件
             for child in widget.winfo_children():
@@ -392,98 +405,84 @@ class ModernApp(tk.Tk, ProjectMixin, StoryMixin, ImageMixin, KbMixin, ConfigMixi
         except Exception as e:
             # 忽略无法配置的组件，避免崩溃
             pass
+
+    def _setup_tk_defaults(self):
+        """统一Tk经典组件的暗色默认外观，避免白色背景块"""
+        try:
+            # 全局默认
+            self.option_add("*Background", Theme.BG_SECONDARY)
+            self.option_add("*Foreground", Theme.TEXT_PRIMARY)
+            self.option_add("*selectBackground", Theme.PRIMARY)
+            self.option_add("*selectForeground", Theme.TEXT_ON_PRIMARY)
+            
+            # 经典组件专属
+            self.option_add("*Entry.Background", Theme.SURFACE)
+            self.option_add("*Entry.Foreground", Theme.TEXT_PRIMARY)
+            self.option_add("*Text.Background", Theme.SURFACE)
+            self.option_add("*Text.Foreground", Theme.TEXT_PRIMARY)
+            self.option_add("*Listbox.Background", Theme.BG_TERTIARY)
+            self.option_add("*Listbox.Foreground", Theme.TEXT_PRIMARY)
+        except Exception:
+            pass
     
     def _create_modern_status_bar(self):
-        """创建现代化底部状态栏 - 专业设计"""
-        # 微妙的分隔线
-        tk.Frame(self, bg=Theme.DIVIDER, height=1).pack(fill="x", side="bottom")
+        """创建简约底部状态栏 - PyCharm风格"""
+        # 简约分隔线
+        tk.Frame(self, bg=Theme.BORDER, height=1).pack(fill="x", side="bottom")
         
-        # 状态栏容器
-        status_bar = tk.Frame(self, bg=Theme.BG_PRIMARY, height=32)
+        # 状态栏容器 - 紧凑
+        status_bar = tk.Frame(self, bg=Theme.BG_PRIMARY, height=28)
         status_bar.pack(fill="x", side="bottom")
         status_bar.pack_propagate(False)
         
-        # 左侧：状态区域（带背景卡片）
+        # 左侧：状态文本
         left_frame = tk.Frame(status_bar, bg=Theme.BG_PRIMARY)
-        left_frame.pack(side="left", fill="y", padx=20, pady=6)
+        left_frame.pack(side="left", fill="y", padx=12, pady=6)
         
-        # 状态指示器 - 更精致
-        self.status_indicator = tk.Canvas(
-            left_frame,
-            width=8,
-            height=8,
-            bg=Theme.BG_PRIMARY,
-            highlightthickness=0
-        )
-        self.status_indicator.pack(side="left", padx=(0, 12))
-        self.status_indicator.create_oval(0, 0, 8, 8, fill=Theme.SUCCESS, outline="")
-        
-        # 状态文本
+        # 状态文本 - 简约
         if not hasattr(self, 'status'):
-            self.status = tk.StringVar(value="系统就绪")
+            self.status = tk.StringVar(value="就绪")
         
         self.status_label = tk.Label(
             left_frame,
             textvariable=self.status,
-            font=(Theme.FONT_FAMILY, 11),
+            font=(Theme.FONT_FAMILY, 10),
             bg=Theme.BG_PRIMARY,
             fg=Theme.TEXT_SECONDARY
         )
         self.status_label.pack(side="left")
         
-        # 右侧：信息区域
+        # 右侧：版本信息
         right_frame = tk.Frame(status_bar, bg=Theme.BG_PRIMARY)
-        right_frame.pack(side="right", fill="y", padx=20, pady=6)
+        right_frame.pack(side="right", fill="y", padx=12, pady=6)
         
-        # 版本标签 - 带图标
-        version_container = tk.Frame(right_frame, bg=Theme.BG_PRIMARY)
-        version_container.pack(side="right")
-        
-        tk.Label(
-            version_container,
-            text="🎯",
+        # 时间显示
+        self.time_label = tk.Label(
+            right_frame,
+            text="",
             font=(Theme.FONT_FAMILY, 10),
             bg=Theme.BG_PRIMARY,
-            fg=Theme.TEXT_DISABLED
-        ).pack(side="left", padx=(10, 4))
+            fg=Theme.TEXT_HINT
+        )
+        self.time_label.pack(side="right", padx=(12, 0))
         
-        tk.Label(
-            version_container,
-            text="v2.0.0",
-            font=(Theme.FONT_FAMILY, 10),
-            bg=Theme.BG_PRIMARY,
-            fg=Theme.TEXT_DISABLED
-        ).pack(side="left")
-        
-        # 微妙的分隔符
+        # 分隔符
         tk.Label(
             right_frame,
-            text="•",
+            text="|",
             font=(Theme.FONT_FAMILY, 10),
             bg=Theme.BG_PRIMARY,
-            fg=Theme.BORDER
+            fg=Theme.BORDER_LIGHT
         ).pack(side="right", padx=8)
         
-        # 时间显示 - 带图标
-        time_container = tk.Frame(right_frame, bg=Theme.BG_PRIMARY)
-        time_container.pack(side="right")
-        
+        # 版本
         tk.Label(
-            time_container,
-            text="🕐",
+            right_frame,
+            text="v2.0",
             font=(Theme.FONT_FAMILY, 10),
             bg=Theme.BG_PRIMARY,
-            fg=Theme.TEXT_DISABLED
-        ).pack(side="left", padx=(0, 6))
-        
-        self.time_label = tk.Label(
-            time_container,
-            text="",
-            font=(Theme.FONT_FAMILY, 11),
-            bg=Theme.BG_PRIMARY,
-            fg=Theme.TEXT_SECONDARY
-        )
-        self.time_label.pack(side="left")
+            fg=Theme.TEXT_HINT
+        ).pack(side="right")
     
     def _update_time(self):
         """更新时间显示"""

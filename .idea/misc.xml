@@ -3,5 +3,5 @@
   <component name="Black">
     <option name="sdkName" value="$USER_HOME$/miniforge3/envs/work" />
   </component>
-  <component name="ProjectRootManager" version="2" project-jdk-name="$USER_HOME$/miniforge3/envs/work" project-jdk-type="Python SDK" />
+  <component name="ProjectRootManager" version="2" project-jdk-name="play" project-jdk-type="Python SDK" />
 </project>

@@ -205,9 +205,9 @@ class ProjectMixin:
 		
 		btn_row = ttk.Frame(top_frame)
 		btn_row.pack(fill="x")
-		self.btn_new_project = ttk.Button(btn_row, text="➕ 新建项目", command=self._on_new_project)
+		self.btn_new_project = ttk.Button(btn_row, text="➕ 新建项目", command=self._on_new_project, style="Accent.TButton")
 		self.btn_new_project.pack(side=LEFT, padx=(0, 6))
-		self.btn_save_story = ttk.Button(btn_row, text="💾 保存当前故事", command=self._on_save_story, state=DISABLED)
+		self.btn_save_story = ttk.Button(btn_row, text="💾 保存当前故事", command=self._on_save_story, state=DISABLED, style="TButton")
 		self.btn_save_story.pack(side=LEFT, padx=6)
 		
 		# 中间：项目列表
@@ -238,12 +238,11 @@ class ProjectMixin:
 		# 底部：操作按钮
 		btn_frame = ttk.Frame(mid_frame)
 		btn_frame.pack(fill="x", pady=(8, 0))
-		
-		self.btn_load_project = ttk.Button(btn_frame, text="📖 加载选中项目", command=self._on_load_project)
+		self.btn_load_project = ttk.Button(btn_frame, text="📖 加载选中项目", command=self._on_load_project, style="Accent.TButton")
 		self.btn_load_project.pack(side=LEFT, padx=(0, 6))
-		self.btn_refresh_list = ttk.Button(btn_frame, text="🔄 刷新列表", command=self._refresh_project_list)
+		self.btn_refresh_list = ttk.Button(btn_frame, text="🔄 刷新列表", command=self._refresh_project_list, style="TButton")
 		self.btn_refresh_list.pack(side=LEFT, padx=6)
-		self.btn_delete_project = ttk.Button(btn_frame, text="🗑️ 删除选中项目", command=self._on_delete_project)
+		self.btn_delete_project = ttk.Button(btn_frame, text="🗑️ 删除选中项目", command=self._on_delete_project, style="Ghost.TButton")
 		self.btn_delete_project.pack(side=LEFT, padx=6)
 		
 		# 初始加载项目列表

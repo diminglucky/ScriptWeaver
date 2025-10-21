@@ -41,6 +41,8 @@ class Theme:
     TEXT_SECONDARY = "#9CA3AF"  # 次要文本 - Gray-400
     TEXT_DISABLED = "#4B5563"  # 禁用文本 - Gray-600
     TEXT_HINT = "#6B7280"  # 提示文本 - Gray-500
+    TEXT_ACCENT = "#A78BFA"  # 强调文本 - Purple-400
+    TEXT_ON_PRIMARY = "#FFFFFF"  # 主色上的文本
     
     # 边框色
     BORDER = "#282A36"  # 边框色

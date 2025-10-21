@@ -24,9 +24,12 @@ sys.path.insert(0, str(project_root))
 def main():
     """主函数"""
     try:
-        # 尝试导入现代化UI
+        # 使用现代化UI - 保留所有功能
         from src.gui.modern_app import ModernApp
-        print("🚀 启动 AI Story Creator Pro (现代化UI版本)...")
+        print("启动 AI Story Creator Pro...")
+        print("窗口尺寸: 1500x850")
+        print("设计风格: 精致 · 简约 · 专业")
+        print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
         app = ModernApp()
         app.mainloop()
     except ImportError as e:
@@ -40,3 +43,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
