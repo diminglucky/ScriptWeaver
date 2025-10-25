@@ -192,6 +192,11 @@ class CharacterUtilsMixin:
 	
 	def _update_reference_character_list(self) -> None:
 		"""更新图片创作页面的参考人物列表（仅当前项目，支持多选）"""
+		# 检查 UI 组件是否存在
+		if not hasattr(self, 'ref_character_listbox'):
+			print(f"⚠️ ref_character_listbox 不存在，跳过更新")
+			return
+		
 		# 清空列表框
 		self.ref_character_listbox.delete(0, END)
 		

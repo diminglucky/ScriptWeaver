@@ -14,6 +14,7 @@ from tkinter import ttk, messagebox
 
 from src.clients.sd_client import StableDiffusionClient
 from .sd_prompt_optimizer import SDPromptOptimizer
+from .prompt_adapter import PromptAdapter
 
 
 class SDConsistencyGenerator:
@@ -86,7 +87,13 @@ class SDConsistencyGenerator:
         shot_type = shot.get('shot_type', '')
         
         # 构建基础提示词
-        base_prompt = self._build_shot_prompt(shot, consistency_data)
+        # 优先使用优化后的提示词（如果有的话）
+        if '_optimized_prompt' in shot:
+            base_prompt = shot['_optimized_prompt']
+            print(f"✅ 使用优化后的img2img提示词")
+        else:
+            base_prompt = self._build_shot_prompt(shot, consistency_data)
+            print(f"⚠️ 使用默认提示词")
         
         # 根据镜头类型设置图片尺寸
         width, height = self._get_shot_dimensions(shot_type)
@@ -100,10 +107,13 @@ class SDConsistencyGenerator:
                     ref_image = self.character_refs[char_name]
                     
                     # 图生图模式 - 保持人物特征
+                    # 优先使用优化后的负面提示词
+                    neg_prompt = shot.get('_optimized_negative', self._get_scene_negative_prompt())
+                    
                     images = self.sd_client.img2img(
                         init_image=ref_image,
                         prompt=base_prompt,
-                        negative_prompt=self._get_scene_negative_prompt(),
+                        negative_prompt=neg_prompt,
                         denoising_strength=0.6,  # 保留更多原始特征
                         width=width,
                         height=height,
@@ -122,9 +132,12 @@ class SDConsistencyGenerator:
             # 使用固定种子确保人物一致性
             seed = self._get_or_create_seed(characters[0] if characters else "scene")
             
+            # 优先使用优化后的负面提示词
+            neg_prompt = shot.get('_optimized_negative', self._get_scene_negative_prompt())
+            
             images = self.sd_client.txt2img(
                 prompt=base_prompt,
-                negative_prompt=self._get_scene_negative_prompt(),
+                negative_prompt=neg_prompt,
                 width=width,
                 height=height,
                 steps=25,
@@ -406,7 +419,7 @@ class SDConsistencyMixin:
     
     def _generate_shot_with_sd_consistency(self, shot: Dict, shot_num: int, output_dir: str, 
                                             shot_variant: int = 1) -> Optional[str]:
-        """使用SD一致性生成器生成分镜图片
+        """使用SD一致性生成器生成分镜图片（智能图片选择+img2img）
         
         Args:
             shot: 分镜信息
@@ -418,33 +431,77 @@ class SDConsistencyMixin:
             if not hasattr(self, 'sd_consistency'):
                 self._init_sd_consistency()
             
-            # 加载已有的参考图片 - 优先使用一致性设定中的portrait_image
-            consistency_data = getattr(self, 'consistency_data', {})
-            characters_data = consistency_data.get('characters', {})
+            # 获取项目人物图片目录
+            from pathlib import Path
+            from .smart_image_selector import SmartImageSelector
             
-            # 优先从一致性设定中加载人物形象
+            if hasattr(self.current_project, 'project_dir'):
+                project_path = Path(self.current_project.project_dir)
+            elif isinstance(self.current_project, dict):
+                project_path = Path(self.current_project.get('path', ''))
+            else:
+                project_path = Path(str(self.current_project))
+            
+            characters_dir = project_path / "characters"
+            
+            # 获取分镜描述（用于智能选择）
+            shot_description = shot.get('visual_description', '') or shot.get('action', '')
+            
+            print(f"\n{'='*60}")
+            print(f"🎬 开始为镜头 #{shot_num} 智能选择人物图片")
+            print(f"📝 分镜描述: {shot_description[:100]}...")
+            print(f"{'='*60}\n")
+            
+            # 🎯 使用智能图片选择器为每个人物选择最合适的图片
             for char_name in shot.get('characters', []):
-                char_data = characters_data.get(char_name, {})
-                portrait_path = char_data.get('portrait_image')
+                # 智能选择最合适的人物图片
+                selected_image_path = SmartImageSelector.select_character_image(
+                    character_name=char_name,
+                    shot_description=shot_description,
+                    characters_dir=characters_dir,
+                    prefer_expression=True  # 优先考虑表情
+                )
                 
-                if portrait_path and os.path.exists(portrait_path):
-                    print(f"🎨 加载人物 '{char_name}' 的标准形象: {portrait_path}")
-                    self.sd_consistency.load_character_reference(char_name, portrait_path)
-                    continue
-                
-                # 如果没有portrait_image，尝试加载旧的参考图片
-                if hasattr(self.current_project, 'project_dir'):
-                    project_path = str(self.current_project.project_dir)
-                elif isinstance(self.current_project, dict):
-                    project_path = self.current_project.get('path', '')
+                if selected_image_path and os.path.exists(selected_image_path):
+                    print(f"✅ 为 '{char_name}' 选择图片: {Path(selected_image_path).name}")
+                    self.sd_consistency.load_character_reference(char_name, selected_image_path)
                 else:
-                    project_path = str(self.current_project)
-                
-                ref_dir = os.path.join(project_path, 'director', 'character_refs')
-                ref_path = os.path.join(ref_dir, f"{char_name}_reference.png")
-                if os.path.exists(ref_path):
-                    print(f"📂 加载人物 '{char_name}' 的旧参考图: {ref_path}")
-                    self.sd_consistency.load_character_reference(char_name, ref_path)
+                    print(f"⚠️ 未找到 '{char_name}' 的合适图片，将使用文生图模式")
+            
+            # 🎯 使用智能提示词适配器生成img2img专用提示词
+            characters = shot.get('characters', [])
+            character_details = shot.get('character_details', {})
+            scene_desc = shot.get('visual_description', '') or shot.get('scene_description', '')
+            shot_type = shot.get('shot_type', '')
+            action = shot.get('action', '')
+            emotion = shot.get('emotion', '')
+            
+            # 生成img2img优化提示词
+            optimized_prompt, negative_prompt = PromptAdapter.build_prompt_for_api(
+                api_type="sd",
+                scene_description=scene_desc,
+                characters=characters,
+                character_details=character_details,
+                shot_type=shot_type,
+                action=action,
+                emotion=emotion,
+                is_img2img=True,  # img2img模式
+                consistency_mode=True  # 启用一致性
+            )
+            
+            # 根据重绘幅度优化提示词
+            optimized_prompt = PromptAdapter.optimize_for_img2img(optimized_prompt, denoising_strength=0.6)
+            
+            # 添加一致性权重
+            if characters:
+                optimized_prompt = PromptAdapter.add_consistency_weights(optimized_prompt, characters[0])
+            
+            print(f"🎨 img2img优化提示词: {optimized_prompt[:150]}...")
+            print(f"❌ img2img负面提示词: {negative_prompt[:100]}...")
+            
+            # 将优化后的提示词注入到shot中
+            shot['_optimized_prompt'] = optimized_prompt
+            shot['_optimized_negative'] = negative_prompt
             
             # 生成单张一致性图片（不是批量）
             images = self.sd_consistency.generate_shot_with_consistency(

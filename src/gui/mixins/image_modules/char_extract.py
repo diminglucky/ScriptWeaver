@@ -42,8 +42,10 @@ class CharacterExtractMixin:
 			return
 		
 		# 禁用按钮
-		self.char_btn_extract.config(state=DISABLED)
-		self.char_btn_refresh.config(state=DISABLED)
+		if hasattr(self, 'char_btn_extract'):
+			self.char_btn_extract.config(state=DISABLED)
+		if hasattr(self, 'char_btn_refresh'):
+			self.char_btn_refresh.config(state=DISABLED)
 		self.status.set("🔍 正在分析故事，提取人物列表...")
 		if hasattr(self, 'update_header_status'):
 			self.update_header_status("提取人物中...", "🔍")
@@ -116,8 +118,10 @@ class CharacterExtractMixin:
 				if hasattr(self, 'update_header_status'):
 					self.after(0, lambda: self.update_header_status("提取失败", "❌"))
 			finally:
-				self.after(0, lambda: self.char_btn_extract.config(state=NORMAL))
-				self.after(0, lambda: self.char_btn_refresh.config(state=NORMAL))
+				if hasattr(self, 'char_btn_extract'):
+					self.after(0, lambda: self.char_btn_extract.config(state=NORMAL))
+				if hasattr(self, 'char_btn_refresh'):
+					self.after(0, lambda: self.char_btn_refresh.config(state=NORMAL))
 		
 		threading.Thread(target=extract_thread, daemon=True).start()
 	
@@ -162,33 +166,49 @@ class CharacterExtractMixin:
 		
 		if character["description"]:
 			self.char_txt_desc.insert("1.0", character["description"])
-			self.char_btn_copy_desc.config(state=NORMAL)
-			self.char_btn_gen_photo.config(state=NORMAL)
+			if hasattr(self, 'char_btn_copy_desc'):
+				self.char_btn_copy_desc.config(state=NORMAL)
+			if hasattr(self, 'char_btn_gen_photo'):
+				self.char_btn_gen_photo.config(state=NORMAL)
 		else:
 			self.char_txt_desc.insert("1.0", f"尚未生成特征描述，点击下方按钮为\"{character['name']}\"生成详细特征...")
-			self.char_btn_copy_desc.config(state=DISABLED)
-			self.char_btn_gen_photo.config(state=DISABLED)
+			if hasattr(self, 'char_btn_copy_desc'):
+				self.char_btn_copy_desc.config(state=DISABLED)
+			if hasattr(self, 'char_btn_gen_photo'):
+				self.char_btn_gen_photo.config(state=DISABLED)
 		
 		self.char_txt_desc.config(state=DISABLED)
 		
 		# 启用查看照片画廊和生成设定表按钮（只要有项目就可以使用）
 		if self.current_project:
-			self.char_btn_view_gallery.config(state=NORMAL)
+			if hasattr(self, 'char_btn_view_gallery'):
+				self.char_btn_view_gallery.config(state=NORMAL)
 			if hasattr(self, 'char_btn_generate_sheet'):
 				self.char_btn_generate_sheet.config(state=NORMAL)
+			if hasattr(self, 'char_btn_edit_detail'):
+				self.char_btn_edit_detail.config(state=NORMAL)
 		else:
-			self.char_btn_view_gallery.config(state=DISABLED)
+			if hasattr(self, 'char_btn_view_gallery'):
+				self.char_btn_view_gallery.config(state=DISABLED)
 			if hasattr(self, 'char_btn_generate_sheet'):
 				self.char_btn_generate_sheet.config(state=DISABLED)
+			if hasattr(self, 'char_btn_edit_detail'):
+				self.char_btn_edit_detail.config(state=DISABLED)
 		
 		# 启用生成特征描述按钮
-		self.char_btn_gen_desc.config(state=NORMAL)
+		if hasattr(self, 'char_btn_gen_desc'):
+			self.char_btn_gen_desc.config(state=NORMAL)
 	
 	
 	
 	
 	def _get_selected_reference_characters(self) -> list:
 		"""获取选中的参考人物列表"""
+		# 检查 UI 组件是否存在
+		if not hasattr(self, 'ref_character_listbox'):
+			print(f"⚠️ ref_character_listbox 不存在，返回空列表")
+			return []
+		
 		selected_indices = self.ref_character_listbox.curselection()
 		selected_characters = []
 		

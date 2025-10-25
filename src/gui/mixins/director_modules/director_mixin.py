@@ -3,7 +3,7 @@
 """
 
 import tkinter as tk
-from tkinter import ttk, messagebox, filedialog, simpledialog, END, DISABLED, NORMAL
+from tkinter import ttk, messagebox, filedialog, simpledialog, END, DISABLED, NORMAL, LEFT, RIGHT, BOTH, VERTICAL, Y
 from tkinter.scrolledtext import ScrolledText
 import threading
 import os
@@ -12,15 +12,19 @@ import subprocess
 from .script_generator import ScriptGeneratorMixin
 from .shot_list_generator import ShotListGeneratorMixin
 from .video_prompt_builder import VideoPromptBuilderMixin
-from .scene_image_generator import SceneImageGeneratorMixin
+# from .scene_image_generator import SceneImageGeneratorMixin  # ❌ 已删除：功能被 SDConsistencyMixin 替代
 from .project_persistence import ProjectPersistenceMixin
 from .sd_consistency_generator import SDConsistencyMixin
 from .shot_viewer import ShotViewerMixin
+from .prompt_adapter import PromptAdapter
 
 
 class DirectorMixin(ScriptGeneratorMixin, ShotListGeneratorMixin, VideoPromptBuilderMixin, 
-				   SceneImageGeneratorMixin, ProjectPersistenceMixin, SDConsistencyMixin, ShotViewerMixin):
-	"""导演页面 - 整合所有视频制作功能"""
+			   ProjectPersistenceMixin, SDConsistencyMixin, ShotViewerMixin):
+	"""导演页面 - 整合所有视频制作功能
+	
+	图片生成统一使用 SDConsistencyMixin（支持人物一致性）
+	"""
 	
 	def _build_director_page(self) -> None:
 		"""构建导演页面UI"""
@@ -95,23 +99,29 @@ class DirectorMixin(ScriptGeneratorMixin, ShotListGeneratorMixin, VideoPromptBui
 		ttk.Button(step2_frame, text="🎬 生成分镜", command=_debug_shot_button).pack(fill="x", pady=(0, 5))
 		ttk.Button(step2_frame, text="📋 查看所有分镜", command=self.open_shot_viewer).pack(fill="x")
 		
-		# 步骤3：一致性设定
-		step3_frame = ttk.LabelFrame(left_panel, text="【步骤3】一致性设定", padding=10)
+		# 步骤3：人物信息（已移至图片管理）
+		step3_frame = ttk.LabelFrame(left_panel, text="【步骤3】人物信息", padding=10)
 		step3_frame.pack(fill="x", pady=5)
-		ttk.Button(step3_frame, text="👥 编辑设定表", command=self._on_edit_consistency).pack(fill="x")
 		
-		# 添加SD参考图片生成按钮（仅在使用本地SD时显示）
-		self.sd_ref_button = ttk.Button(
-			step3_frame, 
-			text="🎨 生成SD参考图片", 
-			command=self._generate_character_references
-		)
-		# 检查是否使用本地SD
-		if hasattr(self, 'img_api_preset') and self.img_api_preset.get() == "本地 Stable Diffusion":
-			self.sd_ref_button.pack(fill="x", pady=(5, 0))
+		# 提示信息
+		info_frame = tk.Frame(step3_frame, bg="#1e3a5f", relief=tk.SOLID, borderwidth=1)
+		info_frame.pack(fill="x", pady=(0, 8))
+		tk.Label(info_frame, text="💡 ", font=("", 9), fg="#4CAF50", bg="#1e3a5f").pack(side=LEFT, padx=(6, 0))
+		tk.Label(info_frame, text="人物设定已移至", font=("", 9), fg="white", bg="#1e3a5f").pack(side=LEFT)
+		tk.Label(info_frame, text="【图片管理】", font=("", 9, "bold"), fg="#4CAF50", bg="#1e3a5f").pack(side=LEFT)
+		tk.Label(info_frame, text="页面", font=("", 9), fg="white", bg="#1e3a5f").pack(side=LEFT, padx=(0, 6))
 		
-		self.consistency_status_label = ttk.Label(step3_frame, text="未设定", foreground="gray")
-		self.consistency_status_label.pack(pady=(5, 0))
+		# 快捷跳转按钮
+		ttk.Button(step3_frame, text="📸 前往图片管理页面", command=self._goto_image_page, 
+				  style="TButton").pack(fill="x")
+		
+		# 查看已生成的人物图片
+		ttk.Button(step3_frame, text="📁 查看人物图片库", command=self._view_character_gallery, 
+				  style="TButton").pack(fill="x", pady=(5, 0))
+		
+		# 状态提示
+		self.character_status_label = ttk.Label(step3_frame, text="请先在图片管理页面生成人物形象", foreground="gray", font=("", 8))
+		self.character_status_label.pack(pady=(5, 0))
 		
 		# 步骤4：生成分镜图片
 		step4_frame = ttk.LabelFrame(left_panel, text="【步骤4】生成图片", padding=10)
@@ -299,68 +309,115 @@ class DirectorMixin(ScriptGeneratorMixin, ShotListGeneratorMixin, VideoPromptBui
 		print(f"✅ 手动刷新下拉框成功")
 		print(f"选项列表: {shot_options}")
 	
-	def _on_edit_consistency(self) -> None:
-		"""编辑一致性设定表"""
-		from .consistency_dialog import ConsistencyDialog
+	def _goto_image_page(self) -> None:
+		"""跳转到图片管理页面"""
+		try:
+			if hasattr(self, 'notebook'):
+				for i in range(self.notebook.index("end")):
+					if "图片" in self.notebook.tab(i, "text"):
+						self.notebook.select(i)
+						messagebox.showinfo("提示", 
+										  "已切换到图片管理页面！\n\n"
+										  "请在【人物管理】标签页：\n"
+										  "1. 提取或选择人物\n"
+										  "2. 点击【编辑人物详情】完善信息\n"
+										  "3. 选择生成类型（标准/表情/角度）\n"
+										  "4. 点击【开始生成】")
+						break
+		except Exception as e:
+			print(f"跳转失败: {e}")
+	
+	def _view_character_gallery(self) -> None:
+		"""查看人物图片库"""
+		if not self.current_project:
+			messagebox.showwarning("提示", "请先创建或打开一个项目！")
+			return
 		
-		# 获取当前人物列表
-		characters = []
-		if hasattr(self, 'current_shots') and self.current_shots:
-			# 从分镜中提取人物
-			for shot in self.current_shots:
-				chars = shot.get('characters', [])
-				for char in chars:
-					if char and char not in characters:
-						characters.append(char)
+		from pathlib import Path
+		from PIL import Image, ImageTk
+		char_dir = Path(self.current_project.project_dir) / "characters"
 		
-		# 如果没有从分镜中获取到人物，尝试从剧本中提取
-		if not characters and hasattr(self, 'current_script'):
-			# 简单的人物名称提取（可以后续优化）
-			import re
-			# 查找常见的人物名称模式
-			names = re.findall(r'([李王张刘陈杨黄赵吴周徐孙马朱胡郭何高林罗郑梁谢宋唐许韩冯邓曹彭曾萧田董袁潘于蒋蔡余杜叶程苏魏吕丁任沈姚卢姜崔钟谭陆汪范金石廖贾夏韦付方白邹孟熊秦邱江尹薛闫段雷侯龙史陶黎贺顾毛郝龚邵万钱严覃武戴莫孔向汤][一-龥]{1,2})', self.current_script)
-			characters = list(set(names))[:10]  # 最多取10个
+		if not char_dir.exists() or not list(char_dir.glob("*.png")):
+			messagebox.showinfo("提示", 
+							   "还没有生成人物照片！\n\n"
+							   "请先前往【图片管理】页面生成人物形象。")
+			return
 		
-		# 获取当前的一致性设定
-		consistency_data = getattr(self, 'consistency_data', None)
+		# 创建图片库窗口
+		gallery_window = tk.Toplevel(self)
+		gallery_window.title("人物图片库")
+		gallery_window.geometry("950x750")
 		
-		# 打开对话框（非模态）
-		dialog = ConsistencyDialog(self, consistency_data, characters)
+		# 标题
+		title_frame = ttk.Frame(gallery_window)
+		title_frame.pack(fill="x", padx=20, pady=15)
 		
-		# 存储对话框引用以便后续访问
-		self._consistency_dialog = dialog
+		all_images = list(char_dir.glob("*.png"))
+		ttk.Label(title_frame, text="🎨 人物图片库", 
+				 font=("", 14, "bold")).pack(side=LEFT)
+		ttk.Label(title_frame, text=f"共 {len(all_images)} 张图片", 
+				 font=("", 11)).pack(side=RIGHT)
 		
-		# 不需要绑定关闭事件，对话框自己处理
-		# 但需要在对话框关闭后获取结果
-		def check_dialog_result():
-			"""定期检查对话框是否关闭并获取结果"""
-			if dialog.winfo_exists():
-				# 对话框还在，继续检查
-				self.after(100, check_dialog_result)
-			else:
-				# 对话框已关闭，获取结果
-				result = dialog.result
-				if result is not None:
-					self.consistency_data = result
-					self.status.set("✅ 一致性设定已保存")
-					
-					# 更新UI显示
-					char_count = len(result.get("characters", {}))
-					if hasattr(self, 'consistency_status_label'):
-						self.consistency_status_label.config(
-							text=f"已设定 {char_count} 个人物",
-							foreground="green"
-						)
-					
-					# 自动保存项目
-					if hasattr(self, 'save_complete_project'):
-						self.save_complete_project()
-						print("✅ 一致性设定已自动保存到项目")
-				else:
-					self.status.set("❌ 未保存一致性设定")
+		# 创建可滚动区域
+		canvas = tk.Canvas(gallery_window, bg="#2b2b2b")
+		scrollbar = ttk.Scrollbar(gallery_window, orient=VERTICAL, command=canvas.yview)
+		scrollable_frame = ttk.Frame(canvas)
 		
-		# 开始检查
-		self.after(100, check_dialog_result)
+		scrollable_frame.bind(
+			"<Configure>",
+			lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+		)
+		
+		canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+		canvas.configure(yscrollcommand=scrollbar.set)
+		
+		# 加载和显示图片（网格布局）
+		col_count = 4
+		for idx, img_path in enumerate(sorted(all_images)):
+			row = idx // col_count
+			col = idx % col_count
+			
+			# 创建图片卡片
+			card = ttk.Frame(scrollable_frame, relief="solid", borderwidth=1)
+			card.grid(row=row, column=col, padx=10, pady=10, sticky="nsew")
+			
+			try:
+				# 加载图片
+				img = Image.open(img_path)
+				# 缩略图
+				img.thumbnail((200, 200), Image.Resampling.LANCZOS)
+				photo = ImageTk.PhotoImage(img)
+				
+				# 图片标签
+				img_label = tk.Label(card, image=photo, bg="#1e1e1e")
+				img_label.image = photo  # 保持引用
+				img_label.pack(padx=5, pady=5)
+				
+				# 文件名标签
+				filename = img_path.stem
+				ttk.Label(card, text=filename, font=("", 8)).pack(pady=(0, 5))
+				
+			except Exception as e:
+				ttk.Label(card, text=f"加载失败:\n{img_path.name}").pack(pady=20)
+		
+		# 配置列权重
+		for i in range(col_count):
+			scrollable_frame.columnconfigure(i, weight=1)
+		
+		canvas.pack(side=LEFT, fill=BOTH, expand=True, padx=(20, 0), pady=(0, 20))
+		scrollbar.pack(side=RIGHT, fill=Y, padx=(0, 20), pady=(0, 20))
+		
+		# 鼠标滚轮支持
+		def _on_mousewheel(event):
+			canvas.yview_scroll(int(-1*(event.delta/120)), "units")
+		canvas.bind_all("<MouseWheel>", _on_mousewheel)
+		
+		# 关闭时解绑
+		def on_close():
+			canvas.unbind_all("<MouseWheel>")
+			gallery_window.destroy()
+		
+		gallery_window.protocol("WM_DELETE_WINDOW", on_close)
 		
 	def _on_generate_selected_shot(self) -> None:
 		"""生成选中的分镜图片"""
@@ -1506,8 +1563,45 @@ class DirectorMixin(ScriptGeneratorMixin, ShotListGeneratorMixin, VideoPromptBui
 					print(f"❌ SD客户端初始化失败: {str(e)}")
 					raise Exception(f"无法连接SD服务器 {sd_base_url}，请确认SD WebUI已启动并开启--api参数")
 				
-				# 获取负面提示词
-				negative_prompt = self._build_sd_negative_prompt(current_shot) if current_shot else self._build_sd_negative_prompt({})
+				# 🎯 使用智能提示词适配器生成SD专用提示词
+				if current_shot:
+					characters = current_shot.get('characters', [])
+					character_details = current_shot.get('character_details', {})
+					scene_desc = current_shot.get('visual_description', '') or current_shot.get('scene_description', '')
+					shot_type = current_shot.get('shot_type', '')
+					action = current_shot.get('action', '')
+					emotion = current_shot.get('emotion', '')
+					
+					# 使用适配器生成SD风格提示词
+					optimized_prompt, negative_prompt = PromptAdapter.build_prompt_for_api(
+						api_type="sd",
+						scene_description=scene_desc or description,
+						characters=characters,
+						character_details=character_details,
+						shot_type=shot_type,
+						action=action,
+						emotion=emotion,
+						is_img2img=False,  # 文生图模式
+						consistency_mode=True  # 启用一致性模式
+					)
+					
+					# 添加一致性权重
+					if characters:
+						optimized_prompt = PromptAdapter.add_consistency_weights(optimized_prompt, characters[0])
+					
+					print(f"🎨 SD优化提示词: {optimized_prompt[:200]}...")
+					print(f"❌ SD负面提示词: {negative_prompt[:100]}...")
+					
+					# 使用优化后的提示词
+					description = optimized_prompt
+				else:
+					# 如果没有分镜信息，使用原始描述 + 基础负面提示词
+					_, negative_prompt = PromptAdapter.build_prompt_for_api(
+						api_type="sd",
+						scene_description=description,
+						is_img2img=False,
+						consistency_mode=False
+					)
 				
 				# 为保持人物一致性，使用全局固定种子
 				# 确保同一人物在所有分镜中使用相同的基础种子
@@ -1568,6 +1662,29 @@ class DirectorMixin(ScriptGeneratorMixin, ShotListGeneratorMixin, VideoPromptBui
 					base_url=api_config.get("base_url", ""),
 					model=api_config.get("model", "")
 				)
+				
+				# 🎯 使用智能提示词适配器生成OpenAI风格提示词（自然语言）
+				if current_shot:
+					characters = current_shot.get('characters', [])
+					character_details = current_shot.get('character_details', {})
+					scene_desc = current_shot.get('visual_description', '') or current_shot.get('scene_description', '')
+					shot_type = current_shot.get('shot_type', '')
+					action = current_shot.get('action', '')
+					emotion = current_shot.get('emotion', '')
+					
+					# 使用适配器生成OpenAI风格提示词
+					optimized_prompt, _ = PromptAdapter.build_prompt_for_api(
+						api_type="openai",
+						scene_description=scene_desc or description,
+						characters=characters,
+						character_details=character_details,
+						shot_type=shot_type,
+						action=action,
+						emotion=emotion
+					)
+					
+					print(f"🎨 OpenAI优化提示词: {optimized_prompt[:200]}...")
+					description = optimized_prompt
 				
 				# 生成图片
 				image_data = client.generate(

@@ -657,6 +657,11 @@ class ShotManagerMixin:
 	def _auto_select_characters_from_shot(self, shot_text: str, description: str = "") -> None:
 		"""智能识别分镜中的人物并自动选中（支持名字、别名、特征匹配）"""
 		try:
+			# 检查 UI 组件是否存在（防止在项目加载时出错）
+			if not hasattr(self, 'ref_character_listbox'):
+				print(f"⚠️ ref_character_listbox 不存在，跳过自动选择人物")
+				return
+			
 			print(f"\n{'='*60}")
 			print(f"🤖 开始智能识别人物")
 			print(f"{'='*60}")

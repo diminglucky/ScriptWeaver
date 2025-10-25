@@ -102,6 +102,15 @@ class ImageUICharacterTabMixin:
 										   command=self._on_extract_characters, width=12, state=DISABLED, style="TButton")
 		self.char_btn_refresh.pack(side=LEFT, padx=(0, 3))
 		
+		# 第二行按钮
+		btn_frame2 = ttk.Frame(grp_characters)
+		btn_frame2.pack(fill="x", padx=6, pady=(0, 8))
+		self.char_btn_edit_detail = ttk.Button(btn_frame2, text="✏️ 编辑人物详情", 
+											   command=self._on_edit_character_detail, width=15, 
+											   state=DISABLED, style="TButton")
+		self.char_btn_edit_detail.pack(side=LEFT, padx=(0, 3))
+		ttk.Label(btn_frame2, text="完善外观、服装等信息", font=("", 8), foreground="#888").pack(side=LEFT, padx=(5, 0))
+		
 		# 人物列表框（使用Listbox）
 		list_frame = ttk.Frame(grp_characters)
 		list_frame.pack(fill=BOTH, expand=True, padx=6, pady=(0, 6))
@@ -331,35 +340,48 @@ class ImageUICharacterTabMixin:
 		tip_consistency = tk.Label(grp_params, text="💡 推荐使用「最高」级别，确保瓜子脸不会变成方脸！", font=("", 9), fg="#FF9800")
 		tip_consistency.grid(row=20, column=0, columnspan=2, sticky="w", padx=0)
 		
-		# 操作按钮
-		grp_actions = ttk.LabelFrame(right, text="🚀 第七步：生成照片", padding=(12, 10))
+		# 操作按钮 - 生成人物形象
+		grp_actions = ttk.LabelFrame(right, text="🎨 第七步：生成人物形象", padding=(12, 10))
 		grp_actions.pack(fill="x", padx=0, pady=(12, 12))
 		
-		# 第一行：生成和保存
+		# 生成类型选择
+		type_frame = ttk.Frame(grp_actions)
+		type_frame.pack(fill="x", padx=6, pady=(6, 3))
+		
+		ttk.Label(type_frame, text="生成类型：", font=("", 10, "bold")).pack(side=LEFT, padx=(0, 10))
+		
+		self.char_gen_type = tk.StringVar(value="standard")
+		ttk.Radiobutton(type_frame, text="标准形象(1张)", variable=self.char_gen_type, value="standard").pack(side=LEFT, padx=5)
+		ttk.Radiobutton(type_frame, text="表情库(7张)", variable=self.char_gen_type, value="expressions").pack(side=LEFT, padx=5)
+		ttk.Radiobutton(type_frame, text="角度库(3张)", variable=self.char_gen_type, value="angles").pack(side=LEFT, padx=5)
+		ttk.Radiobutton(type_frame, text="完整套装(11张)", variable=self.char_gen_type, value="full").pack(side=LEFT, padx=5)
+		
+		# 生成按钮行
 		action_row = ttk.Frame(grp_actions)
 		action_row.pack(fill="x", padx=6, pady=(6, 3))
-		self.char_btn_gen_photo = ttk.Button(action_row, text="🎨 生成人物照片", 
+		
+		self.char_btn_gen_photo = ttk.Button(action_row, text="🎨 开始生成", 
 											 command=self._on_generate_character_photo,
 											 state=DISABLED, style="Accent.TButton")
 		self.char_btn_gen_photo.pack(side=LEFT, padx=(0, 6), fill="x", expand=True)
-		self.char_btn_save_photo = ttk.Button(action_row, text="💾 保存照片", 
+		
+		ttk.Button(action_row, text="📁 查看图片库", 
+				   command=self._on_view_character_gallery,
+				   style="TButton").pack(side=LEFT, fill="x", expand=True)
+		
+		# 第二行：保存和设定表
+		action_row2 = ttk.Frame(grp_actions)
+		action_row2.pack(fill="x", padx=6, pady=(3, 6))
+		
+		self.char_btn_save_photo = ttk.Button(action_row2, text="💾 保存当前", 
 											  command=self._on_save_character_photo, 
 											  state=DISABLED, style="TButton")
-		self.char_btn_save_photo.pack(side=LEFT, fill="x", expand=True)
+		self.char_btn_save_photo.pack(side=LEFT, padx=(0, 3), fill="x", expand=True)
 		
-		# 第二行：查看照片管理和生成设定表
-		action_row2 = ttk.Frame(grp_actions)
-		action_row2.pack(fill="x", padx=6, pady=(0, 6))
-		
-		self.char_btn_view_gallery = ttk.Button(action_row2, text="🖼️ 查看所有照片", 
-												command=self._on_view_character_gallery,
-												state=DISABLED, style="TButton")
-		self.char_btn_view_gallery.pack(side=LEFT, fill="x", expand=True, padx=(0, 3))
-		
-		self.char_btn_generate_sheet = ttk.Button(action_row2, text="📋 生成角色设定表", 
+		self.char_btn_generate_sheet = ttk.Button(action_row2, text="📋 生成设定表", 
 												  command=self._on_generate_character_sheet,
-												  state=DISABLED, style="Ghost.TButton")
-		self.char_btn_generate_sheet.pack(side=LEFT, fill="x", expand=True, padx=(3, 0))
+												  state=DISABLED, style="TButton")
+		self.char_btn_generate_sheet.pack(side=LEFT, fill="x", expand=True)
 		
 		# 预览区域
 		grp_preview = ttk.LabelFrame(right, text="🖼️ 照片预览", padding=(12, 10))

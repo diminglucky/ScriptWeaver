@@ -102,10 +102,10 @@ class ConsistencyDialog(tk.Toplevel):
         self.notebook.add(self.preview_frame, text="👁️ 预览")
         self._create_preview_tab()
         
-        # 人物形象页
-        self.portrait_frame = ttk.Frame(self.notebook)
-        self.notebook.add(self.portrait_frame, text="🎨 人物形象")
-        self._create_portrait_tab()
+        # 人物图片库页（只读查看）
+        self.gallery_frame = ttk.Frame(self.notebook)
+        self.notebook.add(self.gallery_frame, text="📸 图片库")
+        self._create_gallery_tab()
         
         # 底部按钮
         button_frame = ttk.Frame(main_frame)
@@ -444,9 +444,9 @@ class ConsistencyDialog(tk.Toplevel):
         self.actions_text.delete("1.0", tk.END)
         self.actions_text.insert("1.0", char_data.get("actions", {}).get("common", ""))
         
-        # 加载人物形象（如果存在）
-        if hasattr(self, 'current_portrait_label'):
-            self._load_current_portrait()
+        # 刷新图片库（如果存在）
+        if hasattr(self, 'gallery_refresh'):
+            self.gallery_refresh()
         
         # 更新预览
         self._update_preview()
@@ -1383,127 +1383,159 @@ class ConsistencyDialog(tk.Toplevel):
         if "黑发" in appearance_text or "黑色" in appearance_text:
             char_data["appearance"]["hair"]["color"] = "黑色"
     
-    def _create_portrait_tab(self):
-        """创建人物形象标签页"""
-        main_frame = ttk.Frame(self.portrait_frame)
+    def _create_gallery_tab(self):
+        """创建人物图片库标签页（只读查看）"""
+        main_frame = ttk.Frame(self.gallery_frame)
         main_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
         
         # 顶部说明
-        info_frame = ttk.LabelFrame(main_frame, text="💡 功能说明", padding="10")
+        info_frame = ttk.LabelFrame(main_frame, text="💡 使用说明", padding="10")
         info_frame.pack(fill=tk.X, pady=(0, 10))
         
         info_text = """
-生成人物照片，选择一个作为标准形象，后续分镜生成将以此为参考保持人物一致性。
-提示：请先在"外观设定"和"服装设定"中完善人物信息，以获得更好的生成效果。
+📸 人物照片已移至【图片管理页面】生成
+• 标准形象、表情库(7种)、角度库(3种)
+• 生成后，导演页面将自动使用这些图片保持人物一致性
+
+👉 请前往：图片管理 → 人物管理 → 生成人物形象
         """
-        ttk.Label(info_frame, text=info_text.strip(), justify=tk.LEFT).pack()
+        ttk.Label(info_frame, text=info_text.strip(), justify=tk.LEFT, foreground="#FF9800").pack()
         
-        # 生成设置区域
-        settings_frame = ttk.LabelFrame(main_frame, text="生成设置", padding="10")
-        settings_frame.pack(fill=tk.X, pady=(0, 10))
-        
-        # 生成数量
-        ttk.Label(settings_frame, text="生成数量：").grid(row=0, column=0, sticky=tk.W, pady=5)
-        self.portrait_count_var = tk.IntVar(value=4)
-        count_spinbox = ttk.Spinbox(
-            settings_frame,
-            from_=1,
-            to=9,
-            textvariable=self.portrait_count_var,
-            width=10
-        )
-        count_spinbox.grid(row=0, column=1, sticky=tk.W, pady=5)
-        ttk.Label(settings_frame, text="（推荐4-6张）").grid(row=0, column=2, sticky=tk.W, padx=(10, 0))
-        
-        # 照片风格
-        ttk.Label(settings_frame, text="照片风格：").grid(row=1, column=0, sticky=tk.W, pady=5)
-        self.portrait_style_var = tk.StringVar(value="写实肖像")
-        style_combo = ttk.Combobox(
-            settings_frame,
-            textvariable=self.portrait_style_var,
-            values=["写实肖像", "证件照", "半身照", "全身照", "特写", "动漫风格"],
-            state="readonly",
-            width=20
-        )
-        style_combo.grid(row=1, column=1, sticky=tk.W, pady=5)
-        
-        # 生成按钮
-        btn_frame = ttk.Frame(settings_frame)
-        btn_frame.grid(row=2, column=0, columnspan=3, pady=(10, 0))
+        # 引导按钮
+        guide_frame = ttk.Frame(main_frame)
+        guide_frame.pack(fill=tk.X, pady=(0, 10))
         
         ttk.Button(
-            btn_frame,
-            text="🎨 生成人物照片",
-            command=self._on_generate_portraits,
-            width=20
-        ).pack(side=tk.LEFT, padx=5)
+            guide_frame,
+            text="🎬 前往图片管理页面",
+            command=self._goto_image_page,
+            style="Accent.TButton"
+        ).pack(pady=10)
         
-        ttk.Button(
-            btn_frame,
-            text="📁 从文件导入",
-            command=self._on_import_portrait,
-            width=15
-        ).pack(side=tk.LEFT, padx=5)
-        
-        # 当前选中的形象
-        current_frame = ttk.LabelFrame(main_frame, text="当前选中的形象", padding="10")
-        current_frame.pack(fill=tk.X, pady=(0, 10))
-        
-        self.current_portrait_label = ttk.Label(
-            current_frame,
-            text="尚未选择人物形象",
-            background="#2b2b2b",
-            foreground="#ffffff"
-        )
-        self.current_portrait_label.pack(fill=tk.X, ipady=50)
-        
-        # 按钮
-        current_btn_frame = ttk.Frame(current_frame)
-        current_btn_frame.pack(pady=(10, 0))
-        
-        ttk.Button(
-            current_btn_frame,
-            text="📂 查看大图",
-            command=self._on_view_current_portrait
-        ).pack(side=tk.LEFT, padx=5)
-        
-        ttk.Button(
-            current_btn_frame,
-            text="🗑️ 清除选择",
-            command=self._on_clear_portrait
-        ).pack(side=tk.LEFT, padx=5)
-        
-        # 生成的照片列表
-        list_frame = ttk.LabelFrame(main_frame, text="生成的照片（点击选择）", padding="10")
+        # 已有照片列表
+        list_frame = ttk.LabelFrame(main_frame, text="已生成的人物照片", padding="10")
         list_frame.pack(fill=tk.BOTH, expand=True)
         
-        # 创建滚动画布
+        # 创建可滚动区域
         canvas = tk.Canvas(list_frame, bg="#2b2b2b")
         scrollbar = ttk.Scrollbar(list_frame, orient="vertical", command=canvas.yview)
+        scrollable_frame = ttk.Frame(canvas)
         
-        self.portraits_container = ttk.Frame(canvas)
-        self.portraits_container.bind(
+        scrollable_frame.bind(
             "<Configure>",
             lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
         )
         
-        canvas.create_window((0, 0), window=self.portraits_container, anchor="nw")
+        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
         canvas.configure(yscrollcommand=scrollbar.set)
         
         canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
         
-        # 存储画布引用
-        self.portraits_canvas = canvas
+        self.gallery_container = scrollable_frame
+        self.gallery_refresh = lambda: self._refresh_gallery()
         
-        # 初始化照片列表
-        self.generated_portraits = []
+        # 加载照片
+        self._refresh_gallery()
+    
+    def _goto_image_page(self):
+        """跳转到图片管理页面"""
+        try:
+            # 获取主窗口的notebook
+            if hasattr(self.parent, 'notebook'):
+                for i in range(self.parent.notebook.index("end")):
+                    if "图片" in self.parent.notebook.tab(i, "text"):
+                        self.parent.notebook.select(i)
+                        messagebox.showinfo("提示", 
+                                          "已切换到图片管理页面！\n\n"
+                                          "请在【人物管理】标签页：\n"
+                                          "1. 选择人物\n"
+                                          "2. 选择生成类型（标准/表情/角度）\n"
+                                          "3. 点击【开始生成】")
+                        break
+        except Exception as e:
+            print(f"跳转失败: {e}")
+    
+    def _refresh_gallery(self):
+        """刷新人物图片库"""
+        # 清空容器
+        for widget in self.gallery_container.winfo_children():
+            widget.destroy()
         
-        # 加载已有的人物形象
-        self._load_current_portrait()
+        char_name = self.character_var.get()
+        if not char_name:
+            ttk.Label(self.gallery_container, text="请先选择一个人物", 
+                     foreground="#888888").pack(pady=50)
+            return
+        
+        # 获取当前项目路径
+        if hasattr(self.parent, 'current_project') and self.parent.current_project:
+            from pathlib import Path
+            char_dir = Path(self.parent.current_project.project_dir) / "characters"
+        elif hasattr(self.parent, 'current_project_path') and self.parent.current_project_path:
+            from pathlib import Path
+            char_dir = Path(self.parent.current_project_path) / "characters"
+        else:
+            ttk.Label(self.gallery_container, text="未找到项目目录", 
+                     foreground="#888888").pack(pady=50)
+            return
+        
+        if not char_dir.exists():
+            ttk.Label(self.gallery_container, text=f"{char_name} 还没有生成照片\n\n请前往图片管理页面生成", 
+                     foreground="#888888").pack(pady=50)
+            return
+        
+        # 查找该人物的所有图片
+        import re
+        clean_name = re.sub(r'[^\w\s\u4e00-\u9fff-]', '', char_name)
+        char_images = list(char_dir.glob(f"{clean_name}*.png"))
+        
+        if not char_images:
+            ttk.Label(self.gallery_container, text=f"{char_name} 还没有生成照片\n\n请前往图片管理页面生成", 
+                     foreground="#888888").pack(pady=50)
+            return
+        
+        # 显示照片数量
+        info_label = ttk.Label(self.gallery_container, text=f"共 {len(char_images)} 张照片", 
+                              font=("", 10, "bold"))
+        info_label.pack(pady=(0, 10))
+        
+        # 加载和显示图片（网格布局）
+        from PIL import Image, ImageTk
+        col_count = 3
+        for idx, img_path in enumerate(sorted(char_images)):
+            row = idx // col_count
+            col = idx % col_count
+            
+            # 创建图片卡片
+            card = ttk.Frame(self.gallery_container)
+            card.grid(row=row+1, column=col, padx=10, pady=10, sticky="nsew")
+            
+            try:
+                # 加载图片
+                img = Image.open(img_path)
+                # 缩略图
+                img.thumbnail((200, 200), Image.Resampling.LANCZOS)
+                photo = ImageTk.PhotoImage(img)
+                
+                # 图片标签
+                img_label = tk.Label(card, image=photo, bg="#1e1e1e")
+                img_label.image = photo  # 保持引用
+                img_label.pack(padx=5, pady=5)
+                
+                # 文件名标签
+                filename = img_path.stem
+                ttk.Label(card, text=filename, font=("", 8)).pack(pady=(0, 5))
+                
+            except Exception as e:
+                ttk.Label(card, text=f"加载失败:\n{img_path.name}").pack(pady=20)
+        
+        # 配置列权重
+        for i in range(col_count):
+            self.gallery_container.columnconfigure(i, weight=1)
     
     def _load_current_portrait(self):
-        """加载当前人物的形象"""
+        """加载当前人物的形象（已弃用，保留兼容性）"""
         char_name = self.character_var.get()
         if not char_name:
             return
@@ -1574,40 +1606,119 @@ class ConsistencyDialog(tk.Toplevel):
         
         def generate():
             try:
-                # 构建人物描述提示词
-                prompt = self._build_portrait_prompt(char_name, char_data)
-                negative_prompt = self._build_portrait_negative_prompt()
-                
-                count = self.portrait_count_var.get()
-                
                 # 调用SD生成图片
                 from src.clients.sd_client import StableDiffusionClient
                 
                 client = StableDiffusionClient(self.parent.sd_api_url.get())
                 
+                # 获取生成类型
+                gen_type = self.portrait_type_var.get()
+                
                 # 生成多张图片
                 generated_images = []
-                for i in range(count):
-                    self.after(0, lambda i=i: progress_label.config(
-                        text=f"正在生成第 {i+1}/{count} 张照片..."
-                    ))
+                image_labels = []  # 存储每张图片的标签（表情名/角度名）
+                
+                if gen_type == "expressions":
+                    # 表情库生成（7种表情）
+                    expressions = {
+                        "happy": "开心",
+                        "sad": "难过", 
+                        "angry": "愤怒",
+                        "surprised": "惊讶",
+                        "fear": "害怕",
+                        "neutral": "中性",
+                        "smile": "微笑"
+                    }
                     
-                    # 使用不同的seed生成不同照片
-                    seed = abs(hash(char_name + str(i))) % 1000000
+                    total = len(expressions)
+                    for idx, (emotion_en, emotion_cn) in enumerate(expressions.items()):
+                        self.after(0, lambda idx=idx, e=emotion_cn, t=total: progress_label.config(
+                            text=f"正在生成【{e}】表情... ({idx+1}/{t})"
+                        ))
+                        
+                        # 构建带表情的提示词
+                        prompt = self._build_portrait_prompt(char_name, char_data, emotion=emotion_en)
+                        negative_prompt = self._build_portrait_negative_prompt()
+                        
+                        seed = abs(hash(char_name + emotion_en)) % 1000000
+                        
+                        images = client.txt2img(
+                            prompt=prompt,
+                            negative_prompt=negative_prompt,
+                            width=512,
+                            height=768,
+                            steps=30,
+                            cfg_scale=7.5,
+                            sampler_name="DPM++ 2M Karras",
+                            seed=seed
+                        )
+                        
+                        if images:
+                            generated_images.append(images[0])
+                            image_labels.append(emotion_cn)
+                
+                elif gen_type == "angles":
+                    # 角度库生成（3种角度）
+                    angles = {
+                        "front": "正面",
+                        "side": "侧面",
+                        "back": "背面"
+                    }
                     
-                    images = client.txt2img(
-                        prompt=prompt,
-                        negative_prompt=negative_prompt,
-                        width=512,
-                        height=768,  # 肖像比例
-                        steps=30,
-                        cfg_scale=7.5,
-                        sampler_name="DPM++ 2M Karras",
-                        seed=seed
-                    )
+                    total = len(angles)
+                    for idx, (angle_en, angle_cn) in enumerate(angles.items()):
+                        self.after(0, lambda idx=idx, a=angle_cn, t=total: progress_label.config(
+                            text=f"正在生成【{a}】视角... ({idx+1}/{t})"
+                        ))
+                        
+                        # 构建带角度的提示词
+                        prompt = self._build_portrait_prompt(char_name, char_data, angle=angle_en)
+                        negative_prompt = self._build_portrait_negative_prompt()
+                        
+                        seed = abs(hash(char_name + angle_en)) % 1000000
+                        
+                        images = client.txt2img(
+                            prompt=prompt,
+                            negative_prompt=negative_prompt,
+                            width=512,
+                            height=768,
+                            steps=30,
+                            cfg_scale=7.5,
+                            sampler_name="DPM++ 2M Karras",
+                            seed=seed
+                        )
+                        
+                        if images:
+                            generated_images.append(images[0])
+                            image_labels.append(angle_cn)
+                
+                else:
+                    # 标准形象生成（原有逻辑）
+                    count = self.portrait_count_var.get()
+                    prompt = self._build_portrait_prompt(char_name, char_data)
+                    negative_prompt = self._build_portrait_negative_prompt()
                     
-                    if images:
-                        generated_images.append(images[0])
+                    for i in range(count):
+                        self.after(0, lambda i=i, c=count: progress_label.config(
+                            text=f"正在生成第 {i+1}/{c} 张照片..."
+                        ))
+                        
+                        seed = abs(hash(char_name + str(i))) % 1000000
+                        
+                        images = client.txt2img(
+                            prompt=prompt,
+                            negative_prompt=negative_prompt,
+                            width=512,
+                            height=768,
+                            steps=30,
+                            cfg_scale=7.5,
+                            sampler_name="DPM++ 2M Karras",
+                            seed=seed
+                        )
+                        
+                        if images:
+                            generated_images.append(images[0])
+                            image_labels.append(f"变体{i+1}")
                 
                 if not generated_images:
                     raise Exception("未能生成任何图片")

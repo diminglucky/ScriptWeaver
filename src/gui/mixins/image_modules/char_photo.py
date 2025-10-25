@@ -59,11 +59,33 @@ class CharacterPhotoMixin:
 		style = self.char_img_style.get()
 		extra_desc = self.char_txt_extra.get("1.0", END).strip()
 		
-		# 获取视角、表情和批量生成选项
+		# 获取生成类型（新UI）
+		gen_type = self.char_gen_type.get() if hasattr(self, 'char_gen_type') else "standard"
+		
+		# 根据生成类型设定批量选项
+		if gen_type == "standard":
+			# 标准形象：正面+中性
+			batch_generate = False
+			batch_expressions = False
+		elif gen_type == "expressions":
+			# 表情库：正面+7种表情
+			batch_generate = False
+			batch_expressions = True
+		elif gen_type == "angles":
+			# 角度库：3个角度+中性
+			batch_generate = True
+			batch_expressions = False
+		elif gen_type == "full":
+			# 完整套装：3个角度+7种表情
+			batch_generate = True
+			batch_expressions = True
+		else:
+			batch_generate = False
+			batch_expressions = False
+		
+		# 获取视角和表情（用于单一生成）
 		view_angle = self.char_view_angle.get() if hasattr(self, 'char_view_angle') else "front"
 		expression = self.char_expression.get() if hasattr(self, 'char_expression') else "neutral"
-		batch_generate = self.char_batch_generate.get() if hasattr(self, 'char_batch_generate') else False
-		batch_expressions = self.char_batch_expressions.get() if hasattr(self, 'char_batch_expressions') else False
 		
 		# 获取服装/造型变体选项
 		variant_mode = self.char_variant_mode.get() if hasattr(self, 'char_variant_mode') else "none"
@@ -100,13 +122,15 @@ class CharacterPhotoMixin:
 			"three-quarter": "斜侧"
 		}
 		
-		# 表情名称映射
+		# 表情名称映射（7种）
 		expression_names = {
 			"neutral": "中性",
 			"happy": "开心",
-			"sad": "悲伤",
+			"sad": "难过",
 			"angry": "愤怒",
-			"surprised": "惊讶"
+			"surprised": "惊讶",
+			"scared": "害怕",
+			"smile": "微笑"
 		}
 		
 		# 确定要生成的视角列表
@@ -118,11 +142,12 @@ class CharacterPhotoMixin:
 			angles_to_generate = [(view_angle, angle_name)]
 			print(f"📸 单一角度：{angle_name}")
 		
-		# 确定要生成的表情列表
+		# 确定要生成的表情列表（7种）
 		if batch_expressions:
 			expressions_to_generate = [
-				("neutral", "中性"), ("happy", "开心"), ("sad", "悲伤"),
-				("angry", "愤怒"), ("surprised", "惊讶")
+				("neutral", "中性"), ("happy", "开心"), ("sad", "难过"),
+				("angry", "愤怒"), ("surprised", "惊讶"), ("scared", "害怕"),
+				("smile", "微笑")
 			]
 			print(f"😊 批量表情模式：将生成 {len(expressions_to_generate)} 种表情")
 		else:
@@ -631,6 +656,113 @@ class CharacterPhotoMixin:
 			return ""
 	
 	
+	
+	
+	def _on_view_character_gallery(self) -> None:
+		"""查看人物图片库"""
+		selection = self.char_listbox.curselection()
+		if not selection:
+			messagebox.showwarning("提示", "请先从列表中选择一个人物！")
+			return
+		
+		index = selection[0]
+		character = self.character_list[index]
+		character_name = character["name"]
+		
+		# 检查当前项目
+		if not self.current_project:
+			messagebox.showwarning("提示", "请先创建或打开一个项目！")
+			return
+		
+		# 获取人物图片目录
+		char_dir = self.current_project.project_dir / "characters"
+		if not char_dir.exists():
+			messagebox.showinfo("提示", f"还没有生成\"{character_name}\"的照片")
+			return
+		
+		# 查找该人物的所有图片
+		import re
+		clean_name = re.sub(r'[^\w\s\u4e00-\u9fff-]', '', character_name)
+		char_images = list(char_dir.glob(f"{clean_name}*.png"))
+		
+		if not char_images:
+			messagebox.showinfo("提示", f"还没有生成\"{character_name}\"的照片")
+			return
+		
+		# 创建图片库窗口
+		gallery_window = tk.Toplevel(self)
+		gallery_window.title(f"{character_name} - 图片库")
+		gallery_window.geometry("900x700")
+		
+		# 标题
+		title_frame = ttk.Frame(gallery_window)
+		title_frame.pack(fill="x", padx=20, pady=15)
+		
+		ttk.Label(title_frame, text=f"🎨 {character_name} 的图片库", 
+				 font=("", 14, "bold")).pack(side=LEFT)
+		ttk.Label(title_frame, text=f"共 {len(char_images)} 张图片", 
+				 font=("", 11)).pack(side=RIGHT)
+		
+		# 创建可滚动区域
+		canvas = tk.Canvas(gallery_window, bg="#2b2b2b")
+		scrollbar = ttk.Scrollbar(gallery_window, orient=VERTICAL, command=canvas.yview)
+		scrollable_frame = ttk.Frame(canvas)
+		
+		scrollable_frame.bind(
+			"<Configure>",
+			lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+		)
+		
+		canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+		canvas.configure(yscrollcommand=scrollbar.set)
+		
+		# 加载和显示图片（网格布局）
+		col_count = 3
+		for idx, img_path in enumerate(sorted(char_images)):
+			row = idx // col_count
+			col = idx % col_count
+			
+			# 创建图片卡片
+			card = ttk.Frame(scrollable_frame, relief="solid", borderwidth=1)
+			card.grid(row=row, column=col, padx=10, pady=10, sticky="nsew")
+			
+			try:
+				# 加载图片
+				img = Image.open(img_path)
+				# 缩略图
+				img.thumbnail((250, 250), Image.Resampling.LANCZOS)
+				photo = ImageTk.PhotoImage(img)
+				
+				# 图片标签
+				img_label = tk.Label(card, image=photo, bg="#1e1e1e")
+				img_label.image = photo  # 保持引用
+				img_label.pack(padx=5, pady=5)
+				
+				# 文件名标签
+				filename = img_path.stem
+				ttk.Label(card, text=filename, font=("", 9)).pack(pady=(0, 5))
+				
+			except Exception as e:
+				ttk.Label(card, text=f"加载失败:\n{img_path.name}").pack(pady=20)
+		
+		# 配置列权重
+		for i in range(col_count):
+			scrollable_frame.columnconfigure(i, weight=1)
+		
+		canvas.pack(side=LEFT, fill=BOTH, expand=True, padx=(20, 0), pady=(0, 20))
+		scrollbar.pack(side=RIGHT, fill=Y, padx=(0, 20), pady=(0, 20))
+		
+		# 鼠标滚轮支持
+		def _on_mousewheel(event):
+			canvas.yview_scroll(int(-1*(event.delta/120)), "units")
+		canvas.bind_all("<MouseWheel>", _on_mousewheel)
+		
+		# 关闭时解绑
+		def on_close():
+			canvas.unbind_all("<MouseWheel>")
+			gallery_window.destroy()
+		
+		gallery_window.protocol("WM_DELETE_WINDOW", on_close)
 	
 	
 	def _on_save_character_photo(self) -> None:
