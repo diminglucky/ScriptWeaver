@@ -1,6 +1,7 @@
 """GUI模块 - 重构后的模块化GUI代码"""
 
-from .main_window import App
+from .modern_app import ModernApp
+from .ultra_modern_app import UltraModernApp
 
-__all__ = ['App']
+__all__ = ['ModernApp', 'UltraModernApp']
 

@@ -33,13 +33,12 @@ def main():
         app = ModernApp()
         app.mainloop()
     except ImportError as e:
-        print(f"⚠️ 无法加载现代化UI: {e}")
-        print("正在回退到经典版本...")
-        
-        # 回退到经典版本
-        from src.gui_app import App
-        app = App()
-        app.mainloop()
+        print(f"❌ 无法加载现代化UI: {e}")
+        print("\n请检查以下内容:")
+        print("1. 是否安装了所有依赖: pip install -r requirements.txt")
+        print("2. 是否在正确的目录运行")
+        print("3. 查看错误信息并修复")
+        sys.exit(1)
 
 if __name__ == "__main__":
     main()

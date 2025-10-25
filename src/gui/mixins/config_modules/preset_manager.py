@@ -50,10 +50,25 @@ class PresetManagerMixin:
 			# 填充Model（如果预设有配置或已保存）
 			if preset.get("model"):
 				self.img_model.set(preset["model"])
+			# 如果界面上有模型下拉框且是本地SD，则加载模型列表
+			if hasattr(self, 'combo_img_model'):
+				if provider == "sd":
+					# 只读下拉并加载SD模型
+					self.combo_img_model['state'] = 'readonly'
+					if hasattr(self, '_load_sd_models'):
+						self._load_sd_models()
+				else:
+					# 非SD：允许手动输入，自定义模型名
+					self.combo_img_model['state'] = 'normal'
+					self.combo_img_model['values'] = ()
 			
 			# 填充API Key（如果已保存）
 			if preset.get("key"):
 				self.img_api_key.set(preset["key"])
+			else:
+				# 本地SD不需要API Key，清空字段
+				if provider == "sd":
+					self.img_api_key.set("")
 			
 			# 填充SecretKey（仅腾讯混元）
 			if preset.get("secret_key"):

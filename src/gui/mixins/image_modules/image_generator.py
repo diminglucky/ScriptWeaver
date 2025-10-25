@@ -98,7 +98,12 @@ class ImageGeneratorMixin:
 		img_api_key = self.img_api_key.get().strip()
 		img_base_url = self.img_base_url.get().strip() if hasattr(self, 'img_base_url') else None
 		
-		if not img_api_key:
+		# 只有OpenAI、腾讯混元等才需要API Key，本地SD不需要
+		current_preset = self.img_api_preset.get()
+		provider = self.img_api_presets.get(current_preset, {}).get("provider", "openai")
+		
+		# 本地SD不需要检查API Key
+		if provider != "sd" and not img_api_key:
 			raise ValueError("请先配置图片生成API Key")
 		
 		img_client = OpenAIImageClient(
@@ -134,6 +139,59 @@ class ImageGeneratorMixin:
 		return results[0].image
 	
 	
+	def _generate_sd_optimized_prompt(self, prompt_cn: str, img_type: str) -> str:
+		"""
+		为本地Stable Diffusion生成优化后的提示词
+		直接使用中文提示词（参考SD WebUI的做法）
+		"""
+		# 本地SD支持中文提示词，直接使用中文而不翻译
+		# 这样能更好地保留原意和细节
+		
+		# 添加质量和风格关键词（使用中文）
+		quality_keywords = "高质量, 清晰, 精致, 专业, 8K"
+		
+		# 根据图片类型添加风格关键词
+		style_keywords_cn = {
+			"写实照片": "写实, 自然光, 摄影, 专业照片",
+			"日系动漫": "日系动漫, 二次元, 动画风格",
+			"3D渲染": "3D渲染, CGI, 精致渲染",
+			"水彩画": "水彩画, 柔和色彩, 艺术风格",
+			"油画": "油画, 浓郁色彩, 古典艺术",
+			"素描": "素描, 线条艺术, 黑白",
+			"赛博朋克": "赛博朋克, 霓虹灯, 未来科技",
+			"蒸汽朋克": "蒸汽朋克, 齿轮机械, 复古未来",
+			"像素风": "像素风, 复古游戏",
+			"中国风": "中国风, 水墨, 古典",
+			"国风插画": "国风插画, 精致线条",
+			"古风": "古风, 汉服, 古代",
+			"仙侠": "仙侠, 神仙, 仙气",
+			"武侠": "武侠, 武术, 古代",
+			"水墨画": "水墨画, 中国传统",
+			"工笔画": "工笔画, 精细",
+			"敦煌壁画": "敦煌风格, 古代艺术",
+			"恐怖": "恐怖, 阴暗, 诡异",
+			"惊悚": "惊悚, 紧张, 悬疑",
+			"诡异": "诡异, 超现实, 异世界",
+			"悬疑": "悬疑, 谜团, 黑色电影",
+			"玄幻": "玄幻, 魔法, 奇幻",
+			"科幻": "科幻, 未来, 太空",
+			"魔幻": "魔幻, 奇幻世界, 魔法"
+		}
+		
+		style_kw = style_keywords_cn.get(img_type, img_type)
+		
+		# 组合最终提示词
+		# 格式：主要描述, 质量关键词, 风格关键词
+		final_prompt = f"{prompt_cn}, {quality_keywords}, {style_kw}"
+		
+		# 限制长度
+		max_length = 500
+		if len(final_prompt) > max_length:
+			final_prompt = final_prompt[:max_length].rstrip(",").rstrip()
+		
+		return final_prompt
+	
+	
 	def _on_img_generate(self) -> None:
 		"""生成图片（重构简化版）"""
 		prompt_cn = self.img_txt_prompt_cn.get("1.0", END).strip()
@@ -151,134 +209,148 @@ class ImageGeneratorMixin:
 		def task(prompt_cn=prompt_cn, selected_characters=selected_characters, img_type=img_type):
 			try:
 				self.img_btn_gen.configure(state=DISABLED)
+				
+				# 更新状态栏和底部状态
 				self.status.set("🎨 准备生成图片...")
 				if hasattr(self, 'update_header_status'):
-					self.update_header_status("准备生成图片...", "🎨")
+					self.after(0, lambda: self.update_header_status("准备生成图片...", "🎨"))
 				
 				# 步骤1: 判断使用哪个API提供商
 				current_preset = self.img_api_preset.get()
 				provider = self.img_api_presets.get(current_preset, {}).get("provider", "openai")
 				
-				self.status.set(f"📝 正在翻译【{img_type}】风格图片描述为英文...（步骤1/3）")
-				# 更新顶部状态栏
-				if hasattr(self, 'update_header_status'):
-					self.update_header_status("翻译提示词 (1/3)", "📝")
-				
-				# 根据图片类型定义英文风格关键词
-				style_keywords = {
-					"写实照片": "photorealistic, high quality photography, natural lighting, realistic, detailed, 8K",
-					"日系动漫": "anime style, Japanese animation, vibrant colors, cel shading, anime artwork, high quality anime",
-					"3D渲染": "3D render, CGI, high quality rendering, octane render, unreal engine, detailed textures",
-					"水彩画": "watercolor painting, soft colors, artistic, traditional art, watercolor style, delicate brushstrokes",
-					"油画": "oil painting, thick brushstrokes, classical art style, rich colors, fine art, painterly",
-					"素描": "sketch style, pencil drawing, line art, monochrome, artistic sketch, detailed linework",
-					"赛博朋克": "cyberpunk style, neon lights, futuristic, dark atmosphere, high-tech, sci-fi",
-					"蒸汽朋克": "steampunk style, gears and machinery, Victorian era, retro-futuristic, industrial aesthetic",
-					"像素风": "pixel art style, 8-bit/16-bit graphics, retro game art, pixelated",
-					"中国风": "Chinese traditional painting style, ink wash painting, classical Chinese art, poetic atmosphere",
-					"国风插画": "Chinese style illustration, modern Chinese aesthetic, delicate line art, traditional colors, elegant composition",
-					"古风": "ancient Chinese style, traditional hanfu, classical architecture, historical atmosphere, Tang/Song dynasty aesthetic",
-					"仙侠": "Chinese xianxia fantasy, immortal cultivator, celestial scenery, flowing robes, mystical clouds, jade palace",
-					"武侠": "Chinese wuxia, martial arts, sword fighting, ancient warrior, bamboo forest, misty mountains",
-					"水墨画": "Chinese ink wash painting, sumi-e style, black ink, minimal colors, artistic brushwork, zen aesthetic",
-					"工笔画": "Chinese gongbi painting, meticulous brushwork, fine details, traditional pigments, classical composition",
-					"敦煌壁画": "Dunhuang murals style, ancient Buddhist art, flying apsaras, Tang dynasty colors, religious iconography",
-					"恐怖": "horror style, dark atmosphere, creepy, eerie lighting, disturbing, scary, gothic",
-					"惊悚": "thriller style, suspenseful, tense atmosphere, dramatic lighting, mysterious shadows, unsettling",
-					"诡异": "uncanny style, bizarre, surreal, otherworldly, strange atmosphere, unsettling details",
-					"悬疑": "mystery style, noir atmosphere, dramatic shadows, suspenseful composition, detective aesthetic",
-					"玄幻": "Chinese xuanhuan fantasy, mystical elements, magical creatures, spiritual energy, epic landscape",
-					"科幻": "sci-fi style, futuristic technology, space setting, advanced civilization, neon lights, cybernetic",
-					"魔幻": "fantasy style, magical world, mythical creatures, enchanted forest, ethereal glow, epic adventure"
-				}
-				
-				# 如果是自定义类型且不在预设中，使用通用关键词
-				style_keyword = style_keywords.get(img_type, f"{img_type} style, artistic, high quality, detailed")
-				
-				# 1. 先将中文翻译为英文提示词
-				# 使用故事生成的API来翻译（因为需要文本生成能力）
-				story_api_key = _sanitize(self.api_key.get())
-				if not story_api_key:
-					messagebox.showerror("错误", "请先在'故事生成'页面配置API Key（用于翻译提示词）")
-					return
-				
-				print(f"DEBUG: 使用故事API翻译，API Key长度: {len(story_api_key)}")
-				
-				client = DeepSeekClient(
-					api_key=story_api_key,
-					base_url=_sanitize(self.base_url.get()),
-					model=_sanitize(self.model.get()),
-				)
-				# 检查是否有参考人物
-				has_reference_characters = selected_characters and len(selected_characters) > 0
-				
-				# 🎯 简化翻译指令，去除过度强调
-				inst = (
-					f"将中文图片描述翻译为简洁自然的英文提示词，用于{img_type}风格的AI图片生成。\n\n"
-					f"要求：\n"
-					f"1. 保留核心视觉元素：人物、场景、动作、光线、镜头\n"
-					f"2. 使用自然的描述性语言，避免堆砌关键词\n"
-					f"3. 体现{img_type}的美学特点，添加风格词：{style_keyword}\n"
-					f"4. 控制在200个英文单词以内\n"
-					f"5. 只输出英文提示词，不要解释\n"
-				)
-				
-				if has_reference_characters:
-					inst += (
-						f"\n注意：如果有人物描述，请准确翻译人物特征（年龄、性别、发型、服装等），保持自然流畅。\n"
+				# 根据提供商选择不同的提示词处理方式
+				if provider == "sd":
+					# 本地SD：直接使用中文提示词（不翻译）
+					self.status.set(f"🎨 准备为本地SD生成【{img_type}】风格图片...")
+					if hasattr(self, 'update_header_status'):
+						self.after(0, lambda: self.update_header_status(f"本地SD准备中 (1/3)", "🎨"))
+					
+					# 本地SD使用中文提示词直接处理
+					prompt_en = self._generate_sd_optimized_prompt(prompt_cn, img_type)
+					print(f"DEBUG: SD优化提示词: {prompt_en[:150]}...")
+					
+				else:
+					# API调用：翻译为英文提示词
+					self.status.set(f"📝 正在翻译【{img_type}】风格图片描述为英文...（步骤1/3）")
+					if hasattr(self, 'update_header_status'):
+						self.after(0, lambda: self.update_header_status("翻译提示词 (1/3)", "📝"))
+					
+					# 根据图片类型定义英文风格关键词
+					style_keywords = {
+						"写实照片": "photorealistic, high quality photography, natural lighting, realistic, detailed, 8K",
+						"日系动漫": "anime style, Japanese animation, vibrant colors, cel shading, anime artwork, high quality anime",
+						"3D渲染": "3D render, CGI, high quality rendering, octane render, unreal engine, detailed textures",
+						"水彩画": "watercolor painting, soft colors, artistic, traditional art, watercolor style, delicate brushstrokes",
+						"油画": "oil painting, thick brushstrokes, classical art style, rich colors, fine art, painterly",
+						"素描": "sketch style, pencil drawing, line art, monochrome, artistic sketch, detailed linework",
+						"赛博朋克": "cyberpunk style, neon lights, futuristic, dark atmosphere, high-tech, sci-fi",
+						"蒸汽朋克": "steampunk style, gears and machinery, Victorian era, retro-futuristic, industrial aesthetic",
+						"像素风": "pixel art style, 8-bit/16-bit graphics, retro game art, pixelated",
+						"中国风": "Chinese traditional painting style, ink wash painting, classical Chinese art, poetic atmosphere",
+						"国风插画": "Chinese style illustration, modern Chinese aesthetic, delicate line art, traditional colors, elegant composition",
+						"古风": "ancient Chinese style, traditional hanfu, classical architecture, historical atmosphere, Tang/Song dynasty aesthetic",
+						"仙侠": "Chinese xianxia fantasy, immortal cultivator, celestial scenery, flowing robes, mystical clouds, jade palace",
+						"武侠": "Chinese wuxia, martial arts, sword fighting, ancient warrior, bamboo forest, misty mountains",
+						"水墨画": "Chinese ink wash painting, sumi-e style, black ink, minimal colors, artistic brushwork, zen aesthetic",
+						"工笔画": "Chinese gongbi painting, meticulous brushwork, fine details, traditional pigments, classical composition",
+						"敦煌壁画": "Dunhuang murals style, ancient Buddhist art, flying apsaras, Tang dynasty colors, religious iconography",
+						"恐怖": "horror style, dark atmosphere, creepy, eerie lighting, disturbing, scary, gothic",
+						"惊悚": "thriller style, suspenseful, tense atmosphere, dramatic lighting, mysterious shadows, unsettling",
+						"诡异": "uncanny style, bizarre, surreal, otherworldly, strange atmosphere, unsettling details",
+						"悬疑": "mystery style, noir atmosphere, dramatic shadows, suspenseful composition, detective aesthetic",
+						"玄幻": "Chinese xuanhuan fantasy, mystical elements, magical creatures, spiritual energy, epic landscape",
+						"科幻": "sci-fi style, futuristic technology, space setting, advanced civilization, neon lights, cybernetic",
+						"魔幻": "fantasy style, magical world, mythical creatures, enchanted forest, ethereal glow, epic adventure"
+					}
+					
+					# 如果是自定义类型且不在预设中，使用通用关键词
+					style_keyword = style_keywords.get(img_type, f"{img_type} style, artistic, high quality, detailed")
+					
+					# 1. 先将中文翻译为英文提示词
+					story_api_key = _sanitize(self.api_key.get())
+					if not story_api_key:
+						messagebox.showerror("错误", "请先在'故事生成'页面配置API Key（用于翻译提示词）")
+						return
+					
+					print(f"DEBUG: 使用故事API翻译，API Key长度: {len(story_api_key)}")
+					
+					client = DeepSeekClient(
+						api_key=story_api_key,
+						base_url=_sanitize(self.base_url.get()),
+						model=_sanitize(self.model.get()),
 					)
-				
-				# 如果中文描述过长，先截断
-				max_cn_length = 800
-				prompt_cn_for_translate = prompt_cn
-				if len(prompt_cn_for_translate) > max_cn_length:
-					prompt_cn_for_translate = prompt_cn_for_translate[:max_cn_length] + "..."
-				
-				prompt_en = client.chat([
-					{"role": "system", "content": inst},
-					{"role": "user", "content": f"图片类型：{img_type}\n\n请翻译以下中文图片描述为简洁的英文提示词：\n\n{prompt_cn_for_translate}"},
-				], temperature=0.3)
-				
-				# 过滤可能违反内容策略的词汇
-				sensitive_words = [
-					'blood', 'bloody', 'gore', 'gory', 'violence', 'violent', 'death', 'dead', 'corpse',
-					'kill', 'murder', 'suicide', 'weapon', 'gun', 'knife', 'explosion', 'bomb',
-					'torture', 'mutilation', 'dismember', 'decapitate', 'horrific', 'gruesome'
-				]
-				
-				# 温和替换敏感词
-				replacements = {
-					'blood': 'red liquid', 'bloody': 'stained', 'gore': 'dramatic scene',
-					'violence': 'intense action', 'violent': 'intense', 'death': 'ending',
-					'dead': 'motionless', 'corpse': 'figure', 'kill': 'defeat', 
-					'murder': 'incident', 'suicide': 'tragedy', 'weapon': 'tool',
-					'gun': 'device', 'knife': 'blade', 'explosion': 'burst',
-					'bomb': 'device', 'torture': 'suffering', 'mutilation': 'injury',
-					'dismember': 'separate', 'decapitate': 'remove', 
-					'horrific': 'dramatic', 'gruesome': 'intense'
-				}
-				
-				prompt_en_filtered = prompt_en
-				for word, replacement in replacements.items():
-					import re
-					# 使用正则表达式进行大小写不敏感的替换
-					pattern = re.compile(re.escape(word), re.IGNORECASE)
-					prompt_en_filtered = pattern.sub(replacement, prompt_en_filtered)
-				
-				# 添加安全后缀
-				prompt_en = prompt_en_filtered + ", artistic style, cinematic composition, professional photography"
-				
-				# 检查英文提示词长度，如果太长则截断（保留在1000字符以内）
-				max_en_length = 1000
-				if len(prompt_en) > max_en_length:
-					# 在句号或逗号处截断，保持完整性
-					truncated = prompt_en[:max_en_length]
-					last_punct = max(truncated.rfind('.'), truncated.rfind(','))
-					if last_punct > 800:
-						prompt_en = truncated[:last_punct + 1]
-					else:
-						prompt_en = truncated
-				
+					# 检查是否有参考人物
+					has_reference_characters = selected_characters and len(selected_characters) > 0
+					
+					# OpenAI/其他API（使用自然句子）
+					inst = (
+						f"将中文图片描述翻译为简洁自然的英文提示词，用于{img_type}风格的AI图片生成。\n\n"
+						f"要求：\n"
+						f"1. 保留核心视觉元素：人物、场景、动作、光线、镜头\n"
+						f"2. 使用自然的描述性语言，避免堆砌关键词\n"
+						f"3. 体现{img_type}的美学特点，添加风格词：{style_keyword}\n"
+						f"4. 控制在200个英文单词以内\n"
+						f"5. 只输出英文提示词，不要解释\n"
+					)
+					
+					if has_reference_characters:
+						inst += (
+							f"\n注意：如果有人物描述，请准确翻译人物特征（年龄、性别、发型、服装等），保持自然流畅。\n"
+						)
+					
+					# 如果中文描述过长，先截断
+					max_cn_length = 800
+					prompt_cn_for_translate = prompt_cn
+					if len(prompt_cn_for_translate) > max_cn_length:
+						prompt_cn_for_translate = prompt_cn_for_translate[:max_cn_length] + "..."
+					
+					prompt_en = client.chat([
+						{"role": "system", "content": inst},
+						{"role": "user", "content": f"图片类型：{img_type}\n\n请翻译以下中文图片描述为英文提示词：\n\n{prompt_cn_for_translate}"},
+					], temperature=0.3)
+					
+					# OpenAI优化：过滤敏感词
+					# 过滤可能违反内容策略的词汇
+					sensitive_words = [
+						'blood', 'bloody', 'gore', 'gory', 'violence', 'violent', 'death', 'dead', 'corpse',
+						'kill', 'murder', 'suicide', 'weapon', 'gun', 'knife', 'explosion', 'bomb',
+						'torture', 'mutilation', 'dismember', 'decapitate', 'horrific', 'gruesome'
+					]
+					
+					# 温和替换敏感词
+					replacements = {
+						'blood': 'red liquid', 'bloody': 'stained', 'gore': 'dramatic scene',
+						'violence': 'intense action', 'violent': 'intense', 'death': 'ending',
+						'dead': 'motionless', 'corpse': 'figure', 'kill': 'defeat', 
+						'murder': 'incident', 'suicide': 'tragedy', 'weapon': 'tool',
+						'gun': 'device', 'knife': 'blade', 'explosion': 'burst',
+						'bomb': 'device', 'torture': 'suffering', 'mutilation': 'injury',
+						'dismember': 'separate', 'decapitate': 'remove', 
+						'horrific': 'dramatic', 'gruesome': 'intense'
+					}
+					
+					prompt_en_filtered = prompt_en
+					for word, replacement in replacements.items():
+						import re
+						# 使用正则表达式进行大小写不敏感的替换
+						pattern = re.compile(re.escape(word), re.IGNORECASE)
+						prompt_en_filtered = pattern.sub(replacement, prompt_en_filtered)
+					
+					# 添加安全后缀
+					prompt_en = prompt_en_filtered + ", artistic style, cinematic composition, professional photography"
+					max_en_length = 1000
+					
+					# 检查英文提示词长度，如果太长则截断
+					if len(prompt_en) > max_en_length:
+						# 在句号或逗号处截断，保持完整性
+						truncated = prompt_en[:max_en_length]
+						last_punct = max(truncated.rfind('.'), truncated.rfind(','))
+						if last_punct > max_en_length - 200:
+							prompt_en = truncated[:last_punct + 1]
+						else:
+							prompt_en = truncated
+					
 				# 2. 根据当前预设选择API提供商
 				current_preset = self.img_api_preset.get()
 				provider = self.img_api_presets.get(current_preset, {}).get("provider", "openai")
@@ -290,7 +362,7 @@ class ImageGeneratorMixin:
 				self.status.set(f"🖼️ 翻译完成，正在调用图片生成API...（步骤2/3）")
 				# 更新顶部状态栏
 				if hasattr(self, 'update_header_status'):
-					self.update_header_status("正在生成图片 (2/3)", "🎨")
+					self.after(0, lambda: self.update_header_status("正在生成图片 (2/3)", "🎨"))
 				
 				# 3. 使用对应的客户端生成图片
 				if provider == "sd":
@@ -299,7 +371,7 @@ class ImageGeneratorMixin:
 					
 					self.status.set(f"🖼️ 使用本地SD生成【{img_type}】风格图片...（步骤2/3）")
 					if hasattr(self, 'update_header_status'):
-						self.update_header_status("Stable Diffusion生成中 (2/3)", "🖼️")
+						self.after(0, lambda: self.update_header_status("Stable Diffusion生成中 (2/3)", "🖼️"))
 					
 					sd_base_url = self.img_base_url.get().strip() or "http://localhost:7860"
 					sd_client = StableDiffusionClient(base_url=sd_base_url)
@@ -362,7 +434,7 @@ class ImageGeneratorMixin:
 					self.status.set(f"🎨 使用腾讯混元API生成【{img_type}】风格图片...（步骤2/3）")
 					# 更新顶部状态栏
 					if hasattr(self, 'update_header_status'):
-						self.update_header_status("腾讯混元生成中 (2/3)", "🎨")
+						self.after(0, lambda: self.update_header_status("腾讯混元生成中 (2/3)", "🎨"))
 					
 					secret_id = self.img_api_key.get().strip()
 					secret_key = self.img_secret_key.get().strip()
@@ -522,7 +594,7 @@ class ImageGeneratorMixin:
 					self.status.set(f"✅ 处理生成结果...（步骤3/3）")
 					# 更新顶部状态栏
 					if hasattr(self, 'update_header_status'):
-						self.update_header_status("处理结果 (3/3)", "✅")
+						self.after(0, lambda: self.update_header_status("处理结果 (3/3)", "✅"))
 					
 					self.img_last_image = result.image
 					self._update_img_preview()
@@ -530,7 +602,7 @@ class ImageGeneratorMixin:
 					self.status.set(f"✨ 【{img_type}】风格图片生成成功！使用腾讯混元模型")
 					# 更新顶部状态栏
 					if hasattr(self, 'update_header_status'):
-						self.update_header_status("图片生成完成", "✅")
+						self.after(0, lambda: self.update_header_status("图片生成完成", "✅"))
 					# 自动保存图片到项目
 					self._auto_save_image_to_project()
 					
@@ -553,14 +625,18 @@ class ImageGeneratorMixin:
 					print(f"DEBUG: Base URL: {img_base_url}")
 					print(f"DEBUG: 图片尺寸: {self.img_size.get()}")
 					
-					if not img_api_key:
+					# 本地SD不需要API Key
+					current_preset = self.img_api_preset.get()
+					provider = self.img_api_presets.get(current_preset, {}).get("provider", "openai")
+					
+					if provider != "sd" and not img_api_key:
 						messagebox.showerror("错误", "请先配置图片生成API Key")
 						return
 					
 					self.status.set(f"🎨 使用OpenAI API生成【{img_type}】风格图片...（模型：{model_name}）")
 					# 更新顶部状态栏
 					if hasattr(self, 'update_header_status'):
-						self.update_header_status("OpenAI生成中 (2/3)", "🎨")
+						self.after(0, lambda: self.update_header_status("OpenAI生成中 (2/3)", "🎨"))
 					
 					img_client = OpenAIImageClient(
 						api_key=img_api_key, 
@@ -595,7 +671,7 @@ class ImageGeneratorMixin:
 					self.status.set(f"✅ 处理生成结果...（步骤3/3）")
 					# 更新顶部状态栏
 					if hasattr(self, 'update_header_status'):
-						self.update_header_status("处理结果 (3/3)", "✅")
+						self.after(0, lambda: self.update_header_status("处理结果 (3/3)", "✅"))
 					
 				self.img_last_image = results[0].image
 				self._update_img_preview()
@@ -603,7 +679,7 @@ class ImageGeneratorMixin:
 				self.status.set(f"✨ 【{img_type}】风格图片生成成功！提示词：{prompt_en[:40]}...")
 				# 更新顶部状态栏
 				if hasattr(self, 'update_header_status'):
-					self.update_header_status("图片生成完成", "✅")
+					self.after(0, lambda: self.update_header_status("图片生成完成", "✅"))
 				# 自动保存图片到项目
 				self._auto_save_image_to_project()
 				
@@ -621,11 +697,172 @@ class ImageGeneratorMixin:
 				self.status.set("❌ 图片生成失败，请检查配置和网络")
 				# 更新顶部状态栏
 				if hasattr(self, 'update_header_status'):
-					self.update_header_status("图片生成失败", "❌")
+					self.after(0, lambda: self.update_header_status("图片生成失败", "❌"))
 			finally:
 				self.img_btn_gen.configure(state=NORMAL)
 		
 		import threading
 		threading.Thread(target=task, daemon=True).start()
 
+	def extract_story_scenes(self, story_text: str) -> list:
+		"""
+		从故事文本中提取关键场景
+		
+		Args:
+			story_text: 故事内容
+			
+		Returns:
+			场景描述列表
+		"""
+		if not story_text or not story_text.strip():
+			return []
+		
+		# 尝试使用AI提取更智能的场景
+		try:
+			story_api_key = _sanitize(self.api_key.get())
+			if story_api_key:
+				client = DeepSeekClient(
+					api_key=story_api_key,
+					base_url=_sanitize(self.base_url.get()),
+					model=_sanitize(self.model.get()),
+				)
+				
+				instruction = """
+将这个故事分解为3-5个关键视觉场景。每个场景应该包含：
+- 主要人物
+- 场景设置和环境
+- 动作和气氛
+- 光线效果
+
+格式：每行一个场景，场景之间用 --- 分隔。只输出场景描述，不要其他内容。
+"""
+				response = client.chat([
+					{"role": "system", "content": "You are a visual storytelling expert. Extract key visual scenes from stories."},
+					{"role": "user", "content": instruction + "\n\n故事内容：\n" + story_text}
+				], temperature=0.5)
+				
+				# 解析场景
+				scenes = response.split('---')
+				scenes = [s.strip() for s in scenes if s.strip()]
+				return scenes[:5]
+		except:
+			pass
+		
+		# 回退方案：按段落分割
+		paragraphs = story_text.strip().split('\n\n')
+		scenes = [p.strip() for p in paragraphs if p.strip()]
+		return scenes[:5]
+	
+	def generate_images_for_story_scenes(self, story_text: str, style: str = "photorealistic", img_type: str = "写实照片"):
+		"""
+		为故事的各个场景生成图片
+		
+		Args:
+			story_text: 故事内容
+			style: 图片风格
+			img_type: 图片类型
+		"""
+		print("\n" + "="*60)
+		print("FOR STORY SCENE IMAGE GENERATION")
+		print("="*60)
+		
+		# 提取场景
+		print("[1/3] Extracting scenes from story...")
+		scenes = self.extract_story_scenes(story_text)
+		print(f"Found {len(scenes)} scenes")
+		
+		if not scenes:
+			messagebox.showwarning("提示", "未能从故事中提取场景")
+			return
+		
+		# 为每个场景生成图片
+		generated_count = 0
+		for i, scene in enumerate(scenes, 1):
+			print(f"\n[2/3-{i}] Generating image for scene {i}/{len(scenes)}...")
+			print(f"Scene: {scene[:80]}...")
+			
+			try:
+				# 翻译场景为英文
+				prompt_en = self._translate_scene_to_english(scene, img_type)
+				
+				# 使用现有的生成逻辑
+				current_preset = self.img_api_preset.get()
+				provider = self.img_api_presets.get(current_preset, {}).get("provider", "openai")
+				
+				if provider == "sd":
+					# 本地SD
+					from src.clients.sd_client import StableDiffusionClient
+					
+					sd_base_url = self.img_base_url.get().strip() or "http://localhost:7860"
+					sd_client = StableDiffusionClient(base_url=sd_base_url)
+					
+					size = self.img_size.get()
+					if 'x' in size:
+						width, height = map(int, size.split('x'))
+					else:
+						width = height = 768
+					
+					negative_prompt = "nsfw, lowres, bad anatomy, bad hands, text, error, missing fingers, extra digit, fewer digits, cropped, worst quality, low quality, jpeg artifacts, signature, watermark, blurry"
+					
+					images = sd_client.txt2img(
+						prompt=prompt_en,
+						negative_prompt=negative_prompt,
+						width=width,
+						height=height,
+						steps=20,
+						cfg_scale=7.0,
+						sampler_name="Euler a"
+					)
+					
+					if images:
+						self.img_last_image = images[0]
+						self._update_img_preview()
+						self.img_btn_save.configure(state=NORMAL)
+						generated_count += 1
+						print(f"[3/3-{i}] Image generated successfully")
+			
+			except Exception as e:
+				print(f"Error generating image for scene {i}: {str(e)}")
+				continue
+		
+		print("\n" + "="*60)
+		print(f"Generated {generated_count}/{len(scenes)} images")
+		print("="*60)
+		
+		messagebox.showinfo("完成", f"成功为故事生成了 {generated_count}/{len(scenes)} 张图片")
+	
+	def _translate_scene_to_english(self, scene_text: str, img_type: str) -> str:
+		"""
+		将场景描述翻译为英文提示词
+		"""
+		story_api_key = _sanitize(self.api_key.get())
+		if not story_api_key:
+			return scene_text  # 直接返回原文
+		
+		try:
+			client = DeepSeekClient(
+				api_key=story_api_key,
+				base_url=_sanitize(self.base_url.get()),
+				model=_sanitize(self.model.get()),
+			)
+			
+			instruction = f"""
+将这个场景描述翻译为简洁的英文提示词，用于{img_type}风格的AI图片生成。
+要求：
+1. 保留核心视觉元素（人物、场景、动作、光线）
+2. 添加视觉质量词汇（photorealistic, highly detailed, 8K等）
+3. 保持在200个英文单词以内
+4. 只输出英文提示词
+
+场景描述：
+"""
+			prompt = client.chat([
+				{"role": "system", "content": "You are an expert at creating visual prompts for image generation."},
+				{"role": "user", "content": instruction + scene_text}
+			], temperature=0.3)
+			
+			return prompt
+		except:
+			return scene_text
+	
 	

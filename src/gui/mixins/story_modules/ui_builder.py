@@ -9,8 +9,9 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 from src.clients.deepseek_client import DeepSeekClient
-from src.kb.ingest import KnowledgeBaseIngestor, IngestConfig
-from src.kb.search import KnowledgeBaseSearcher, SearchConfig
+# 延迟导入：只在使用时才导入，避免启动时加载 sentence_transformers (3.8秒)
+# from src.kb.ingest import KnowledgeBaseIngestor, IngestConfig
+# from src.kb.search import KnowledgeBaseSearcher, SearchConfig
 from src.utils.text import sanitize as _sanitize
 from ...theme import Theme
 

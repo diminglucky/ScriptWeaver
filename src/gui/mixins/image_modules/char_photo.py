@@ -241,9 +241,14 @@ class CharacterPhotoMixin:
 							base_url = self.img_base_url.get() if hasattr(self, 'img_base_url') and self.img_base_url.get() else None
 							model = self.img_model.get() if hasattr(self, 'img_model') else "dall-e-3"
 							
-							print(f"API Key存在: {bool(api_key)}, Base URL: {base_url}, Model: {model}")
+							# 检查是否是本地SD
+							current_preset = self.img_api_preset.get() if hasattr(self, 'img_api_preset') else ""
+							provider = self.img_api_presets.get(current_preset, {}).get("provider", "openai") if hasattr(self, 'img_api_presets') else "openai"
 							
-							if not api_key:
+							print(f"API Key存在: {bool(api_key)}, Base URL: {base_url}, Model: {model}, Provider: {provider}")
+							
+							# 本地SD不需要API Key
+							if provider != "sd" and not api_key:
 								print("图片API密钥未配置")
 								self.after(0, lambda: messagebox.showerror("错误", "请先在'图片生成-配置'页面设置API密钥"))
 								self.after(0, lambda: self.status.set("❌ 未配置API密钥"))
@@ -251,42 +256,88 @@ class CharacterPhotoMixin:
 									self.after(0, lambda: self.update_header_status("未配置API", "❌"))
 								return
 							
-							# 🎯 使用专业的提示词构建器（英文版，使用当前角度、表情、变体和一致性优化）
-							composition = "upper_body" if style == "证件照" else "full_body"
+							# 本地SD处理
+							if provider == "sd":
+								print(f"使用本地Stable Diffusion - {angle_name}视图 + {expr_name}表情")
+								from src.clients.sd_client import StableDiffusionClient
+								
+								# 构建SD提示词
+								composition = "upper_body" if style == "证件照" else "full_body"
+								full_prompt = CharacterPromptBuilder.build_character_photo_prompt(
+									description=description,
+									style=style,
+									view_angle=angle,
+									expression=expr,
+									composition=composition,
+									extra_details=extra_desc,
+									language="en",
+									default_nationality="chinese",
+									variant=variant_value,
+									variant_mode=variant_mode,
+									consistency_level=consistency_level,
+									batch_type=batch_type
+								)
+								full_prompt = CharacterPromptBuilder.optimize_for_api(full_prompt, "sd", 1000)
+								print(f"📝 SD提示词 ({angle_name}+{expr_name}): {full_prompt[:200]}...")
+								
+								self.after(0, lambda a=angle_name, e=expr_name: self.status.set(f"🚀 正在调用本地SD生成{a}+{e}照片..."))
+								
+								sd_base_url = base_url or "http://localhost:7860"
+								sd_client = StableDiffusionClient(base_url=sd_base_url)
+								negative_prompt = "nsfw, lowres, bad anatomy, bad hands, text, error, missing fingers, extra digit, fewer digits, cropped, worst quality, low quality, jpeg artifacts, signature, watermark, blurry"
+								
+								images = sd_client.txt2img(
+									prompt=full_prompt,
+									negative_prompt=negative_prompt,
+									width=1024,
+									height=1024,
+									steps=20,
+									cfg_scale=7.0,
+									sampler_name="Euler a"
+								)
+								
+								if images:
+									img = images[0]
+								else:
+									raise RuntimeError("SD生成失败")
 							
-							full_prompt = CharacterPromptBuilder.build_character_photo_prompt(
-								description=description,
-								style=style,
-								view_angle=angle,  # 使用当前循环的角度
-								expression=expr,   # 使用当前循环的表情
-								composition=composition,
-								extra_details=extra_desc,
-								language="en",
-								default_nationality="chinese",
-								variant=variant_value,
-								variant_mode=variant_mode,
-								consistency_level=consistency_level,  # 使用用户选择的一致性级别
-								batch_type=batch_type  # 传递批量类型
-							)
-							
-							# 针对OpenAI优化（DALL-E 3建议1000字符内）
-							full_prompt = CharacterPromptBuilder.optimize_for_api(full_prompt, "openai", 1000)
-							
-							print(f"📝 OpenAI提示词 ({angle_name}+{expr_name}): {full_prompt[:200]}...")
-						
-							self.after(0, lambda a=angle_name, e=expr_name: self.status.set(f"🚀 正在调用图片API生成{a}+{e}照片..."))
-							
-							print(f"创建OpenAIImageClient...")
-							client = OpenAIImageClient(api_key=api_key, base_url=base_url, model=model)
-							print(f"调用generate方法...")
-							results = client.generate(full_prompt, size="1024x1024")
-							print(f"收到结果: {len(results) if results else 0} 张图片")
-							
-							# 获取第一张图片
-							if results:
-								img = results[0].image
 							else:
-								raise RuntimeError("API未返回任何图片")
+								# 🎯 使用专业的提示词构建器（英文版，使用当前角度、表情、变体和一致性优化）
+								composition = "upper_body" if style == "证件照" else "full_body"
+								
+								full_prompt = CharacterPromptBuilder.build_character_photo_prompt(
+									description=description,
+									style=style,
+									view_angle=angle,  # 使用当前循环的角度
+									expression=expr,   # 使用当前循环的表情
+									composition=composition,
+									extra_details=extra_desc,
+									language="en",
+									default_nationality="chinese",
+									variant=variant_value,
+									variant_mode=variant_mode,
+									consistency_level=consistency_level,  # 使用用户选择的一致性级别
+									batch_type=batch_type  # 传递批量类型
+								)
+								
+								# 针对OpenAI优化（DALL-E 3建议1000字符内）
+								full_prompt = CharacterPromptBuilder.optimize_for_api(full_prompt, "openai", 1000)
+								
+								print(f"📝 OpenAI提示词 ({angle_name}+{expr_name}): {full_prompt[:200]}...")
+							
+								self.after(0, lambda a=angle_name, e=expr_name: self.status.set(f"🚀 正在调用图片API生成{a}+{e}照片..."))
+								
+								print(f"创建OpenAIImageClient...")
+								client = OpenAIImageClient(api_key=api_key, base_url=base_url, model=model)
+								print(f"调用generate方法...")
+								results = client.generate(full_prompt, size="1024x1024")
+								print(f"收到结果: {len(results) if results else 0} 张图片")
+								
+								# 获取第一张图片
+								if results:
+									img = results[0].image
+								else:
+									raise RuntimeError("API未返回任何图片")
 						
 						# 保存图片到内存（最后一张用于预览）
 						self.character_last_image = img

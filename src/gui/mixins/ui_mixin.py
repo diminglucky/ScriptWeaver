@@ -26,6 +26,10 @@ class UiMixin:
         self._build_project_page()
         self._build_story_page()
         self._build_image_page()
+        
+        # 添加导演页面
+        if hasattr(self, '_build_director_page'):
+            self._build_director_page()
     
     def _clear_prompt_placeholder(self, event=None) -> None:
         """清除占位符"""

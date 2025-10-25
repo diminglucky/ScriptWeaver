@@ -90,6 +90,11 @@ def try_chat_api(key: str, base_url: str, model: str) -> tuple[bool, str]:
 def try_image_api(key: str, base_url: str, model: str) -> tuple[bool, str]:
 	"""测试图片生成API是否可用"""
 	try:
+		# 检查是否是本地SD（根据model或base_url判断）
+		if model == "sd-local" or "localhost" in base_url or "127.0.0.1" in base_url:
+			return _try_sd_api(base_url, model)
+		
+		# 否则使用OpenAI兼容API
 		from openai import OpenAI
 		client = OpenAI(api_key=key, base_url=base_url, timeout=30)
 		
@@ -120,6 +125,35 @@ def try_image_api(key: str, base_url: str, model: str) -> tuple[bool, str]:
 			return True, f"图片API测试成功 (返回Base64格式，尺寸:{size})"
 		else:
 			return True, f"图片API测试成功 (尺寸:{size})"
+	except Exception as e:
+		return False, str(e)
+
+
+def _try_sd_api(base_url: str, model: str) -> tuple[bool, str]:
+	"""测试本地Stable Diffusion API"""
+	try:
+		import requests
+		import json
+		
+		# 确保base_url不以/v1结尾（SD API不需要）
+		base_url = base_url.rstrip('/')
+		if base_url.endswith('/v1'):
+			base_url = base_url[:-3].rstrip('/')
+		
+		# 测试连接：获取模型列表
+		test_url = f"{base_url}/sdapi/v1/sd-models"
+		response = requests.get(test_url, timeout=10)
+		
+		if response.status_code == 200:
+			models = response.json()
+			return True, f"SD WebUI连接成功，找到{len(models)}个模型"
+		else:
+			return False, f"Error code: {response.status_code}"
+	
+	except requests.exceptions.ConnectionError:
+		return False, "无法连接到Stable Diffusion WebUI（检查是否启动且带--api参数）"
+	except requests.exceptions.Timeout:
+		return False, "连接超时（WebUI响应过慢）"
 	except Exception as e:
 		return False, str(e)
 

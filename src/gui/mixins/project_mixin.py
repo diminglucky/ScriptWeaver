@@ -5,9 +5,10 @@ Project相关功能模块
 from tkinter import BOTH, LEFT, RIGHT, DISABLED, NORMAL, END, messagebox, filedialog
 import tkinter as tk
 from tkinter import ttk
+from .project_modules import EnhancedProjectManager
 
 
-class ProjectMixin:
+class ProjectMixin(EnhancedProjectManager):
 	"""Project管理功能"""
 	
 	def _refresh_project_list(self) -> None:
@@ -45,6 +46,7 @@ class ProjectMixin:
 			self.current_project = self.project_manager.create_project(project_name.strip())
 			self.lbl_current_project.config(text=f"当前项目: {project_name}", fg="#4CAF50")
 			self.btn_save_story.config(state=NORMAL)
+			self.btn_save_all.config(state=NORMAL)
 			
 			# 创建人物照片文件夹
 			if self.current_project:
@@ -82,6 +84,7 @@ class ProjectMixin:
 			project_name = self.current_project.metadata.get("name", "")
 			self.lbl_current_project.config(text=f"当前项目: {project_name}", fg="#4CAF50")
 			self.btn_save_story.config(state=NORMAL)
+			self.btn_save_all.config(state=NORMAL)
 			
 			# 恢复故事内容到输出框
 			story_content = self.current_project.load_story()
@@ -106,20 +109,36 @@ class ProjectMixin:
 			if hasattr(self, '_load_project_characters'):
 				self._load_project_characters()
 			
-			# 恢复创作参数
-			meta = self.current_project.metadata
-			if meta.get("category"):
-				self.category.set(meta["category"])
-			if meta.get("requirement"):
-				self.prompt_text.delete("1.0", END)
-				self.prompt_text.insert("1.0", meta["requirement"])
-				self.prompt_text.tag_remove("placeholder", "1.0", "end")
-			if meta.get("style"):
-				self.style.set(meta["style"])
-			if meta.get("target_chars"):
-				self.target_chars.set(meta["target_chars"])
+			# 使用增强的加载功能
+			enhanced_load_success = False
+			try:
+				enhanced_load_success = self.load_complete_project()
+				if enhanced_load_success:
+					print("✅ 使用增强加载功能成功加载项目")
+			except Exception as e:
+				print(f"增强加载失败，使用传统方式: {e}")
 			
-			messagebox.showinfo("成功", f"项目已加载: {project_name}\n\n故事内容已恢复到输出区域")
+			# 如果增强加载失败，使用传统方式
+			if not enhanced_load_success:
+				# 加载导演项目数据（如果存在）
+				if hasattr(self, 'load_director_project'):
+					print(f"📂 正在加载导演项目数据...")
+					self.load_director_project(project_path)
+				
+				# 恢复创作参数
+				meta = self.current_project.metadata
+				if meta.get("category"):
+					self.category.set(meta["category"])
+				if meta.get("requirement"):
+					self.prompt_text.delete("1.0", END)
+					self.prompt_text.insert("1.0", meta["requirement"])
+					self.prompt_text.tag_remove("placeholder", "1.0", "end")
+				if meta.get("style"):
+					self.style.set(meta["style"])
+				if meta.get("target_chars"):
+					self.target_chars.set(meta["target_chars"])
+			
+			messagebox.showinfo("成功", f"项目已加载: {project_name}\n\n所有内容已恢复")
 			# 切换到故事生成页面
 			self.notebook.select(self.page_story)
 		except Exception as e:
@@ -145,12 +164,41 @@ class ProjectMixin:
 				style=self.style.get(),
 				target_chars=self.target_chars.get(),
 			)
+			
+			# 使用增强的保存功能保存完整项目
+			if self.save_complete_project():
+				print("✅ 完整项目数据已保存")
+			
 			self._refresh_project_list()
 			if hasattr(self, 'status'):
-				self.status.set(f"故事已保存到项目: {self.current_project.metadata['name']}")
-			messagebox.showinfo("成功", f"故事已保存到项目\n\n字数: {len(story_content)}")
+				project_name = self.current_project.metadata.get('name', '未命名项目')
+				self.status.set(f"项目已完整保存: {project_name}")
+			messagebox.showinfo("成功", f"项目已完整保存\n\n字数: {len(story_content)}")
 		except Exception as e:
 			messagebox.showerror("错误", f"保存故事失败: {e}")
+	
+	def _on_save_all(self) -> None:
+		"""完整保存项目的所有内容"""
+		if not self.current_project:
+			messagebox.showwarning("提示", "请先创建或加载一个项目")
+			return
+		
+		try:
+			# 调用增强的保存功能
+			if self.save_complete_project():
+				messagebox.showinfo("成功", 
+					f"项目已完整保存！\n\n"
+					f"包含内容：\n"
+					f"✓ 故事内容和参数\n"
+					f"✓ 剧本和分镜\n"
+					f"✓ 人物设定表\n"
+					f"✓ 生成的图片\n"
+					f"✓ 所有配置信息"
+				)
+			else:
+				messagebox.showwarning("警告", "项目保存不完整，请检查错误信息")
+		except Exception as e:
+			messagebox.showerror("错误", f"完整保存失败: {e}")
 	
 	def _on_delete_project(self) -> None:
 		"""删除选中的项目"""
@@ -183,6 +231,7 @@ class ProjectMixin:
 				self.current_project = None
 				self.lbl_current_project.config(text="未选择项目", fg="#888888")
 				self.btn_save_story.config(state=DISABLED)
+				self.btn_save_all.config(state=DISABLED)
 			
 			self.project_manager.delete_project(project_path)
 			self._refresh_project_list()
@@ -209,6 +258,8 @@ class ProjectMixin:
 		self.btn_new_project.pack(side=LEFT, padx=(0, 6))
 		self.btn_save_story = ttk.Button(btn_row, text="💾 保存当前故事", command=self._on_save_story, state=DISABLED, style="TButton")
 		self.btn_save_story.pack(side=LEFT, padx=6)
+		self.btn_save_all = ttk.Button(btn_row, text="💯 完整保存项目", command=self._on_save_all, state=DISABLED, style="Accent.TButton")
+		self.btn_save_all.pack(side=LEFT, padx=6)
 		
 		# 中间：项目列表
 		mid_frame = ttk.LabelFrame(self.page_project, text="📚 我的项目", padding=(10, 8))

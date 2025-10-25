@@ -9,8 +9,9 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 from src.clients.deepseek_client import DeepSeekClient
-from src.kb.ingest import KnowledgeBaseIngestor, IngestConfig
-from src.kb.search import KnowledgeBaseSearcher, SearchConfig
+# 延迟导入：只在使用时才导入，避免启动时加载 sentence_transformers (3.8秒)
+# from src.kb.ingest import KnowledgeBaseIngestor, IngestConfig
+# from src.kb.search import KnowledgeBaseSearcher, SearchConfig
 from src.utils.text import sanitize as _sanitize
 
 
@@ -47,6 +48,10 @@ class StoryGeneratorMixin:
 				return
 		def task():
 			try:
+				# 延迟导入：只在需要时才加载（避免启动时加载 sentence_transformers）
+				from src.kb.ingest import KnowledgeBaseIngestor, IngestConfig
+				from src.kb.search import KnowledgeBaseSearcher, SearchConfig
+				
 				self.set_busy(True)
 				self.status.set(f"使用 {selected_api} 检索素材并生成正文中...")
 				# 更新顶部状态栏
@@ -158,6 +163,10 @@ class StoryGeneratorMixin:
 			
 			def task():
 				try:
+					# 延迟导入：只在需要时才加载（避免启动时加载 sentence_transformers）
+					from src.kb.ingest import KnowledgeBaseIngestor, IngestConfig
+					from src.kb.search import KnowledgeBaseSearcher, SearchConfig
+					
 					self.set_busy(True)
 					load_dotenv()
 					if need_build:

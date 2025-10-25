@@ -15,9 +15,10 @@ from .mixins.project_mixin import ProjectMixin
 from .mixins.config_modules import ConfigMixin
 from .mixins.kb_mixin import KbMixin
 from .mixins.ui_mixin import UiMixin
+from .mixins.director_modules import DirectorMixin
 
 
-class ModernApp(tk.Tk, ProjectMixin, StoryMixin, ImageMixin, KbMixin, ConfigMixin, UiMixin):
+class ModernApp(tk.Tk, ProjectMixin, StoryMixin, ImageMixin, KbMixin, ConfigMixin, UiMixin, DirectorMixin):
     """现代化专业UI应用 - 整合所有原有功能"""
     
     def __init__(self):
@@ -73,6 +74,11 @@ class ModernApp(tk.Tk, ProjectMixin, StoryMixin, ImageMixin, KbMixin, ConfigMixi
         
         # 启动后自动加载配置
         self.after(100, self._auto_load_api_config)
+        
+        # 启用自动保存（每5分钟）
+        if hasattr(self, 'enable_auto_save'):
+            self.enable_auto_save(interval_minutes=5)
+            print("✅ 自动保存功能已启用（每5分钟）")
     
     def _init_variables(self):
         """初始化所有必需的变量"""
@@ -92,6 +98,10 @@ class ModernApp(tk.Tk, ProjectMixin, StoryMixin, ImageMixin, KbMixin, ConfigMixi
         self.style = tk.StringVar(value="情感起伏/反转/细节描写/有画面感/口语化")
         self.target_chars = tk.IntVar(value=1800)
         self.model_only = tk.BooleanVar(value=True)
+        
+        # 状态变量
+        self.status = tk.StringVar(value="就绪")
+        self.header_status_var = tk.StringVar(value="就绪")
         
         # 故事内容
         self.current_outline: str | None = None
@@ -329,6 +339,16 @@ class ModernApp(tk.Tk, ProjectMixin, StoryMixin, ImageMixin, KbMixin, ConfigMixi
         # 右侧：简约状态指示
         right_frame = tk.Frame(header, bg=Theme.BG_PRIMARY)
         right_frame.pack(side="right", padx=20, pady=12)
+        
+        # 状态图标
+        self.header_status_icon = tk.Label(
+            right_frame,
+            text="✅",
+            font=(Theme.FONT_FAMILY, 11),
+            bg=Theme.BG_PRIMARY,
+            fg=Theme.TEXT_SECONDARY
+        )
+        self.header_status_icon.pack(side="left", padx=(0, 8))
         
         # 简约状态文本
         self.header_status_text = tk.Label(

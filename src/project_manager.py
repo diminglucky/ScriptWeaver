@@ -84,7 +84,11 @@ class Project:
 		"""列出项目中的所有图片"""
 		if not self.images_dir.exists():
 			return []
-		return sorted(self.images_dir.glob("*.{png,jpg,jpeg,webp}"))
+		# Path.glob 不支持大括号扩展，需逐个模式匹配
+		images: list[Path] = []
+		for pattern in ("*.png", "*.jpg", "*.jpeg", "*.webp"):
+			images.extend(self.images_dir.glob(pattern))
+		return sorted(images)
 	
 	def get_info(self) -> dict[str, Any]:
 		"""获取项目信息摘要"""

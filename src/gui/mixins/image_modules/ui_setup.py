@@ -163,12 +163,16 @@ class ImageUISetupTabMixin:
 		self.img_entry_base_url.grid(row=4, column=1, columnspan=4, sticky="we", padx=6)
 		
 		tk.Label(grp_api, text="Model:").grid(row=5, column=0, sticky="e", padx=6, pady=4)
-		self.img_entry_model = tk.Entry(grp_api, textvariable=self.img_model)
-		self.img_entry_model.grid(row=5, column=1, sticky="we", padx=6)
+		# 使用可编辑的下拉框：当为本地SD时将切换为只读并填充模型列表
+		self.combo_img_model = ttk.Combobox(grp_api, textvariable=self.img_model, width=25)
+		self.combo_img_model.grid(row=5, column=1, sticky="we", padx=6)
+		self.combo_img_model.bind("<<ComboboxSelected>>", lambda e: self._on_sd_model_selected())
 		tk.Button(grp_api, text="保存配置", command=self.save_img_api_config).grid(row=5, column=2, padx=6)
 		tk.Button(grp_api, text="加载配置", command=self.load_img_api_config).grid(row=5, column=3, padx=6, sticky="w")
 		# API测试按钮 - 与加载配置同行
 		tk.Button(grp_api, text="API测试", command=self.on_test_image_api).grid(row=5, column=4, padx=6, sticky="w")
+		# 刷新本地SD模型列表
+		tk.Button(grp_api, text="刷新模型", command=self._load_sd_models).grid(row=5, column=5, padx=6, sticky="w")
 		
 		# 图片参数设置
 		grp_params = ttk.LabelFrame(scrollable_frame, text="📐 图片参数")
@@ -287,6 +291,90 @@ class ImageUISetupTabMixin:
 		
 		# 启动后自动加载配置
 		self.after(100, self._auto_load_image_api_config)
+
+	def _load_sd_models(self) -> None:
+		"""当选择本地SD时，从SD WebUI拉取模型列表并填入下拉框（异步执行避免卡顿）。"""
+		# 仅在选择了本地SD时有效
+		provider = None
+		if hasattr(self, 'img_api_preset') and hasattr(self, 'img_api_presets'):
+			preset = self.img_api_preset.get()
+			provider = self.img_api_presets.get(preset, {}).get('provider')
+		if provider != 'sd':
+			return
+		
+		if hasattr(self, 'status'):
+			self.status.set("正在加载SD模型列表...")
+		
+		def _fetch_models():
+			try:
+				from src.clients.sd_client import StableDiffusionClient
+				base_url = self.img_base_url.get().strip() if hasattr(self, 'img_base_url') else ''
+				client = StableDiffusionClient(base_url or None)
+				models = client.get_models() or []
+				current = client.get_current_model() or self.img_model.get()
+				
+				# 在主线程更新UI
+				def _update_ui():
+					if hasattr(self, 'combo_img_model'):
+						self.combo_img_model['values'] = tuple(models)
+						self.combo_img_model['state'] = 'readonly'
+						if current:
+							self.img_model.set(current)
+					if hasattr(self, 'status'):
+						self.status.set(f"✅ 已加载 {len(models)} 个SD模型")
+				
+				self.after(0, _update_ui)
+			except Exception as e:
+				def _show_error():
+					if hasattr(self, 'status'):
+						self.status.set(f"❌ 加载SD模型失败: {e}")
+				self.after(0, _show_error)
+		
+		# 在后台线程执行
+		import threading
+		threading.Thread(target=_fetch_models, daemon=True).start()
+
+	def _on_sd_model_selected(self) -> None:
+		"""在本地SD下选择模型时，异步切换模型（避免界面卡顿）。"""
+		# 仅在本地SD时生效
+		provider = None
+		if hasattr(self, 'img_api_preset') and hasattr(self, 'img_api_presets'):
+			preset = self.img_api_preset.get()
+			provider = self.img_api_presets.get(preset, {}).get('provider')
+		if provider != 'sd':
+			return
+		
+		model_name = self.img_model.get().strip()
+		if not model_name:
+			return
+		
+		if hasattr(self, 'status'):
+			self.status.set(f"正在切换到模型: {model_name}...")
+		
+		def _switch_model():
+			try:
+				from src.clients.sd_client import StableDiffusionClient
+				base_url = self.img_base_url.get().strip() if hasattr(self, 'img_base_url') else ''
+				client = StableDiffusionClient(base_url or None)
+				switched = client.set_model(model_name)
+				
+				def _update_status():
+					if hasattr(self, 'status'):
+						if switched:
+							self.status.set(f"✅ 已切换到模型: {model_name}")
+						else:
+							self.status.set(f"❌ 切换模型失败: {model_name}")
+				
+				self.after(0, _update_status)
+			except Exception as e:
+				def _show_error():
+					if hasattr(self, 'status'):
+						self.status.set(f"❌ 切换模型异常: {e}")
+				self.after(0, _show_error)
+		
+		# 在后台线程执行
+		import threading
+		threading.Thread(target=_switch_model, daemon=True).start()
 
 	
 	

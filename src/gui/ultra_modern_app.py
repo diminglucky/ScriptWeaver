@@ -117,6 +117,11 @@ class UltraModernApp(tk.Tk, ProjectMixin, StoryMixin, ImageMixin, KbMixin, Confi
         # 启动动画和自动功能
         self.after(100, self._auto_load_api_config)
         self.after(100, self._start_animations)
+        
+        # 启用自动保存（每5分钟）
+        if hasattr(self, 'enable_auto_save'):
+            self.enable_auto_save(interval_minutes=5)
+            print("✅ 自动保存功能已启用（每5分钟）")
     
     def _init_variables(self):
         """初始化所有必需的变量"""

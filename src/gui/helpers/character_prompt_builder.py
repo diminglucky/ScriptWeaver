@@ -318,7 +318,7 @@ class CharacterPromptBuilder:
         
         Args:
             prompt: 原始提示词
-            api_type: API类型 (hunyuan/openai/dalle)
+            api_type: API类型 (hunyuan/openai/dalle/sd)
             max_length: 最大长度限制
         
         Returns:
@@ -341,6 +341,34 @@ class CharacterPromptBuilder:
                         break
                 
                 return "，".join(core_parts)
+            return prompt
+        
+        elif api_type == "sd":
+            # Stable Diffusion优化：使用逗号分隔的关键词格式
+            max_len = max_length or 500
+            
+            # 如果提示词中没有逗号，添加质量关键词
+            if "," not in prompt:
+                # 转换中文标点为英文逗号
+                prompt = prompt.replace("，", ", ").replace("；", ", ")
+            
+            # 确保包含质量关键词
+            quality_keywords = ["high quality", "detailed", "sharp", "professional"]
+            has_quality = any(kw in prompt.lower() for kw in quality_keywords)
+            
+            if not has_quality:
+                prompt = prompt.rstrip() + ", high quality, detailed, sharp, professional"
+            
+            # 如果过长则截断
+            if len(prompt) > max_len:
+                # 在最后一个逗号处截断
+                truncated = prompt[:max_len]
+                last_comma = truncated.rfind(',')
+                if last_comma > max_len - 100:
+                    prompt = truncated[:last_comma].rstrip()
+                else:
+                    prompt = truncated
+            
             return prompt
         
         elif api_type in ["openai", "dalle"]:

@@ -391,7 +391,12 @@ class APIConfigMixin:
 		base = _sanitize(self.img_base_url.get())
 		model = _sanitize(self.img_model.get()) or "dall-e-3"
 		
-		if not key:
+		# 检查是否是本地SD预设
+		current_preset = self.img_api_preset.get() if hasattr(self, 'img_api_preset') else ""
+		provider = self.img_api_presets.get(current_preset, {}).get("provider", "openai") if hasattr(self, 'img_api_presets') else "openai"
+		
+		# 本地SD不需要API Key，只需要检查Base URL
+		if provider != "sd" and not key:
 			messagebox.showwarning("警告", "请先填写API Key")
 			self.status.set("测试失败：缺少API Key")
 			log_widget.insert(END, "❌ 错误: 缺少API Key\n")
@@ -406,7 +411,11 @@ class APIConfigMixin:
 		# 记录测试参数
 		log_widget.insert(END, f"\n📋 测试参数:\n")
 		log_widget.insert(END, f"  • Model: {model}\n")
-		log_widget.insert(END, f"  • API Key: {'*' * (len(key)-8) + key[-8:] if len(key) > 8 else '***'}\n")
+		log_widget.insert(END, f"  • Provider: {provider}\n")
+		if provider != "sd":
+			log_widget.insert(END, f"  • API Key: {'*' * (len(key)-8) + key[-8:] if len(key) > 8 else '***'}\n")
+		else:
+			log_widget.insert(END, f"  • API Key: (本地SD无需认证)\n")
 		
 		candidates = []
 		# try user-provided
@@ -424,7 +433,9 @@ class APIConfigMixin:
 			log_widget.insert(END, f"\n[{i}/{len(candidates)}] 测试: {b}\n")
 			log_widget.update()
 			
-			ok, msg = _try_image(key, b, model)
+			# 本地SD使用空字符串作为key
+			test_key = "" if provider == "sd" else key
+			ok, msg = _try_image(test_key, b, model)
 			tried_msgs.append(f"base_url={b} -> {'SUCCESS' if ok else 'FAIL'}: {msg}")
 			
 			if ok:
@@ -435,7 +446,12 @@ class APIConfigMixin:
 			if ok:
 				self.img_base_url.set(b)
 				log_widget.insert(END, f"\n🎉 测试成功！已自动更新Base URL为: {b}\n")
-				messagebox.showinfo("测试成功", f"图片生成 API 可用\n{b}\n\n{msg}\n\n注意：实际生成了一张测试图片，可能会消耗少量费用")
+				
+				if provider == "sd":
+					messagebox.showinfo("测试成功", f"本地Stable Diffusion 连接成功\n{b}\n\n{msg}")
+				else:
+					messagebox.showinfo("测试成功", f"图片生成 API 可用\n{b}\n\n{msg}\n\n注意：实际生成了一张测试图片，可能会消耗少量费用")
+				
 				self.status.set("图片API可用")
 				return
 		
@@ -446,16 +462,30 @@ class APIConfigMixin:
 		log_widget.insert(END, "="*60 + "\n")
 		log_widget.insert(END, full_msg + "\n")
 		log_widget.insert(END, "\n💡 可能的原因:\n")
-		log_widget.insert(END, "  1. API密钥错误或已过期\n")
-		log_widget.insert(END, "  2. 账户余额不足\n")
-		log_widget.insert(END, "  3. Base URL不正确\n")
-		log_widget.insert(END, "  4. 网络连接问题\n")
-		log_widget.insert(END, "  5. 模型名称不支持\n")
+		
+		if provider == "sd":
+			log_widget.insert(END, "  1. Stable Diffusion WebUI 未启动\n")
+			log_widget.insert(END, "  2. 未添加 --api 参数\n")
+			log_widget.insert(END, "  3. 端口配置错误（应为7860）\n")
+			log_widget.insert(END, "  4. 防火墙阻止\n")
+		else:
+			log_widget.insert(END, "  1. API密钥错误或已过期\n")
+			log_widget.insert(END, "  2. 账户余额不足\n")
+			log_widget.insert(END, "  3. Base URL不正确\n")
+			log_widget.insert(END, "  4. 网络连接问题\n")
+			log_widget.insert(END, "  5. 模型名称不支持\n")
+		
 		log_widget.insert(END, "\n建议操作:\n")
-		log_widget.insert(END, "  • 检查API密钥是否正确\n")
-		log_widget.insert(END, "  • 登录服务商网站查看账户余额\n")
-		log_widget.insert(END, "  • 确认Base URL格式正确\n")
-		messagebox.showerror("API 错误", "图片API鉴权失败，请检查密钥/额度/网络/模型。\n详情见配置页面的测试日志。")
+		
+		if provider == "sd":
+			log_widget.insert(END, "  • 启动 Stable Diffusion WebUI (带 --api 参数)\n")
+			log_widget.insert(END, "  • 检查 http://localhost:7860 是否可访问\n")
+		else:
+			log_widget.insert(END, "  • 检查API密钥是否正确\n")
+			log_widget.insert(END, "  • 登录服务商网站查看账户余额\n")
+			log_widget.insert(END, "  • 确认Base URL格式正确\n")
+		
+		messagebox.showerror("API 错误", "图片API鉴权失败，请检查配置。\n详情见配置页面的测试日志。")
 		self.status.set("图片API测试失败")
 
 	
