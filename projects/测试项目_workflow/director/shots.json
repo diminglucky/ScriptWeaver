@@ -1,0 +1,38 @@
+{
+  "shots": [
+    {
+      "shot_number": 1,
+      "scene_id": "场景1",
+      "location": "教室",
+      "shot_type": "中景",
+      "characters": [
+        "张强"
+      ],
+      "visual_description": "阳光照进教室，张强走进来，戴着眼镜，穿白衬衫",
+      "action": "张强走进教室，坐下开始看书",
+      "camera": {
+        "movement": "固定",
+        "angle": "平视"
+      },
+      "duration": "5秒"
+    },
+    {
+      "shot_number": 2,
+      "scene_id": "场景2",
+      "location": "教室",
+      "shot_type": "双人镜头",
+      "characters": [
+        "张强",
+        "李明"
+      ],
+      "visual_description": "李明走到张强身边，两人在教室里交谈",
+      "action": "李明拍张强肩膀，两人对话",
+      "dialogue": "早啊，在看什么书？",
+      "camera": {
+        "movement": "固定",
+        "angle": "侧面"
+      },
+      "duration": "8秒"
+    }
+  ]
+}

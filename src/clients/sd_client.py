@@ -35,6 +35,7 @@ class StableDiffusionClient:
         sampler_name: str = "Euler a",
         seed: int = -1,
         batch_size: int = 1,
+        return_info: bool = False,
         **kwargs
     ) -> Optional[list[Image.Image]]:
         """
@@ -70,27 +71,67 @@ class StableDiffusionClient:
             **kwargs
         }
         
-        try:
-            response = requests.post(url, json=payload, timeout=self.timeout)
-            response.raise_for_status()
-            
-            result = response.json()
-            images = []
-            
-            # 解析返回的base64图片
-            for img_data in result.get("images", []):
-                img_bytes = base64.b64decode(img_data)
-                img = Image.open(BytesIO(img_bytes))
-                images.append(img)
-            
-            return images if images else None
-            
-        except requests.exceptions.ConnectionError:
-            raise ConnectionError(f"无法连接到SD服务器: {self.base_url}")
-        except requests.exceptions.Timeout:
-            raise TimeoutError(f"请求超时（{self.timeout}秒）")
-        except Exception as e:
-            raise RuntimeError(f"SD API错误: {str(e)}")
+        # 添加重试机制，提升健壮性
+        max_retries = 3
+        last_error = None
+        
+        for attempt in range(max_retries):
+            try:
+                response = requests.post(url, json=payload, timeout=self.timeout)
+                response.raise_for_status()
+                
+                result = response.json()
+                images = []
+                for img_data in result.get("images", []):
+                    img_bytes = base64.b64decode(img_data)
+                    img = Image.open(BytesIO(img_bytes))
+                    images.append(img)
+                if not images:
+                    return None
+                if not return_info:
+                    return images
+                # 返回图片与info元数据
+                info_raw = result.get("info")
+                info_dict: Dict[str, Any] = {}
+                if isinstance(info_raw, str):
+                    try:
+                        import json as _json
+                        info_dict = _json.loads(info_raw)
+                    except Exception:
+                        info_dict = {"raw": info_raw}
+                elif isinstance(info_raw, dict):
+                    info_dict = info_raw
+                return [images, info_dict]
+                
+            except requests.exceptions.ConnectionError as e:
+                last_error = e
+                print(f"无法连接到SD服务器 (尝试 {attempt + 1}/{max_retries}): {self.base_url}")
+                if attempt < max_retries - 1:
+                    import time
+                    time.sleep(2 * (attempt + 1))  # 递增延迟: 2s, 4s
+                continue
+            except requests.exceptions.Timeout as e:
+                last_error = e
+                print(f"请求超时 (尝试 {attempt + 1}/{max_retries}): {self.timeout}秒")
+                if attempt < max_retries - 1:
+                    import time
+                    time.sleep(1)
+                continue
+            except Exception as e:
+                last_error = e
+                print(f"SD API错误 (尝试 {attempt + 1}/{max_retries}): {str(e)}")
+                if attempt < max_retries - 1:
+                    import time
+                    time.sleep(1)
+                continue
+        
+        # 所有重试都失败
+        if isinstance(last_error, requests.exceptions.ConnectionError):
+            raise ConnectionError(f"无法连接到SD服务器（已重试{max_retries}次）: {self.base_url}")
+        elif isinstance(last_error, requests.exceptions.Timeout):
+            raise TimeoutError(f"请求超时（已重试{max_retries}次，每次{self.timeout}秒）")
+        else:
+            raise RuntimeError(f"SD API错误（已重试{max_retries}次）: {str(last_error)}")
     
     def img2img(
         self,
@@ -104,6 +145,7 @@ class StableDiffusionClient:
         cfg_scale: float = 7.0,
         sampler_name: str = "Euler a",
         seed: int = -1,
+        return_info: bool = False,
         **kwargs
     ) -> Optional[list[Image.Image]]:
         """
@@ -146,26 +188,66 @@ class StableDiffusionClient:
             **kwargs
         }
         
-        try:
-            response = requests.post(url, json=payload, timeout=self.timeout)
-            response.raise_for_status()
-            
-            result = response.json()
-            images = []
-            
-            for img_data in result.get("images", []):
-                img_bytes = base64.b64decode(img_data)
-                img = Image.open(BytesIO(img_bytes))
-                images.append(img)
-            
-            return images if images else None
-            
-        except requests.exceptions.ConnectionError:
-            raise ConnectionError(f"无法连接到SD服务器: {self.base_url}")
-        except requests.exceptions.Timeout:
-            raise TimeoutError(f"请求超时（{self.timeout}秒）")
-        except Exception as e:
-            raise RuntimeError(f"SD API错误: {str(e)}")
+        # 添加重试机制，提升健壮性
+        max_retries = 3
+        last_error = None
+        
+        for attempt in range(max_retries):
+            try:
+                response = requests.post(url, json=payload, timeout=self.timeout)
+                response.raise_for_status()
+                
+                result = response.json()
+                images = []
+                for img_data in result.get("images", []):
+                    img_bytes = base64.b64decode(img_data)
+                    img = Image.open(BytesIO(img_bytes))
+                    images.append(img)
+                if not images:
+                    return None
+                if not return_info:
+                    return images
+                info_raw = result.get("info")
+                info_dict: Dict[str, Any] = {}
+                if isinstance(info_raw, str):
+                    try:
+                        import json as _json
+                        info_dict = _json.loads(info_raw)
+                    except Exception:
+                        info_dict = {"raw": info_raw}
+                elif isinstance(info_raw, dict):
+                    info_dict = info_raw
+                return [images, info_dict]
+                
+            except requests.exceptions.ConnectionError as e:
+                last_error = e
+                print(f"无法连接到SD服务器 (尝试 {attempt + 1}/{max_retries}): {self.base_url}")
+                if attempt < max_retries - 1:
+                    import time
+                    time.sleep(2 * (attempt + 1))
+                continue
+            except requests.exceptions.Timeout as e:
+                last_error = e
+                print(f"请求超时 (尝试 {attempt + 1}/{max_retries}): {self.timeout}秒")
+                if attempt < max_retries - 1:
+                    import time
+                    time.sleep(1)
+                continue
+            except Exception as e:
+                last_error = e
+                print(f"SD API错误 (尝试 {attempt + 1}/{max_retries}): {str(e)}")
+                if attempt < max_retries - 1:
+                    import time
+                    time.sleep(1)
+                continue
+        
+        # 所有重试都失败
+        if isinstance(last_error, requests.exceptions.ConnectionError):
+            raise ConnectionError(f"无法连接到SD服务器（已重试{max_retries}次）: {self.base_url}")
+        elif isinstance(last_error, requests.exceptions.Timeout):
+            raise TimeoutError(f"请求超时（已重试{max_retries}次，每次{self.timeout}秒）")
+        else:
+            raise RuntimeError(f"SD API错误（已重试{max_retries}次）: {str(last_error)}")
     
     def get_samplers(self) -> list[str]:
         """获取可用的采样器列表"""

@@ -129,9 +129,10 @@ class CharacterExtractMixin:
 	
 	
 	def _update_character_listbox(self) -> None:
-		"""更新人物列表框"""
+		"""更新人物列表框（只显示名字）"""
 		self.char_listbox.delete(0, END)
 		for char in self.character_list:
+			# 只显示人物名字，不显示描述
 			self.char_listbox.insert(END, char["name"])
 		
 		if self.character_list:

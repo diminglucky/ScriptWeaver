@@ -138,7 +138,8 @@ class CharacterPromptBuilder:
         variant: str = "",
         variant_mode: str = "none",
         consistency_level: str = "medium",
-        batch_type: str = "none"
+        batch_type: str = "none",
+        api_type: str = "openai"
     ) -> str:
         """
         构建单张人物照片的提示词
@@ -156,6 +157,7 @@ class CharacterPromptBuilder:
             variant_mode: 变体模式 (none/preset/custom)
             consistency_level: 一致性级别 (none/low/medium/high)
             batch_type: 批量类型 (none/angle/expression/variant)
+            api_type: API类型 (sd/openai/hunyuan) - 决定提示词风格
         
         Returns:
             完整的提示词
@@ -176,78 +178,404 @@ class CharacterPromptBuilder:
                     language=language
                 )
         
-        prompt_parts = []
-        
-        # 1. 构图要求（最高优先级）
-        comp_dict = CharacterPromptBuilder.COMPOSITION_TYPES.get(composition, CharacterPromptBuilder.COMPOSITION_TYPES["full_body"])
-        comp_data = comp_dict.get(language, comp_dict["zh"])
-        
-        # 基础构图
-        prompt_parts.extend(comp_data["basic"])
-        
-        # 强调重点
-        if composition == "full_body":
-            prompt_parts.extend(comp_data["emphasis"])
-        
-        # 2. 视角要求
-        view_dict = CharacterPromptBuilder.VIEW_ANGLES.get(view_angle, CharacterPromptBuilder.VIEW_ANGLES["front"])
-        prompt_parts.extend(view_dict.get(language, view_dict["zh"])[:2])  # 取前2个视角描述
-        
-        # 3. 表情要求
-        expr_dict = CharacterPromptBuilder.EXPRESSIONS.get(expression, CharacterPromptBuilder.EXPRESSIONS["neutral"])
-        prompt_parts.extend(expr_dict.get(language, expr_dict["zh"])[:2])  # 取前2个表情描述
-        
-        # 4. 国籍/种族特征（如果需要）
-        if default_nationality == "chinese" and language == "zh":
-            if not any(keyword in description for keyword in ["外国", "欧美", "美国", "英国", "法国", "德国", "日本", "韩国", "俄罗斯", "非洲", "印度", "阿拉伯", "American", "European", "Western", "Japanese", "Korean"]):
-                prompt_parts.extend(["中国人", "东亚面孔"])
-        elif default_nationality == "chinese" and language == "en":
-            if not any(keyword in description for keyword in ["American", "European", "Western", "Japanese", "Korean", "Russian", "African", "Indian", "Arab"]):
-                prompt_parts.extend(["Chinese person", "East Asian features"])
-        
-        # 5. 人物描述（核心）
-        desc_limit = 150 if language == "zh" else 200
-        if len(description) > desc_limit:
-            prompt_parts.append(description[:desc_limit])
+        # ===== 根据API类型选择提示词风格 =====
+        if api_type == "sd":
+            # Stable Diffusion: 标签式提示词（逗号分隔关键词）
+            return CharacterPromptBuilder._build_sd_style_prompt(
+                description=description,
+                view_angle=view_angle,
+                expression=expression,
+                composition=composition,
+                extra_details=extra_details,
+                default_nationality=default_nationality,
+                variant=variant,
+                variant_mode=variant_mode,
+                language=language
+            )
         else:
-            prompt_parts.append(description)
+            # OpenAI/Hunyuan/其他API: 自然语言提示词（完整句子）
+            return CharacterPromptBuilder._build_natural_language_prompt(
+                description=description,
+                view_angle=view_angle,
+                expression=expression,
+                composition=composition,
+                extra_details=extra_details,
+                default_nationality=default_nationality,
+                variant=variant,
+                variant_mode=variant_mode,
+                language=language
+            )
+    
+    @staticmethod
+    def _build_sd_style_prompt(
+        description: str,
+        view_angle: str,
+        expression: str,
+        composition: str,
+        extra_details: str,
+        default_nationality: str,
+        variant: str,
+        variant_mode: str,
+        language: str
+    ) -> str:
+        """
+        构建SD风格的标签式提示词
+        SD要求：全英文、简洁关键词、逗号分隔
+        """
+        tags = []
         
-        # 6. 服装/造型变体
+        # === 1. 质量标签（最前面）===
+        tags.extend(["masterpiece", "best quality", "ultra detailed", "8k"])
+        
+        # === 2. 人数和性别（必须明确）===
+        # 检测性别（更全面的关键词）
+        is_male = any(kw in description for kw in [
+            "男", "male", "man", "boy", "先生", "他", "男性", "男孩", "男人",
+            "男生", "小伙", "帅哥", "大叔", "老伯", "爷爷"
+        ])
+        is_female = any(kw in description for kw in [
+            "女", "female", "woman", "girl", "lady", "她", "女性", "女孩", "女人",
+            "女生", "姑娘", "美女", "阿姨", "奶奶", "少女"
+        ])
+        
+        # 检测年龄（更细致的分类）
+        is_child = any(kw in description for kw in [
+            "小孩", "child", "kid", "儿童", "小学生", "幼儿", "孩童",
+            "5岁", "6岁", "7岁", "8岁", "9岁", "10岁", "11岁", "12岁"
+        ])
+        is_teen = any(kw in description for kw in [
+            "青少年", "teenager", "teen", "高中生", "初中生", "少年",
+            "13岁", "14岁", "15岁", "16岁", "17岁", "18岁", "19岁"
+        ])
+        is_young = any(kw in description for kw in [
+            "年轻", "young", "青年", "20", "25", "30", "大学生", "职场新人"
+        ])
+        is_middle = any(kw in description for kw in [
+            "中年", "middle-aged", "40", "50", "不惑", "中年人"
+        ])
+        is_old = any(kw in description for kw in [
+            "老", "elderly", "老人", "60", "70", "80", "花甲", "古稀", "耄耋"
+        ])
+        
+        # 组合性别+年龄标签（更精确）
+        if is_male:
+            if is_child:
+                tags.extend(["1boy", "young boy", "male child"])
+            elif is_teen:
+                tags.extend(["1boy", "teenage boy", "male teenager"])
+            elif is_young:
+                tags.extend(["1man", "young man", "adult male"])
+            elif is_middle:
+                tags.extend(["1man", "middle-aged man", "mature male"])
+            elif is_old:
+                tags.extend(["1man", "elderly man", "old man"])
+            else:
+                tags.extend(["1man", "adult male"])  # 默认成年男性
+        elif is_female:
+            if is_child:
+                tags.extend(["1girl", "young girl", "female child"])
+            elif is_teen:
+                tags.extend(["1girl", "teenage girl", "female teenager"])
+            elif is_young:
+                tags.extend(["1woman", "young woman", "adult female"])
+            elif is_middle:
+                tags.extend(["1woman", "middle-aged woman", "mature female"])
+            elif is_old:
+                tags.extend(["1woman", "elderly woman", "old woman"])
+            else:
+                tags.extend(["1woman", "adult female"])  # 默认成年女性
+        else:
+            # 无法判断性别，从名字推测
+            if any(kw in description for kw in ["王", "李", "张", "刘", "陈", "杨", "黄", "赵", "周", "吴"]):
+                tags.extend(["1person", "Chinese person"])
+            else:
+                tags.append("1person")
+        
+        tags.append("solo")  # 单人（强调）
+        
+        # === 3. 种族特征 ===
+        if default_nationality == "chinese":
+            if not any(kw in description for kw in ["欧美", "美国", "American", "European", "Western"]):
+                tags.extend(["Chinese", "East Asian", "asian"])
+        
+        # === 4. 发型（从描述中提取，更全面）===
+        hair_keywords = {
+            # 颜色
+            "黑发": "black hair", "黑色头发": "black hair",
+            "棕发": "brown hair", "棕色头发": "brown hair",
+            "金发": "blonde hair", "金色头发": "blonde hair", "黄发": "blonde hair",
+            "红发": "red hair", "红色头发": "red hair",
+            "白发": "white hair", "白色头发": "white hair", "银发": "silver hair",
+            "灰发": "gray hair", "蓝发": "blue hair", "紫发": "purple hair",
+            # 长度
+            "短发": "short hair", "中长发": "medium hair", "中长": "medium hair",
+            "长发": "long hair", "齐肩": "shoulder-length hair",
+            "及腰": "waist-length hair", "超长": "very long hair",
+            # 质感和样式
+            "直发": "straight hair", "卷发": "curly hair", "波浪": "wavy hair",
+            "自然卷": "naturally curly", "微卷": "slightly wavy",
+            # 发型
+            "马尾": "ponytail", "高马尾": "high ponytail",
+            "双马尾": "twin tails", "麻花辫": "braided hair", "编发": "braided",
+            "丸子头": "bun", "发髻": "bun", "齐刘海": "blunt bangs",
+            "斜刘海": "side-swept bangs", "中分": "center parting",
+            "侧分": "side parting", "碎发": "messy hair", "蓬松": "voluminous hair"
+        }
+        hair_found = False
+        for cn_key, en_tag in hair_keywords.items():
+            if cn_key in description:
+                if en_tag not in tags:
+                    tags.append(en_tag)
+                    hair_found = True
+        
+        # 如果没有明确发型，添加默认
+        if not hair_found:
+            if is_male:
+                tags.extend(["black hair", "short hair"])
+            else:
+                tags.extend(["black hair", "long hair"])
+        
+        # === 5. 服装（从描述中提取，更详细）===
+        clothing_keywords = {
+            # 上装
+            "衬衫": "shirt", "白衬衫": "white shirt",
+            "T恤": "t-shirt", "短袖": "short sleeves",
+            "长袖": "long sleeves", "毛衣": "sweater",
+            "卫衣": "hoodie", "外套": "jacket",
+            "西装": "suit", "西装外套": "suit jacket",
+            "夹克": "jacket", "风衣": "trench coat",
+            # 下装
+            "裤子": "pants", "长裤": "long pants",
+            "牛仔裤": "jeans", "西裤": "dress pants",
+            "短裤": "shorts", "裙子": "skirt",
+            "连衣裙": "dress", "短裙": "mini skirt",
+            "长裙": "long skirt", "百褶裙": "pleated skirt",
+            # 整套
+            "制服": "uniform", "校服": "school uniform",
+            "运动服": "sportswear", "正装": "formal wear",
+            "休闲装": "casual wear", "职业装": "business attire",
+            # 颜色
+            "黑色": "black", "白色": "white", "灰色": "gray",
+            "红色": "red", "蓝色": "blue", "绿色": "green",
+            "黄色": "yellow", "紫色": "purple", "粉色": "pink",
+            "棕色": "brown", "米色": "beige",
+            # 材质和风格
+            "皮革": "leather", "牛仔": "denim", "棉质": "cotton",
+            "运动风": "sporty", "休闲风": "casual", "正式": "formal"
+        }
+        clothing_found = False
+        for cn_key, en_tag in clothing_keywords.items():
+            if cn_key in description:
+                if en_tag not in tags:
+                    tags.append(en_tag)
+                    clothing_found = True
+        
+        # 如果没有明确服装，添加基础服装
+        if not clothing_found:
+            if is_male:
+                tags.extend(["casual wear", "shirt", "pants"])
+        else:
+                tags.extend(["casual wear", "dress"])
+        
+        # === 6. 构图标签 ===
+        if composition == "full_body":
+            tags.extend(["full body", "standing", "full shot"])
+        elif composition == "upper_body":
+            tags.extend(["upper body", "portrait", "half body"])
+        elif composition == "portrait":
+            tags.extend(["portrait", "face focus", "close-up"])
+        
+        # === 7. 视角标签 ===
+        view_map = {
+            "front": "front view",
+            "side": "side view",
+            "back": "back view",
+            "three-quarter": "three-quarter view"
+        }
+        if view_angle in view_map:
+            tags.append(view_map[view_angle])
+        
+        # === 8. 表情标签 ===
+        expr_map = {
+            "neutral": "neutral expression",
+            "happy": "smiling",
+            "sad": "sad",
+            "angry": "angry",
+            "surprised": "surprised",
+            "fear": "scared"
+        }
+        if expression in expr_map:
+            tags.append(expr_map[expression])
+        
+        # === 9. 服装变体（如果有）===
         if variant_mode == "preset" and variant:
-            # 使用预设变体
             variant_dict = CharacterPromptBuilder.OUTFIT_VARIANTS.get(variant, {})
             if variant_dict:
-                variant_words = variant_dict.get(language, variant_dict.get("zh", []))
-                prompt_parts.extend(variant_words[:3])  # 取前3个变体描述词
-        elif variant_mode == "custom" and variant:
-            # 使用自定义变体描述
-            if not variant.startswith("例如"):
-                variant_limit = 60
-                if len(variant) > variant_limit:
-                    prompt_parts.append(variant[:variant_limit])
-                else:
-                    prompt_parts.append(variant)
+                variant_tags = variant_dict.get("en", [])[:3]
+                tags.extend(variant_tags)
         
-        # 7. 额外细节
-        if extra_details:
-            extra_limit = 80
-            if len(extra_details) > extra_limit:
-                prompt_parts.append(extra_details[:extra_limit])
-            else:
-                prompt_parts.append(extra_details)
+        # === 10. 面部特征和体型===
+        body_keywords = {
+            # 体型
+            "瘦": "slim", "苗条": "slender", "纤细": "slim",
+            "壮": "muscular", "健壮": "athletic", "强壮": "strong",
+            "胖": "chubby", "微胖": "slightly chubby", "丰满": "full-figured",
+            "高": "tall", "矮": "short", "中等身材": "average build",
+            # 面部特征
+            "圆脸": "round face", "方脸": "square face", "瓜子脸": "oval face",
+            "鹅蛋脸": "oval face", "长脸": "long face",
+            "大眼睛": "large eyes", "小眼睛": "small eyes",
+            "双眼皮": "double eyelids", "单眼皮": "monolid",
+            "高鼻梁": "high nose bridge", "塌鼻梁": "flat nose",
+            "厚嘴唇": "full lips", "薄嘴唇": "thin lips",
+            "浓眉": "thick eyebrows", "细眉": "thin eyebrows",
+            # 皮肤
+            "白皙": "fair skin", "古铜": "tan skin", "黝黑": "dark skin",
+            "皮肤白": "fair skin", "皮肤黑": "dark skin",
+            # 气质
+            "帅气": "handsome", "英俊": "handsome", "俊朗": "handsome",
+            "漂亮": "beautiful", "美丽": "beautiful", "清秀": "delicate features",
+            "可爱": "cute", "甜美": "sweet", "温柔": "gentle",
+            "冷峻": "stern", "严肃": "serious", "憨厚": "honest-looking"
+        }
+        for cn_key, en_tag in body_keywords.items():
+            if cn_key in description and en_tag not in tags:
+                tags.append(en_tag)
         
-        # 8. 背景要求
-        prompt_parts.extend(comp_data["background"])
+        # === 11. 背景 ===
+        tags.extend(["simple background", "white background", "plain background"])
         
-        # 9. 画质要求
+        # === 12. 光线和质量 ===
+        tags.extend([
+            "professional photography",
+            "studio lighting",
+            "sharp focus",
+            "highly detailed",
+            "photorealistic",
+            "high resolution"
+        ])
+        
+        # === 13. 正向强调（确保人物质量）===
+        tags.extend([
+            "looking at viewer",
+            "centered composition",
+            "clear face",
+            "detailed face",
+            "perfect anatomy",
+            "realistic proportions"
+        ])
+        
+        # 去重并返回
+        seen = set()
+        unique_tags = []
+        for tag in tags:
+            if tag.lower() not in seen:
+                seen.add(tag.lower())
+                unique_tags.append(tag)
+        
+        return ", ".join(unique_tags)
+    
+    @staticmethod
+    def _build_natural_language_prompt(
+        description: str,
+        view_angle: str,
+        expression: str,
+        composition: str,
+        extra_details: str,
+        default_nationality: str,
+        variant: str,
+        variant_mode: str,
+        language: str
+    ) -> str:
+        """构建自然语言风格的提示词（用于OpenAI/Hunyuan等API）"""
+        
+        # 获取视角、表情、构图的自然语言描述
+        view_dict = CharacterPromptBuilder.VIEW_ANGLES.get(view_angle, CharacterPromptBuilder.VIEW_ANGLES["front"])
+        view_text = view_dict.get(language, view_dict["zh"])[0]
+        
+        expr_dict = CharacterPromptBuilder.EXPRESSIONS.get(expression, CharacterPromptBuilder.EXPRESSIONS["neutral"])
+        expr_text = expr_dict.get(language, expr_dict["zh"])[0]
+        
+        comp_dict = CharacterPromptBuilder.COMPOSITION_TYPES.get(composition, CharacterPromptBuilder.COMPOSITION_TYPES["full_body"])
+        comp_data = comp_dict.get(language, comp_dict["zh"])
+        comp_text = comp_data["basic"][0]
+        
+        # 构建自然语言句子
         if language == "zh":
-            prompt_parts.extend(["高清", "细节清晰", "专业摄影"])
-        else:
-            prompt_parts.extend(["high quality", "detailed", "professional photography"])
+            # 中文自然语言
+            parts = [f"一张{comp_text}"]
+            
+            # 添加国籍
+            if default_nationality == "chinese":
+                if not any(kw in description for kw in ["外国", "欧美", "美国", "英国"]):
+                    parts.append("中国人")
+            
+            # 添加人物描述
+            parts.append(description[:150])
+            
+            # 添加表情
+            if expression != "neutral":
+                parts.append(f"{expr_text}")
+            
+            # 添加视角
+            parts.append(f"{view_text}")
+            
+            # 添加服装变体
+            if variant_mode == "preset" and variant:
+                variant_dict = CharacterPromptBuilder.OUTFIT_VARIANTS.get(variant, {})
+                if variant_dict:
+                    variant_text = variant_dict.get(language, variant_dict.get("zh", []))[0]
+                    parts.append(f"穿着{variant_text}")
+            elif variant_mode == "custom" and variant:
+                parts.append(variant[:60])
+            
+            # 添加额外细节
+            if extra_details:
+                parts.append(extra_details[:80])
+            
+            # 添加质量要求
+            parts.append("高清专业摄影，细节清晰，纯色背景")
+            
+            return "，".join(parts)
         
-        # 组合提示词
-        separator = "，" if language == "zh" else ", "
-        return separator.join(prompt_parts)
+        else:
+            # 英文自然语言
+            parts = [f"A {comp_text} photo of"]
+            
+            # 添加表情（在描述前）
+            if expression != "neutral":
+                parts.append(f"a {expr_text}")
+            else:
+                parts.append("a")
+            
+            # 添加国籍
+            if default_nationality == "chinese":
+                if not any(kw in description for kw in ["American", "European", "Western"]):
+                    parts.append("Chinese")
+            
+            # 添加人物描述主体
+            parts.append(description[:200])
+            
+            # 添加服装变体
+            if variant_mode == "preset" and variant:
+                variant_dict = CharacterPromptBuilder.OUTFIT_VARIANTS.get(variant, {})
+                if variant_dict:
+                    variant_text = variant_dict.get(language, variant_dict.get("en", []))[0]
+                    parts.append(f"wearing {variant_text}")
+            elif variant_mode == "custom" and variant:
+                parts.append(variant[:60])
+            
+            # 添加视角
+            parts.append(f"{view_text}")
+            
+            # 添加额外细节
+            if extra_details:
+                parts.append(extra_details[:80])
+            
+            # 添加质量要求
+            parts.append("high quality professional photography, detailed, plain background")
+            
+            return " ".join(parts)
     
     @staticmethod
     def build_character_sheet_prompt(
@@ -310,6 +638,47 @@ class CharacterPromptBuilder:
             }
         
         return prompts
+    
+    @staticmethod
+    def get_negative_prompt_for_character(api_type: str = "sd") -> str:
+        """
+        获取人物生成的负面提示词
+        
+        Args:
+            api_type: API类型（主要用于SD）
+        
+        Returns:
+            负面提示词字符串
+        """
+        if api_type == "sd":
+            # SD需要详细的负面提示词
+            negative_tags = [
+                # 质量问题
+                "low quality", "worst quality", "normal quality", "lowres",
+                "blurry", "fuzzy", "out of focus", "jpeg artifacts",
+                "compression artifacts", "watermark", "signature", "username",
+                # 解剖学问题
+                "bad anatomy", "bad hands", "bad fingers", "bad proportions",
+                "deformed", "disfigured", "malformed", "mutated",
+                "extra limbs", "extra fingers", "missing limbs", "missing fingers",
+                "fused fingers", "too many fingers", "long neck", "long body",
+                # 面部问题
+                "ugly face", "deformed face", "bad face", "mutated face",
+                "bad eyes", "crossed eyes", "uneven eyes",
+                "bad teeth", "extra heads", "two heads",
+                # 多人物问题（重要！）
+                "multiple people", "multiple persons", "crowd", "group",
+                "two people", "three people", "many people",
+                "multiple boys", "multiple girls", "extra person",
+                # 其他问题
+                "duplicate", "cloned", "copied",
+                "text", "error", "cropped", "cut off",
+                "gross", "disgusting"
+            ]
+            return ", ".join(negative_tags)
+        else:
+            # 其他API通常不需要或不支持负面提示词
+            return ""
     
     @staticmethod
     def optimize_for_api(prompt: str, api_type: str, max_length: int = None) -> str:

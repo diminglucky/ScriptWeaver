@@ -1,0 +1,29 @@
+{
+  "api_configs": {
+    "default_sd": {
+      "provider": "sd",
+      "base_url": "http://localhost:7860",
+      "api_key": "",
+      "model": "",
+      "extra_params": {}
+    },
+    "default_openai": {
+      "provider": "openai",
+      "base_url": "https://api.openai.com/v1",
+      "api_key": "",
+      "model": "dall-e-3",
+      "extra_params": {}
+    }
+  },
+  "generation_settings": {
+    "resolution": "768x512",
+    "style": "photorealistic",
+    "num_variants": 3,
+    "video_platform": "jimeng"
+  },
+  "preferences": {
+    "auto_save": true,
+    "show_tips": true,
+    "theme": "dark"
+  }
+}

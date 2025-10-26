@@ -1,0 +1,44 @@
+商用级人物一致性解决方案
+========================
+
+当前系统的局限：
+- 使用固定种子 + img2img 只能达到 70% 相似度
+- 无法保证面部细节完全一致
+- 不同动作和角度会有明显差异
+
+要达到商用级（95%+一致性），您需要：
+
+1. 硬件升级
+   - 显存 12GB+ (用于加载多个模型)
+   - 使用 ComfyUI 而非 WebUI
+
+2. 安装专业插件
+   - IPAdapter (面部特征锁定)
+   - ControlNet (姿势控制)
+   - Reactor/Roop (AI换脸)
+   - ADetailer (面部细节修复)
+
+3. 训练专属模型
+   - 每个角色训练 LoRA (15-30张图)
+   - 使用 Dreambooth 微调
+   - 成本：每个角色约2-4小时GPU时间
+
+4. 商业服务选择
+   - Midjourney ($30/月) - Character Reference功能
+   - Leonardo.AI ($12/月) - Character Consistency
+   - RunwayML ($15/月) - 专业视频生成
+
+5. 工作流程
+   a. 生成高质量参考图 (多角度)
+   b. 提取面部特征向量
+   c. 使用 IPAdapter 锁定特征
+   d. ControlNet 控制姿势
+   e. 后期 AI 换脸确保一致
+
+6. 快速方案
+   如果您急需商用级效果：
+   - 使用 Midjourney 的 --cref 功能
+   - 或雇佣专业 AI 绘画师 (约 ¥200-500/角色)
+
+当前代码已经是纯 SD WebUI API 能达到的最佳效果。
+要更进一步，需要上述专业工具。

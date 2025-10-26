@@ -1,0 +1,45 @@
+{
+  "shots": [
+    {
+      "shot_number": 1,
+      "scene_id": "场景1",
+      "location": "教室",
+      "time": "早上",
+      "shot_type": "中景",
+      "characters": [
+        "张强"
+      ],
+      "visual_description": "阳光从窗户照进教室，张强坐在座位上认真做题，他戴着黑框眼镜，穿白衬衫",
+      "action": "张强专注地做数学题，偶尔推推眼镜",
+      "camera": {
+        "movement": "缓慢推进",
+        "angle": "侧面45度",
+        "focus": "张强的侧脸和桌上的书本"
+      },
+      "duration": "8秒",
+      "transition_to_next": "切"
+    },
+    {
+      "shot_number": 2,
+      "scene_id": "场景2",
+      "location": "教室",
+      "time": "片刻后",
+      "shot_type": "双人镜头",
+      "characters": [
+        "张强",
+        "林小雨"
+      ],
+      "visual_description": "林小雨站在张强旁边，阳光照在她的脸上，她穿着蓝色连衣裙，扎着马尾",
+      "action": "林小雨热情地自我介绍，张强抬头看她",
+      "dialogue": "你好！我是新来的转学生林小雨，请多多指教！",
+      "emotion": "林小雨：开朗活泼；张强：略显意外",
+      "camera": {
+        "movement": "固定",
+        "angle": "过肩镜头",
+        "focus": "从张强肩膀看向林小雨"
+      },
+      "duration": "10秒",
+      "jimeng_prompt": "教室里，女孩热情地向男孩自我介绍，阳光照在她的笑脸上"
+    }
+  ]
+}

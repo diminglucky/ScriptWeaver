@@ -195,6 +195,22 @@ class EnhancedProjectManager:
             with open(project_file, 'w', encoding='utf-8') as f:
                 json.dump(project_data, f, ensure_ascii=False, indent=2)
             
+            # 同步更新 current_project.metadata（用于刷新项目列表显示）
+            if hasattr(self.current_project, 'metadata'):
+                # 更新关键元数据字段
+                self.current_project.metadata['updated_at'] = datetime.now().isoformat()
+                
+                # 从保存的数据中提取关键信息
+                if "story" in project_data.get("data", {}):
+                    story_data = project_data["data"]["story"]
+                    self.current_project.metadata['category'] = story_data.get("category", "")
+                    self.current_project.metadata['style'] = story_data.get("style", "")
+                    self.current_project.metadata['target_chars'] = story_data.get("target_chars", 1800)
+                
+                # 保存更新后的元数据
+                self.current_project._save_metadata()
+                print(f"✅ 项目元数据已同步更新")
+            
             # 保存状态信息
             if hasattr(self, 'status'):
                 self.status.set(f"✅ 项目已保存: {project_name}")
@@ -261,7 +277,12 @@ class EnhancedProjectManager:
                 if hasattr(self, 'target_chars'):
                     self.target_chars.set(story_data.get("target_chars", 1800))
             
-            # 2. 加载章节信息
+            # 2. 加载导演数据（剧本和分镜）
+            if hasattr(self, '_load_director_data_from_project'):
+                print("[DEBUG] 调用 _load_director_data_from_project")
+                self._load_director_data_from_project()
+            
+            # 3. 加载章节信息
             if "sections" in data and hasattr(self, 'parsed_sections'):
                 self.parsed_sections = data["sections"]
             
@@ -302,10 +323,17 @@ class EnhancedProjectManager:
             if "image_generation" in data:
                 img_data = data["image_generation"]
                 
-                # 加载人物列表
-                if "characters" in img_data and hasattr(self, 'character_list'):
+                # 加载人物列表（优先从characters_info.json加载）
+                if hasattr(self, '_load_project_characters'):
+                    # 使用专门的方法加载人物信息（从characters_info.json）
+                    self._load_project_characters()
+                elif "characters" in img_data and hasattr(self, 'character_list'):
+                    # 回退到project.json中的人物数据
                     self.character_list = img_data["characters"]
-                    self._update_character_display()
+                    if hasattr(self, '_update_character_listbox'):
+                        self._update_character_listbox()
+                    elif hasattr(self, '_update_character_display'):
+                        self._update_character_display()
                 
                 # 加载分镜描述
                 if "shot_descriptions" in img_data and hasattr(self, 'img_txt_shots'):
@@ -419,14 +447,12 @@ class EnhancedProjectManager:
             self.shots_list.config(state="disabled")
     
     def _update_character_display(self):
-        """更新人物显示"""
+        """更新人物显示（只显示名字）"""
         if hasattr(self, 'char_listbox') and hasattr(self, 'character_list'):
             self.char_listbox.delete(0, tk.END)
             for char in self.character_list:
-                display_text = f"{char['name']}"
-                if char.get('description'):
-                    display_text += f" - {char['description'][:30]}..."
-                self.char_listbox.insert(tk.END, display_text)
+                # 只显示人物名字，不显示描述
+                self.char_listbox.insert(tk.END, char['name'])
     
     def enable_auto_save(self, interval_minutes: int = 5):
         """启用自动保存"""

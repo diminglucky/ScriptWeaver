@@ -1,0 +1,58 @@
+图片生成失败问题 - 修复总结
+================================
+
+问题根源：
+---------
+PromptAdapter 类缺少核心方法 build_prompt_for_api()
+导致UI中调用时抛出 AttributeError 异常
+
+修复内容：
+---------
+1. 完整实现了 PromptAdapter.build_prompt_for_api() 方法
+   - 支持SD标签式提示词生成
+   - 支持自然语言提示词生成（OpenAI/Hunyuan）
+   - 智能提取人物、动作、场景、情感标签
+
+2. 添加了辅助方法：
+   - _build_sd_prompt(): SD专用提示词构建
+   - _extract_character_tags(): 人物特征提取
+   - _extract_action_tags(): 动作标签提取
+   - _extract_scene_tags(): 场景标签提取
+   - _extract_emotion_tags(): 情感标签提取
+   - add_consistency_weights(): 一致性权重增强
+
+3. 改进了错误处理：
+   - director_mixin.py 中增加了详细的错误追踪
+   - 打印完整的堆栈信息便于调试
+
+测试结果：
+---------
+✅ SD服务连接正常
+✅ 提示词构建成功
+✅ 图片生成成功
+✅ 文件保存正常
+
+生成示例：
+---------
+提示词: 1person, solo, wide shot, full body, classroom, indoors, 
+        blackboard, masterpiece, best quality, ultra detailed, 
+        8k, photorealistic, professional photography
+
+负面词: low quality, bad anatomy, bad hands, bad proportions, 
+        blurry, cropped, deformed, multiple people, crowd, group
+
+输出: test_shot_001_debug.png (552.53 KB)
+
+现在可以正常使用：
+----------------
+1. 打开应用: python run_modern_app.py
+2. 进入"导演"页面
+3. 选择分镜
+4. 点击"生成图片"
+5. 等待生成完成
+
+系统会自动：
+- 加载人物信息
+- 构建优化的SD提示词
+- 生成高质量图片
+- 保存到项目目录
