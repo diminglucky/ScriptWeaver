@@ -430,20 +430,26 @@ class StoryUIBuilderMixin:
 			"浪漫主义",
 		]
 
-		# Output area + status bar (使用grid布局保持一致)
+		# Output area (故事内容输出 - 更大的显示区域)
 		self.output = scrolledtext.ScrolledText(self.story_tab_create, wrap=tk.WORD,
 												 font=("", 12), bg=Theme.SURFACE, fg=Theme.TEXT_PRIMARY,
 												 insertbackground=Theme.PRIMARY, selectbackground=Theme.PRIMARY, selectforeground=Theme.TEXT_ON_PRIMARY,
 												 relief=tk.FLAT, borderwidth=1, highlightthickness=1,
 												 highlightbackground=Theme.BORDER, highlightcolor=Theme.BORDER_FOCUS,
 												 padx=16, pady=16)
-		self.output.grid(row=3, column=0, columnspan=2, sticky="nsew", padx=15, pady=(0, 10))
+		self.output.grid(row=3, column=0, columnspan=2, sticky="nsew", padx=15, pady=(0, 8))
 		
+		# 知乎发布区域（紧凑单行布局）
+		zhihu_frame = tk.Frame(self.story_tab_create, bg=Theme.BG_SECONDARY)
+		zhihu_frame.grid(row=4, column=0, columnspan=2, sticky="we", padx=10, pady=(0, 5))
+		self._build_zhihu_publish_ui(zhihu_frame)
+		
+		# Status bar（状态栏 - 移到最底部）
 		self.status = tk.StringVar(value="就绪")
 		status_bar = ttk.Label(self.story_tab_create, textvariable=self.status, anchor="w")
-		status_bar.grid(row=4, column=0, columnspan=2, sticky="we", padx=10, pady=(0, 8))
+		status_bar.grid(row=5, column=0, columnspan=2, sticky="we", padx=10, pady=(0, 8))
 		
-		# 配置行列权重，让output区域可以扩展
+		# 配置行列权重，让output区域可以扩展（占据更多空间）
 		self.story_tab_create.rowconfigure(3, weight=1)
 
 	
@@ -548,11 +554,16 @@ class StoryUIBuilderMixin:
 			f"- 段落衔接自然，避免列表化\n"
 			f"- 输出为纯文本，不使用任何 Markdown 标记\n"
 			f"- 如果前文已有内容，本节要自然承接，不要重复前文情节\n\n"
-			f"【特别提醒】\n"
-			f"请写够 {min_chars} 字以上，展开细节描写和情节发展。\n"
-			f"主题/需求：{requirement}\n\n"
-			f"{f'【参考资料】\n{ctx}\n' if ctx else ''}"
-			f"请直接开始写正文，不要任何前缀或标题："
+		f"【特别提醒】\n"
+		f"请写够 {min_chars} 字以上，展开细节描写和情节发展。\n"
+		f"主题/需求：{requirement}\n\n"
+		f"{f'【参考资料】\n{ctx}\n' if ctx else ''}"
+		f"\n【严格禁止】\n"
+		f"❌ 绝对不要输出：\"第X章完成\"、\"✓\"、\"本章字数\"、\"准备生成\"等任何元信息\n"
+		f"❌ 绝对不要输出任何完成提示、字数统计、状态标记\n"
+		f"❌ 只输出故事正文，不要任何标记、符号、完成信息\n"
+		f"✅ 写完后直接结束，不要任何总结或提示\n\n"
+		f"立即开始写故事正文："
 		)
 
 

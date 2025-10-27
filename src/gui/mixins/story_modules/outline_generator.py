@@ -81,7 +81,7 @@ class OutlineGeneratorMixin:
 				)
 				outline_prompt = self._build_outline_prompt(requirement, contexts, self.category.get())
 				self.output.delete("1.0", END)
-				self.output.insert(END, "生成目录中...\n\n")
+				# 不再插入 "生成目录中..." 到正文，只在状态栏显示
 				outline_text = client.chat([
 					{"role": "system", "content": "你是资深知乎创作者与编辑。请先产出结构化目录，不要写正文。"},
 					{"role": "user", "content": outline_prompt},
@@ -93,7 +93,8 @@ class OutlineGeneratorMixin:
 				self.parsed_sections = self._parse_outline_sections(self.current_outline)
 				self._update_section_selector()
 				
-				self.output.insert(END, f"目录（共{len(self.parsed_sections)}章，预估字数≈{estimate}字）\n\n{self.current_outline}\n\n")
+				# 只插入目录，不插入字数统计信息
+				self.output.insert(END, f"{self.current_outline}\n\n")
 				self.status.set("目录已生成")
 				# 更新顶部状态栏
 				if hasattr(self, 'update_header_status'):
@@ -242,7 +243,7 @@ class OutlineGeneratorMixin:
 					"5. 尘埃落定"
 				)
 				self.output.delete("1.0", END)
-				self.output.insert(END, "生成目录中...\n\n")
+				# 不再插入 "生成目录中..." 到正文，只在状态栏显示
 				outline_text = client.chat([
 					{"role": "system", "content": "你是资深知乎创作者与编辑。请先产出结构化目录，不要写正文。"},
 					{"role": "user", "content": prompt},
@@ -254,7 +255,8 @@ class OutlineGeneratorMixin:
 				self.parsed_sections = self._parse_outline_sections(self.current_outline)
 				self._update_section_selector()
 				
-				self.output.insert(END, f"目录（共{len(self.parsed_sections)}章，预估字数≈{estimate}字）\n\n{self.current_outline}\n\n")
+				# 只插入目录，不插入字数统计信息
+				self.output.insert(END, f"{self.current_outline}\n\n")
 				self.status.set("目录已生成")
 				# 更新顶部状态栏
 				if hasattr(self, 'update_header_status'):
@@ -275,299 +277,496 @@ class OutlineGeneratorMixin:
 		total_sections = len(sections)
 		target_per_section = int(target_chars / total_sections)
 		
-		self.output.insert(END, f"📖 开始分段生成（共{total_sections}段，目标总字数{target_chars}字）\n\n")
-		self.output.insert(END, "=" * 50 + "\n\n")
+		# 不再插入分段生成提示到正文，只在状态栏显示
+		# self.output.insert(END, f"📖 开始分段生成（共{total_sections}段，目标总字数{target_chars}字）\n\n")
 		
-		accumulated_content = ""
-		style_part = self.style.get().strip()
-		category = self.category.get()
-		
+		total_generated = 0
 		for idx, section in enumerate(sections):
-			# 更新状态
-			self.status.set(f"生成第 {idx+1}/{total_sections} 段: {section['title']}")
-			self.output.insert(END, f"【正在生成第 {idx+1}/{total_sections} 段】\n\n")
-			self.output.see(END)
+			# 不再插入章节生成状态到正文，只在状态栏显示
+			# self.output.insert(END, f"【正在生成第 {idx + 1}/{total_sections} 段】\n")
+			self.status.set(f"生成第 {idx + 1}/{total_sections} 章...")
 			# 更新顶部状态栏
 			if hasattr(self, 'update_header_status'):
-				self.update_header_status(f"生成中 ({idx+1}/{total_sections})", "📝")
+				self.update_header_status(f"生成第 {idx + 1}/{total_sections} 章...", "✍️")
 			
-			# 构建本段提示词
+			# 计算本段需要的字数
+			remaining_chars = target_chars - total_generated
+			remaining_sections = total_sections - idx
+			section_target = min(target_per_section + 500, int(remaining_chars / remaining_sections))
+			
+			# 先输出章节标题
+			self.output.insert(END, f"【第 {idx + 1}/{total_sections} 章. {section}】\n\n")
+			
+			# 构建带上下文的prompt
 			section_prompt = self._build_section_prompt(
-				section=section,
-				section_index=idx,
-				total_sections=total_sections,
-				previous_content=accumulated_content,
-				requirement=requirement,
-				contexts=contexts,
-				category=category,
-				style_part=style_part,
-				target_chars_per_section=target_per_section
+				requirement, section, contexts, section_target, idx + 1, total_sections
 			)
 			
-			# 流式生成本段
-			section_content = ""
-			for delta in client.stream([
-				{"role": "system", "content": "你是资深知乎创作者，擅长结合资料写出有观点、有结构的中文故事。"},
+			section_text = client.chat([
+				{"role": "system", "content": "你是资深知乎故事创作者，善于把控节奏和情感。重要：只输出故事正文，绝对不要输出\"第X章完成\"、\"本章字数\"等任何元信息或状态提示。"},
 				{"role": "user", "content": section_prompt},
-			], temperature=self.temperature.get(), max_tokens=int(target_per_section*2.5)):
-				self.output.insert(END, delta)
-				self.output.see(END)
-				section_content += delta
+			], temperature=self.temperature.get())
 			
-			# 累积内容（用于下一段的上下文）
-			accumulated_content += section_content
+			# 过滤掉可能的状态信息
+			import re
+			section_text = re.sub(r'[✓✔☑️⏳🎉]*\s*第\s*\d+\s*章完成[！!].*?字.*?\n', '', section_text)
+			section_text = re.sub(r'[✓✔☑️⏳🎉]*\s*准备生成.*?\n', '', section_text)
+			section_text = re.sub(r'[✓✔☑️⏳🎉]*\s*全部章节生成完成.*?\n', '', section_text)
 			
-			# 段落分隔
+			# 输出生成的内容
+			self.output.insert(END, section_text.strip() + "\n\n")
+			self.output.see(END)
+			self.update()
+			
+			# 统计字数
+			section_chars = len(section_text)
+			total_generated += section_chars
+			# 只在状态栏显示字数统计，不插入到正文
+			# self.output.insert(END, f"✓ 第 {idx + 1} 章完成！本章字数：{section_chars} 字\n")
+			
+			# 休息一下避免触发限流
 			if idx < total_sections - 1:
-				self.output.insert(END, "\n\n")
-				self.output.see(END)
+				# self.output.insert(END, "⏳ 准备生成下一章...\n\n")
+				# 更新顶部状态栏
+				if hasattr(self, 'update_header_status'):
+					self.update_header_status("准备生成下一章...", "⏳")
+				import time
+				time.sleep(0.5)  # 略微延迟
 		
-		# 完成提示
-		final_length = len(accumulated_content)
-		self.output.insert(END, f"\n\n" + "=" * 50 + "\n")
-		self.output.insert(END, f"✅ 生成完成！总字数：{final_length} 字\n")
-		self.status.set(f"生成完成（{final_length} 字）")
-
+		# 不再插入总字数到正文，只在状态栏显示
+		# self.output.insert(END, f"\n✅ 生成完成！总字数：{total_generated} 字\n")
+		# 更新顶部状态栏
+		if hasattr(self, 'update_header_status'):
+			self.update_header_status(f"生成完成！总字数：{total_generated} 字", "🎉")
+		self.status.set(f"生成完成！总字数：{total_generated} 字")
 	
-	def _generate_single_section(self, query: str, contexts: list[str], section_index: int) -> None:
-		"""生成单个章节（无知识库）"""
+	
+	def _generate_single_section(self, query, contexts, selected_index) -> None:
+		"""不带知识库直接生成单个章节"""
 		def task():
 			try:
 				self.set_busy(True)
 				
-				# 获取选中的故事生成API配置
-				selected_api = self.story_gen_api.get() if hasattr(self, 'story_gen_api') else "DeepSeek"
+				# 获取章节信息
+				section_info = self.parsed_sections[selected_index]
+				section_title = section_info['title']
+				current_num = selected_index + 1
+				total_sections = len(self.parsed_sections)
+				
+				# 获取目标字数
+				target_chars = self.target_chars.get()
+				section_target = int(target_chars / total_sections)
+				
+				# 获取选中的章节生成API配置
+				selected_api = self.section_gen_api.get() if hasattr(self, 'section_gen_api') else "DeepSeek"
 				if selected_api not in self.api_presets:
 					messagebox.showerror("错误", f"未找到API预设: {selected_api}")
 					return
 				
 				api_config = self.api_presets[selected_api]
 				api_key = _sanitize(api_config.get("key", ""))
+				if not api_key:
+					messagebox.showerror("错误", f"API Key 为空，请在'基础 API 配置'中为 {selected_api} 填写后保存")
+					return
+				
+				self.status.set(f"使用 {selected_api} 生成章节: {section_title}")
+				# 更新顶部状态栏
+				if hasattr(self, 'update_header_status'):
+					self.update_header_status(f"生成章节: {section_title}", "✍️")
 				
 				client = DeepSeekClient(
 					api_key=api_key,
 					base_url=_sanitize(api_config.get("base_url", "")),
 					model=_sanitize(api_config.get("model", "")),
 				)
-				self._do_generate_section(client, query, contexts, section_index)
+				
+				# 获取已生成内容（用于保持连贯性）
+				current_content = self.output.get("1.0", END).strip()
+				
+				# 构建prompt
+				prompt = self._build_section_prompt(
+					query, section_title, contexts, section_target, 
+					current_num, total_sections
+				)
+				
+				# 调用AI生成
+				response = client.chat([
+					{"role": "system", "content": "你是资深知乎故事创作者，善于把控节奏和情感。重要：只输出故事正文，绝对不要输出\"第X章完成\"、\"本章字数\"等任何元信息或状态提示。"},
+					{"role": "user", "content": prompt},
+				], temperature=self.temperature.get())
+				
+				# 过滤掉可能的状态信息
+				import re
+				response = re.sub(r'[✓✔☑️⏳🎉]*\s*第\s*\d+\s*章完成[！!].*?字.*?\n', '', response)
+				response = re.sub(r'[✓✔☑️⏳🎉]*\s*准备生成.*?\n', '', response)
+				response = re.sub(r'[✓✔☑️⏳🎉]*\s*全部章节生成完成.*?\n', '', response)
+				
+				# 清空并显示新内容
+				if self.clear_before_section.get():
+					self.output.delete("1.0", END)
+					# 先显示目录
+					self.output.insert(END, f"{self.current_outline}\n\n")
+				
+				# 插入章节标题和内容
+				self.output.insert(END, f"【第 {current_num}/{total_sections} 章. {section_title}】\n\n")
+				self.output.insert(END, response.strip() + "\n\n")
+				
+				# 显示字数统计
+				section_chars = len(response)
+				# 只在状态栏显示，不插入到正文
+				# self.output.insert(END, f"✓ 生成完成！本章字数：{section_chars} 字\n")
+				self.output.see(END)
+				
+				self.status.set(f"章节生成完成！字数: {section_chars}")
+				# 更新顶部状态栏
+				if hasattr(self, 'update_header_status'):
+					self.update_header_status(f"章节生成完成！字数: {section_chars}", "✅")
+				
 			except Exception as e:
 				import traceback
-				self.output.insert(END, "\n生成出错:\n" + traceback.format_exc() + "\n")
+				self.output.insert(END, f"\n生成章节出错:\n{traceback.format_exc()}\n")
 				messagebox.showerror("错误", str(e))
+				self.status.set("生成章节失败")
+				# 更新顶部状态栏
+				if hasattr(self, 'update_header_status'):
+					self.update_header_status("生成章节失败", "❌")
 			finally:
 				self.set_busy(False)
+		
 		threading.Thread(target=task, daemon=True).start()
 	
 	
-	def _generate_single_section_with_contexts(self, query: str, contexts: list[str], section_index: int) -> None:
-		"""生成单个章节（带知识库）"""
-		# 获取选中的故事生成API配置
-		selected_api = self.story_gen_api.get() if hasattr(self, 'story_gen_api') else "DeepSeek"
+	def _generate_single_section_with_contexts(self, query, contexts, selected_index) -> None:
+		"""带知识库检索生成单个章节"""
+		def task():
+			try:
+				self.set_busy(True)
+				
+				# 获取章节信息
+				section_info = self.parsed_sections[selected_index]
+				section_title = section_info['title']
+				current_num = selected_index + 1
+				total_sections = len(self.parsed_sections)
+				
+				# 获取目标字数
+				target_chars = self.target_chars.get()
+				section_target = int(target_chars / total_sections)
+				
+				# 获取选中的章节生成API配置
+				selected_api = self.section_gen_api.get() if hasattr(self, 'section_gen_api') else "DeepSeek"
+				if selected_api not in self.api_presets:
+					messagebox.showerror("错误", f"未找到API预设: {selected_api}")
+					return
+				
+				api_config = self.api_presets[selected_api]
+				api_key = _sanitize(api_config.get("key", ""))
+				if not api_key:
+					messagebox.showerror("错误", f"API Key 为空，请在'基础 API 配置'中为 {selected_api} 填写后保存")
+					return
+				
+				self.status.set(f"使用 {selected_api} 生成章节: {section_title}")
+				# 更新顶部状态栏
+				if hasattr(self, 'update_header_status'):
+					self.update_header_status(f"生成章节: {section_title}", "✍️")
+				
+				client = DeepSeekClient(
+					api_key=api_key,
+					base_url=_sanitize(api_config.get("base_url", "")),
+					model=_sanitize(api_config.get("model", "")),
+				)
+				
+				# 获取已生成内容（用于保持连贯性）
+				current_content = self.output.get("1.0", END).strip()
+				
+				# 构建prompt
+				prompt = self._build_section_prompt(
+					query, section_title, contexts, section_target, 
+					current_num, total_sections
+				)
+				
+				# 调用AI生成
+				response = client.chat([
+					{"role": "system", "content": "你是资深知乎故事创作者，善于把控节奏和情感。重要：只输出故事正文，绝对不要输出\"第X章完成\"、\"本章字数\"等任何元信息或状态提示。"},
+					{"role": "user", "content": prompt},
+				], temperature=self.temperature.get())
+				
+				# 过滤掉可能的状态信息
+				import re
+				response = re.sub(r'[✓✔☑️⏳🎉]*\s*第\s*\d+\s*章完成[！!].*?字.*?\n', '', response)
+				response = re.sub(r'[✓✔☑️⏳🎉]*\s*准备生成.*?\n', '', response)
+				response = re.sub(r'[✓✔☑️⏳🎉]*\s*全部章节生成完成.*?\n', '', response)
+				
+				# 清空并显示新内容
+				if self.clear_before_section.get():
+					self.output.delete("1.0", END)
+					# 先显示目录
+					self.output.insert(END, f"{self.current_outline}\n\n")
+				
+				# 插入章节标题和内容
+				self.output.insert(END, f"【第 {current_num}/{total_sections} 章. {section_title}】\n\n")
+				self.output.insert(END, response.strip() + "\n\n")
+				
+				# 显示字数统计
+				section_chars = len(response)
+				# 只在状态栏显示，不插入到正文
+				# self.output.insert(END, f"✓ 生成完成！本章字数：{section_chars} 字\n")
+				self.output.see(END)
+				
+				self.status.set(f"章节生成完成！字数: {section_chars}")
+				# 更新顶部状态栏
+				if hasattr(self, 'update_header_status'):
+					self.update_header_status(f"章节生成完成！字数: {section_chars}", "✅")
+				
+			except Exception as e:
+				import traceback
+				self.output.insert(END, f"\n生成章节出错:\n{traceback.format_exc()}\n")
+				messagebox.showerror("错误", str(e))
+				self.status.set("生成章节失败")
+				# 更新顶部状态栏
+				if hasattr(self, 'update_header_status'):
+					self.update_header_status("生成章节失败", "❌")
+			finally:
+				self.set_busy(False)
+		
+		threading.Thread(target=task, daemon=True).start()
+	
+	
+	def _build_outline_prompt(self, requirement, contexts, category) -> str:
+		prompt = f"请为一篇{category}文章生成详细目录。\n\n"
+		prompt += f"【写作主题】{requirement}\n\n"
+		if contexts:
+			prompt += "【参考素材】\n"
+			for i, ctx in enumerate(contexts[:3]):
+				prompt += f"{i+1}. {ctx[:200]}...\n"
+			prompt += "\n"
+		prompt += "【要求】\n"
+		prompt += "- 根据主题和素材，设计3-6个章节\n"
+		prompt += "- 每个章节标题简洁有力（5-10字）\n"
+		prompt += "- 结构完整：开端→发展→高潮→结局\n"
+		prompt += "- 不要子标题，只要主章节\n"
+		prompt += "- 直接输出章节列表，如：\n"
+		prompt += "  1. 初遇\n"
+		prompt += "  2. 误会\n"
+		prompt += "  3. 真相大白\n"
+		return prompt
+	
+	
+	def _build_section_prompt(self, requirement, section_title, contexts, target_chars, current_num, total_num) -> str:
+		prompt = f"请写作第 {current_num}/{total_num} 章内容。\n\n"
+		prompt += f"【写作主题】{requirement}\n"
+		prompt += f"【当前章节】{section_title}\n"
+		prompt += f"【目标字数】{target_chars}字左右\n\n"
+		
+		if contexts:
+			prompt += "【参考素材】\n"
+			for i, ctx in enumerate(contexts[:2]):
+				prompt += f"- {ctx[:150]}...\n"
+			prompt += "\n"
+		
+		prompt += "【写作要求】\n"
+		prompt += "1. 紧扣章节主题展开\n"
+		prompt += "2. 注意与整体故事的连贯性\n"
+		
+		if current_num == 1:
+			prompt += "3. 开篇要吸引人，快速进入主题\n"
+		elif current_num == total_num:
+			prompt += "3. 收尾要完整，情感到位\n"
+		else:
+			prompt += "3. 承上启下，推进剧情发展\n"
+		
+		prompt += "4. 多用细节描写，增强画面感\n"
+		prompt += "5. 控制好节奏，张弛有度\n"
+		prompt += f"6. 字数控制在{target_chars}字左右\n\n"
+		prompt += "\n【严格禁止】\n"
+		prompt += "❌ 绝对不要输出：\"第X章完成\"、\"✓\"、\"本章字数\"、\"准备生成\"等任何元信息\n"
+		prompt += "❌ 绝对不要输出任何完成提示、字数统计、状态标记\n"
+		prompt += "❌ 只输出故事正文，不要任何标记、符号、完成信息\n"
+		prompt += "✅ 写完后直接结束，不要任何总结或提示\n\n"
+		prompt += "立即开始写故事正文："
+		
+		return prompt
+	
+	
+	def _estimate_chars(self, outline) -> int:
+		"""根据目录估算总字数"""
+		sections = self._parse_outline_sections(outline)
+		return len(sections) * 1200  # 假设每章平均1200字
+	
+	
+	def _parse_outline_sections(self, outline):
+		"""解析目录文本，提取章节"""
+		sections = []
+		lines = outline.strip().split('\n')
+		
+		for line in lines:
+			line = line.strip()
+			# 匹配数字开头的章节
+			if re.match(r'^\d+[\.\、\s]', line):
+				# 提取章节标题
+				title = re.sub(r'^\d+[\.\、\s]+', '', line).strip()
+				if title:
+					sections.append({
+						'title': title,
+						'line': line
+					})
+		
+		return sections
+	
+	
+	def _update_section_selector(self):
+		"""更新章节选择器"""
+		if not hasattr(self, 'section_selector'):
+			return
+		
+		# 清空现有选项
+		self.section_selector['values'] = []
+		
+		if self.parsed_sections:
+			# 设置新选项
+			options = [f"{i+1}. {s['title']}" for i, s in enumerate(self.parsed_sections)]
+			self.section_selector['values'] = options
+			# 默认选中第一个
+			if options:
+				self.section_selector.current(0)
+		else:
+			self.section_selector.set("请先生成目录")
+	
+	
+	def on_generate_all_sections(self) -> None:
+		"""一键生成所有章节"""
+		if not self.parsed_sections:
+			messagebox.showwarning("提示", "请先生成目录")
+			return
+		
+		query = self._get_prompt_content()
+		if not query:
+			messagebox.showwarning("提示", "请先输入创作需求/主题")
+			return
+		
+		# 获取选中的章节生成API配置
+		selected_api = self.section_gen_api.get() if hasattr(self, 'section_gen_api') else "DeepSeek"
 		if selected_api not in self.api_presets:
 			messagebox.showerror("错误", f"未找到API预设: {selected_api}")
 			return
 		
 		api_config = self.api_presets[selected_api]
 		api_key = _sanitize(api_config.get("key", ""))
+		if not api_key:
+			messagebox.showwarning("提示", f"API Key 为空，请在'基础 API 配置'中为 {selected_api} 填写后保存")
+			return
 		
-		client = DeepSeekClient(
-			api_key=api_key,
-			base_url=_sanitize(api_config.get("base_url", "")),
-			model=_sanitize(api_config.get("model", "")),
-		)
-		self._do_generate_section(client, query, contexts, section_index)
+		if self.model_only.get():
+			self._generate_all_sections_model_only(query)
+		else:
+			# 带知识库的生成
+			need_build = False
+			index_path = Path(self.index_dir.get()) / "kb.index"
+			if not index_path.exists():
+				if messagebox.askyesno("提示", "未找到索引，是否现在构建？"):
+					need_build = True
+				else:
+					return
+			
+			def task():
+				try:
+					# 延迟导入
+					from src.kb.ingest import KnowledgeBaseIngestor, IngestConfig
+					from src.kb.search import KnowledgeBaseSearcher, SearchConfig
+					
+					self.set_busy(True)
+					load_dotenv()
+					
+					if need_build:
+						cfg = IngestConfig(data_root=Path(self.data_dir.get()), index_dir=Path(self.index_dir.get()))
+						KnowledgeBaseIngestor(cfg).build()
+					
+					searcher = KnowledgeBaseSearcher(SearchConfig(index_dir=Path(self.index_dir.get()), top_k=self.top_k.get()))
+					results = searcher.search(query, self.top_k.get())
+					contexts = [c for c, _s, _m in results]
+					
+					# 使用选中的API
+					client = DeepSeekClient(
+						api_key=api_key,
+						base_url=_sanitize(api_config.get("base_url", "")),
+						model=_sanitize(api_config.get("model", "")),
+					)
+					
+					# 清空输出区
+					self.output.delete("1.0", END)
+					# 先显示目录
+					self.output.insert(END, f"{self.current_outline}\n\n")
+					
+					# 逐章生成
+					sections = [s['title'] for s in self.parsed_sections]
+					self._generate_in_sections(client, query, contexts, sections, self.target_chars.get())
+					
+					# 完成后显示总字数
+					all_content = self.output.get("1.0", END)
+					total_chars = len(all_content) - len(self.current_outline) - 2
+					# 不再插入到正文，只在状态栏显示
+					# self.output.insert(END, f"\n🎉 全部章节生成完成！共 {len(sections)} 章，总字数：{total_chars} 字\n")
+					self.status.set(f"全部生成完成！共 {len(sections)} 章，总字数：{total_chars} 字")
+					# 更新顶部状态栏
+					if hasattr(self, 'update_header_status'):
+						self.update_header_status(f"全部生成完成！共 {len(sections)} 章，总字数：{total_chars} 字", "🎉")
+					
+				except Exception as e:
+					import traceback
+					self.output.insert(END, f"\n生成出错:\n{traceback.format_exc()}\n")
+					messagebox.showerror("错误", str(e))
+					# 更新顶部状态栏
+					if hasattr(self, 'update_header_status'):
+						self.update_header_status("生成失败", "❌")
+				finally:
+					self.set_busy(False)
+			
+			threading.Thread(target=task, daemon=True).start()
 	
 	
-	def _do_generate_section(self, client, query, contexts, section_index):
-		"""实际执行章节生成的核心逻辑"""
-		section = self.parsed_sections[section_index]
-		total_sections = len(self.parsed_sections)
-		
-		# 计算本章字数
-		target_chars = self.target_chars.get()
-		target_per_section = int(target_chars / total_sections)
-		
-		# 读取当前已有内容作为上下文
-		current_output = self.output.get("1.0", END).strip()
-		# 提取已生成的故事内容（排除目录部分）
-		if "目录" in current_output and "\n\n" in current_output:
-			parts = current_output.split("\n\n", 2)
-			if len(parts) >= 3:
-				self.generated_content = parts[2]  # 跳过"生成目录中..."和目录本身
-			elif len(parts) == 2:
-				self.generated_content = current_output.split(self.current_outline)[-1].strip()
-		
-		# 更新状态
-		self.status.set(f"生成第 {section_index+1}/{total_sections} 章: {section['title']}")
-		# 更新顶部状态栏
-		if hasattr(self, 'update_header_status'):
-			self.update_header_status(f"生成章节 ({section_index+1}/{total_sections})", "📝")
-		self.output.insert(END, f"\n{'='*50}\n")
-		self.output.insert(END, f"【第 {section_index+1}/{total_sections} 章：{section['title']}】\n\n")
-		self.output.see(END)
-		
-		# 构建提示词
-		section_prompt = self._build_section_prompt(
-			section=section,
-			section_index=section_index,
-			total_sections=total_sections,
-			previous_content=self.generated_content,
-			requirement=query,
-			contexts=contexts,
-			category=self.category.get(),
-			style_part=self.style.get().strip(),
-			target_chars_per_section=target_per_section
-		)
-		
-		# 流式生成
-		section_content = ""
-		for delta in client.stream([
-			{"role": "system", "content": "你是资深知乎创作者，擅长结合资料写出有观点、有结构的中文故事。"},
-			{"role": "user", "content": section_prompt},
-		], temperature=self.temperature.get(), max_tokens=int(target_per_section*2.5)):
-			self.output.insert(END, delta)
-			self.output.see(END)
-			section_content += delta
-		
-		# 累积内容
-		self.generated_content += "\n\n" + section_content
-		
-		# 完成提示
-		self.output.insert(END, f"\n\n{'='*50}\n")
-		self.output.insert(END, f"✅ 第 {section_index+1} 章完成！本章字数：{len(section_content)} 字\n")
-		self.status.set(f"第 {section_index+1} 章完成（{len(section_content)} 字）")
-		# 更新顶部状态栏
-		if hasattr(self, 'update_header_status'):
-			self.update_header_status(f"第 {section_index+1} 章完成", "✅")
-		
-		# 自动保存
-		self._auto_save_to_project()
-	
-	
-	def _auto_generate_all_sections(self, query, contexts, start_index=0):
-		"""自动生成所有章节（无知识库）"""
+	def _generate_all_sections_model_only(self, query) -> None:
+		"""不使用知识库，直接生成所有章节"""
 		def task():
 			try:
 				self.set_busy(True)
 				
-				# 获取选中的故事生成API配置
-				selected_api = self.story_gen_api.get() if hasattr(self, 'story_gen_api') else "DeepSeek"
-				if selected_api not in self.api_presets:
-					messagebox.showerror("错误", f"未找到API预设: {selected_api}")
-					return
-				
+				# 获取选中的章节生成API配置
+				selected_api = self.section_gen_api.get() if hasattr(self, 'section_gen_api') else "DeepSeek"
 				api_config = self.api_presets[selected_api]
-				api_key = _sanitize(api_config.get("key", ""))
 				
 				client = DeepSeekClient(
-					api_key=api_key,
+					api_key=_sanitize(api_config.get("key", "")),
 					base_url=_sanitize(api_config.get("base_url", "")),
 					model=_sanitize(api_config.get("model", "")),
 				)
 				
-				total_sections = len(self.parsed_sections)
-				for idx in range(start_index, total_sections):
-					# 更新选择器
-					self.section_selector.current(idx)
-					
-					# 生成当前章节
-					self._do_generate_section(client, query, contexts, idx)
-					
-					# 如果不是最后一章，添加提示
-					if idx < total_sections - 1:
-						self.output.insert(END, f"\n\n⏳ 准备生成下一章...\n\n")
-						self.output.see(END)
+				# 清空输出区
+				self.output.delete("1.0", END)
+				# 先显示目录
+				self.output.insert(END, f"{self.current_outline}\n\n")
 				
-				# 全部完成
-				self.output.insert(END, f"\n\n{'='*50}\n")
-				self.output.insert(END, f"🎉 全部章节生成完成！共 {total_sections} 章，总字数：{len(self.generated_content)} 字\n")
-				self.status.set(f"全部完成（{len(self.generated_content)} 字）")
+				# 逐章生成
+				sections = [s['title'] for s in self.parsed_sections]
+				self._generate_in_sections(client, query, [], sections, self.target_chars.get())
+				
+				# 完成后显示总字数
+				all_content = self.output.get("1.0", END)
+				total_chars = len(all_content) - len(self.current_outline) - 2
+				# 不再插入到正文，只在状态栏显示
+				# self.output.insert(END, f"\n🎉 全部章节生成完成！共 {len(sections)} 章，总字数：{total_chars} 字\n")
+				self.status.set(f"全部生成完成！共 {len(sections)} 章，总字数：{total_chars} 字")
 				# 更新顶部状态栏
 				if hasattr(self, 'update_header_status'):
-					self.update_header_status("全部章节完成", "✅")
-				messagebox.showinfo("完成", f"所有章节已生成完成！\n\n共 {total_sections} 章，总字数：{len(self.generated_content)} 字")
+					self.update_header_status(f"全部生成完成！共 {len(sections)} 章，总字数：{total_chars} 字", "🎉")
+				
 			except Exception as e:
 				import traceback
-				self.output.insert(END, "\n自动生成出错:\n" + traceback.format_exc() + "\n")
+				self.output.insert(END, f"\n生成出错:\n{traceback.format_exc()}\n")
 				messagebox.showerror("错误", str(e))
+				self.status.set("生成失败")
 				# 更新顶部状态栏
 				if hasattr(self, 'update_header_status'):
-					self.update_header_status("自动生成失败", "❌")
+					self.update_header_status("生成失败", "❌")
 			finally:
 				self.set_busy(False)
+		
 		threading.Thread(target=task, daemon=True).start()
-	
-	
-	def _update_section_selector(self) -> None:
-		"""更新章节选择器"""
-		if not self.parsed_sections:
-			self.section_selector['values'] = ["请先生成目录"]
-			self.btn_generate_section.config(state=DISABLED)
-			self.btn_continue_next.config(state=DISABLED)
-			return
-		
-		# 构建章节选项列表
-		section_options = []
-		for idx, section in enumerate(self.parsed_sections):
-			title = section['title']
-			section_options.append(f"{idx+1}. {title}")
-		
-		self.section_selector['values'] = section_options
-		self.section_selector.current(0)  # 默认选中第一章
-		self.btn_generate_section.config(state=NORMAL)
-		self.btn_continue_next.config(state=NORMAL)
-		
-		# 重置生成内容
-		self.generated_content = ""
-		
-		self.status.set(f"已解析 {len(self.parsed_sections)} 个章节，可开始逐章生成")
-	
-	
-	def _parse_outline_sections(self, outline: str) -> list[dict[str, str]]:
-		"""解析目录，提取章节信息"""
-		if not outline:
-			return []
-		
-		sections = []
-		lines = outline.strip().splitlines()
-		current_section = None
-		current_items = []
-		
-		for line in lines:
-			stripped = line.strip()
-			if not stripped:
-				continue
-			
-			# 检测是否为章节标题（数字编号、中文编号、或 -, *, •）
-			is_main_section = False
-			if re.match(r'^\d+[.、]', stripped) or re.match(r'^[一二三四五六七八九十]+[.、]', stripped):
-				is_main_section = True
-			elif stripped[:1] in ("-", "•", "*") and not stripped[1:2].isdigit():
-				# 一级标题
-				is_main_section = True
-			
-			if is_main_section:
-				# 保存上一个章节
-				if current_section:
-					sections.append({
-						"title": current_section,
-						"items": current_items.copy()
-					})
-				current_section = stripped
-				current_items = []
-			else:
-				# 子项
-				if current_section:
-					current_items.append(stripped)
-		
-		# 添加最后一个章节
-		if current_section:
-			sections.append({
-				"title": current_section,
-				"items": current_items
-			})
-		
-		return sections
-
-
-	

@@ -62,32 +62,32 @@ class ShotListGeneratorMixin:
         print("=" * 60)
         
         try:
-            if not hasattr(self, 'script_text'):
+		if not hasattr(self, 'script_text'):
                 messagebox.showerror("错误", "未找到剧本文本框")
-                return
-            
-            script_text = self.script_text.get("1.0", END).strip()
+			return
+		
+			script_text = self.script_text.get("1.0", END).strip()
             print(f"📜 剧本总长度: {len(script_text)} 字符")
-            
-            if not script_text:
+		
+		if not script_text:
                 messagebox.showwarning("提示", "请先生成剧本")
                 return
         except Exception as e:
             messagebox.showerror("错误", f"读取剧本失败: {e}")
-            return
-        
-        try:
-            api_key = _sanitize(self.api_key.get()) if hasattr(self, 'api_key') else ""
+			return
+		
+		try:
+			api_key = _sanitize(self.api_key.get()) if hasattr(self, 'api_key') else ""
             base_url = _sanitize(self.base_url.get()) if hasattr(self, 'base_url') else "https://api.deepseek.com"
             model = _sanitize(self.model.get()) if hasattr(self, 'model') else "deepseek-chat"
-            
-            if not api_key:
+		
+		if not api_key:
                 messagebox.showerror("错误", "请先配置 API Key")
                 return
         except Exception as e:
             messagebox.showerror("错误", f"读取API配置失败: {e}")
-            return
-        
+			return
+		
         # 智能分段
         scenes = self._split_script_by_scenes(script_text)
         total_scenes = len(scenes)
@@ -104,9 +104,9 @@ class ShotListGeneratorMixin:
             self.header_status_var.set(f"准备生成 {total_scenes} 段分镜...")
         if hasattr(self, 'update_header_status'):
             self.update_header_status(f"准备生成 {total_scenes} 段分镜", "分镜")
-        
-        def task():
-            try:
+		
+		def task():
+			try:
                 client = DeepSeekClient(api_key=api_key, base_url=base_url, model=model)
                 
                 all_shots = []
@@ -248,18 +248,18 @@ class ShotListGeneratorMixin:
                     
                     # 自动生成即梦AI提示词
                     self.after(0, lambda: self._generate_jimeng_prompts_for_all_shots(all_shots))
-                else:
+					else:
                     raise ValueError("未能生成任何分镜")
-                
-            except Exception as e:
+				
+			except Exception as e:
                 print(f"❌ 错误: {e}")
                 import traceback
                 traceback.print_exc()
                 self.after(0, lambda: messagebox.showerror("错误", f"生成失败: {e}"))
                 self.after(0, lambda: self.status.set("❌ 生成失败"))
         
-        threading.Thread(target=task, daemon=True).start()
-    
+		threading.Thread(target=task, daemon=True).start()
+	
     def _show_shots_result(self, shots_data: dict):
         """显示分镜并自动提取即梦AI提示词"""
         print("[DEBUG] 开始显示分镜结果")
@@ -275,7 +275,7 @@ class ShotListGeneratorMixin:
         # 显示友好格式的分镜（不是JSON）
         if hasattr(self, 'shots_list'):
             print("[DEBUG] 找到 shots_list，更新显示（友好格式）")
-            self.shots_list.config(state="normal")
+			self.shots_list.config(state="normal")
             self.shots_list.delete("1.0", "end")
             
             # 友好的格式化显示
@@ -339,9 +339,9 @@ class ShotListGeneratorMixin:
             try:
                 self._extract_all_jimeng_prompts(show_message=False)
                 print("[DEBUG] 即梦AI提示词提取成功")
-            except Exception as e:
+					except Exception as e:
                 print(f"[ERROR] 提取即梦AI提示词失败: {e}")
-        else:
+				else:
             print("[ERROR] 没有找到 _extract_all_jimeng_prompts 方法")
         
         # 刷新分镜下拉框（静默刷新，不弹提示框）

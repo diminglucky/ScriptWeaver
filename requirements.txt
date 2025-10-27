@@ -15,3 +15,6 @@ sentence-transformers>=3.0.1,<4.0.0
 tqdm>=4.66.4,<5.0.0
 Pillow>=10.4.0,<11.0.0
 requests>=2.31.0,<3.0.0
+
+# Web Automation (for Zhihu publishing)
+playwright>=1.40.0,<2.0.0
