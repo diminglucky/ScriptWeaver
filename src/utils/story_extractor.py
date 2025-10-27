@@ -77,7 +77,8 @@ class StoryExtractor:
                 continue
             
             # 跳过 "第 3 章完成！本章字数：1455 字" 这类信息（包括有无空格的情况）
-            if re.match(r'^[✓✔☑️]*\s*第\s*\d+\s*章完成[！!]\s*本章字数[：:]\s*\d+\s*字', stripped):
+            # 也匹配 "☑ 第 1 章完成！本章字数：1354 字" 这种格式
+            if re.search(r'第\s*\d+\s*章完成.*本章字数', stripped):
                 continue
             
             # 跳过 "准备生成下一章..." 这类信息（包括不同的符号）
@@ -85,7 +86,11 @@ class StoryExtractor:
                 continue
             
             # 跳过 "全部章节生成完成！ 共 X 章，总字数：XXXX 字" 这类总结信息
-            if re.match(r'^[⏳🎉]*\s*全部章节生成完成[！!]\s*共\s*\d+\s*章.*总字数[：:]\s*\d+\s*字', stripped):
+            if re.search(r'全部章节生成完成|章节生成完成.*总字数', stripped):
+                continue
+            
+            # 跳过任何包含 "章完成" 和 "字数" 的行（进度信息）
+            if '章完成' in stripped and '字数' in stripped:
                 continue
             
             # 跳过 "目录（共X章，预估字数≈XXXX字）" 格式

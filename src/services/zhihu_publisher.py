@@ -4,8 +4,9 @@
 
 import asyncio
 import time
+import re
 from pathlib import Path
-from typing import Optional, Callable
+from typing import Optional, Callable, List
 from playwright.async_api import async_playwright, Browser, Page, TimeoutError as PlaywrightTimeout
 
 
@@ -218,6 +219,22 @@ class ZhihuPublisher:
         Returns:
             (是否成功, 错误信息或文章链接)
         """
+        # 输入验证
+        if not title or not title.strip():
+            return False, "标题不能为空"
+        
+        if not content or not content.strip():
+            return False, "内容不能为空"
+        
+        title = title.strip()
+        content = content.strip()
+        
+        if len(title) > 100:
+            return False, "标题过长（最多100字）"
+        
+        if len(content) < 100:
+            return False, "内容过短（至少100字）"
+        
         try:
             # 1. 检查登录状态
             if progress_callback:
@@ -484,9 +501,490 @@ class ZhihuPublisher:
                 except Exception as e:
                     return False, f"未找到编辑器且键盘输入失败: {str(e)}"
             
-            # 7. 等待用户手动发布
+            # 7. 自动完成发布前的设置
+            await asyncio.sleep(2)  # 等待页面加载完成
+            
+            # 7.1 投稿至问题
             if progress_callback:
-                progress_callback("内容已填充完成，请在浏览器中检查并点击发布")
+                progress_callback("正在选择投稿问题...")
+            
+            try:
+                print("[INFO] 正在处理投稿至问题...")
+                # 方法1：通过文本找到"投稿至问题"标签后，点击其下拉框
+                # 等待页面元素加载
+                await asyncio.sleep(1)
+                
+                # 使用更通用的选择器找到投稿至问题区域并点击
+                # 直接查找包含"未选择"文本的元素（这通常是下拉框）
+                dropdown_trigger = await self.page.query_selector('text="未选择"')
+                if not dropdown_trigger:
+                    dropdown_trigger = await self.page.query_selector('text="投稿至问题" >> .. >> div[role="button"]')
+                if not dropdown_trigger:
+                    # 尝试通过 CSS 选择器查找
+                    dropdown_trigger = await self.page.query_selector('div:has-text("投稿至问题") ~ div')
+                
+                if dropdown_trigger:
+                    await dropdown_trigger.click()
+                    print("[INFO] 已点击投稿至问题下拉框")
+                    await asyncio.sleep(2.5)  # 等待弹窗完全加载和稳定
+                    
+                    # 关键：先定位弹窗元素，然后在弹窗内部查找按钮
+                    print("[INFO] 正在定位投稿问题弹窗...")
+                    
+                    # 查找弹窗容器
+                    modal = None
+                    modal_selectors = [
+                        'div[role="dialog"]',
+                        'div[class*="Modal"]',
+                        'div[class*="QuestionModal"]',
+                        '[class*="ArticleQuestionModal"]'
+                    ]
+                    
+                    for selector in modal_selectors:
+                        try:
+                            modal = await self.page.query_selector(selector)
+                            if modal:
+                                is_visible = await modal.is_visible()
+                                if is_visible:
+                                    print(f"[INFO] 找到弹窗容器 (selector: {selector})")
+                                    break
+                                else:
+                                    modal = None
+                        except Exception:
+                            continue
+                    
+                    if not modal:
+                        print("[WARN] 未找到弹窗容器，尝试直接查找按钮")
+                    
+                    # 在弹窗内部查找第一个"选择"按钮
+                    print("[INFO] 正在弹窗内查找第一个问题的选择按钮...")
+                    select_button = None
+                    
+                    if modal:
+                        # 在弹窗内部查找
+                        try:
+                            # 在弹窗内查找所有"选择"按钮
+                            all_select_buttons = await modal.query_selector_all('button:has-text("选择")')
+                            print(f"[INFO] 在弹窗内找到 {len(all_select_buttons)} 个选择按钮")
+                            
+                            if all_select_buttons:
+                                # 选择第一个可见的
+                                for i, btn in enumerate(all_select_buttons):
+                                    is_visible = await btn.is_visible()
+                                    if is_visible:
+                                        select_button = btn
+                                        print(f"[INFO] 选择弹窗内第 {i+1} 个可见的选择按钮")
+                                        break
+                        except Exception as e:
+                            print(f"[DEBUG] 在弹窗内查找失败: {e}")
+                    
+                    # 如果在弹窗内没找到，尝试全局查找（带弹窗限定）
+                    if not select_button:
+                        print("[INFO] 尝试全局查找（带弹窗限定）...")
+                        select_selectors = [
+                            'div[role="dialog"] >> button:has-text("选择") >> nth=0',
+                            '[class*="Modal"] >> button:has-text("选择") >> nth=0',
+                            '[class*="QuestionItem"] button:has-text("选择") >> nth=0'
+                        ]
+                        
+                        for selector in select_selectors:
+                            try:
+                                select_button = await self.page.query_selector(selector)
+                                if select_button:
+                                    is_visible = await select_button.is_visible()
+                                    if is_visible:
+                                        print(f"[INFO] 找到选择按钮 (selector: {selector})")
+                                        break
+                                    else:
+                                        select_button = None
+                            except Exception as e:
+                                print(f"[DEBUG] selector {selector} 失败: {e}")
+                                continue
+                    
+                    if select_button:
+                        # 点击"选择"按钮
+                        await select_button.click()
+                        print("[OK] 已点击「选择」按钮")
+                        await asyncio.sleep(1)
+                        
+                        # 点击"确定"按钮确认选择
+                        print("[INFO] 正在弹窗内查找确定按钮...")
+                        await asyncio.sleep(1)  # 等待UI更新
+                        
+                        confirm_btn = None
+                        
+                        # 优先在弹窗内部查找
+                        if modal:
+                            try:
+                                all_confirm_buttons = await modal.query_selector_all('button:has-text("确定")')
+                                print(f"[INFO] 在弹窗内找到 {len(all_confirm_buttons)} 个确定按钮")
+                                
+                                if all_confirm_buttons:
+                                    for i, btn in enumerate(all_confirm_buttons):
+                                        is_visible = await btn.is_visible()
+                                        if is_visible:
+                                            confirm_btn = btn
+                                            print(f"[INFO] 选择弹窗内第 {i+1} 个可见的确定按钮")
+                                            break
+                            except Exception as e:
+                                print(f"[DEBUG] 在弹窗内查找确定按钮失败: {e}")
+                        
+                        # 如果在弹窗内没找到，使用全局查找（带弹窗限定）
+                        if not confirm_btn:
+                            print("[INFO] 尝试全局查找确定按钮（带弹窗限定）...")
+                            confirm_selectors = [
+                                'div[role="dialog"] >> button:has-text("确定")',
+                                '[class*="Modal"] >> button:has-text("确定")',
+                                'div[role="dialog"] >> button.Button--primary',
+                                '[class*="Modal"] >> button.Button--primary:has-text("确定")'
+                            ]
+                            
+                            for selector in confirm_selectors:
+                                try:
+                                    confirm_btn = await self.page.query_selector(selector)
+                                    if confirm_btn:
+                                        is_visible = await confirm_btn.is_visible()
+                                        if is_visible:
+                                            print(f"[INFO] 找到确定按钮 (selector: {selector})")
+                                            break
+                                        else:
+                                            confirm_btn = None
+                                except Exception as e:
+                                    print(f"[DEBUG] selector {selector} 失败: {e}")
+                                    continue
+                        
+                        if confirm_btn:
+                            await confirm_btn.click()
+                            print("[OK] ✅ 已点击「确定」按钮，问题选择完成！")
+                            await asyncio.sleep(1.5)
+                        else:
+                            print("[WARN] 未找到「确定」按钮，可能需要手动点击")
+                    else:
+                        print("[WARN] 未找到「选择」按钮")
+                else:
+                    print("[WARN] 未找到投稿至问题下拉框")
+            except Exception as e:
+                print(f"[WARN] 投稿至问题设置失败（可选操作）: {e}")
+            
+            # 7.2 设置创作声明为"虚构创作"
+            if progress_callback:
+                progress_callback("正在设置创作声明...")
+            
+            try:
+                print("[INFO] 正在设置创作声明...")
+                # 查找"创作声明"下拉框（显示"无声明"或其他默认值）
+                await asyncio.sleep(1)
+                
+                # 尝试多种方式查找创作声明下拉框
+                declaration_dropdown = await self.page.query_selector('text="无声明"')
+                if not declaration_dropdown:
+                    declaration_dropdown = await self.page.query_selector('text="创作声明" >> .. >> div[role="button"]')
+                if not declaration_dropdown:
+                    # 通过 CSS 查找
+                    declaration_dropdown = await self.page.query_selector('div:has-text("创作声明") ~ div')
+                
+                if declaration_dropdown:
+                    await declaration_dropdown.click()
+                    print("[INFO] 已点击创作声明下拉框")
+                    await asyncio.sleep(1)
+                    
+                    # 在下拉列表中选择"虚构创作"
+                    fiction_selectors = [
+                        'text="虚构创作"',
+                        'div:has-text("虚构创作")',
+                        'li:has-text("虚构创作")',
+                        'div[role="option"]:has-text("虚构创作")'
+                    ]
+                    
+                    for selector in fiction_selectors:
+                        fiction_option = await self.page.query_selector(selector)
+                        if fiction_option:
+                            await fiction_option.click()
+                            print("[OK] 已设置创作声明为「虚构创作」")
+                            await asyncio.sleep(0.5)
+                            break
+                else:
+                    print("[WARN] 未找到创作声明下拉框")
+            except Exception as e:
+                print(f"[WARN] 创作声明设置失败（可选操作）: {e}")
+            
+            # 7.3 提取并添加话题词
+            if progress_callback:
+                progress_callback("正在添加话题标签...")
+            
+            try:
+                print("[INFO] 正在提取话题词...")
+                await asyncio.sleep(1)
+                
+                # 使用简单的关键词提取
+                topics = await self._extract_topics_from_content(title, content)
+                
+                if topics:
+                    print(f"[INFO] 提取到话题词: {', '.join(topics)}")
+                    
+                    # 查找"文章话题"区域的添加按钮
+                    add_topic_selectors = [
+                        'text="+ 添加话题"',
+                        'button:has-text("添加话题")',
+                        'div:has-text("添加话题")',
+                        'text="文章话题" >> .. >> button'
+                    ]
+                    
+                    add_topic_btn = None
+                    for selector in add_topic_selectors:
+                        add_topic_btn = await self.page.query_selector(selector)
+                        if add_topic_btn:
+                            print(f"[INFO] 找到添加话题按钮 (selector: {selector})")
+                            break
+                    
+                    if add_topic_btn:
+                        # 只添加第一个话题即可
+                        topic = topics[0]
+                        try:
+                            print(f"[INFO] 准备添加话题: {topic}")
+                            await add_topic_btn.click()
+                            await asyncio.sleep(1)
+                            
+                            # 输入话题 - 尝试多种输入框选择器
+                            topic_input = None
+                            input_selectors = [
+                                'input[placeholder*="话题"]',
+                                'input[placeholder*="搜索"]',
+                                'input[type="text"]:visible',
+                                'input:focus'
+                            ]
+                            
+                            for selector in input_selectors:
+                                topic_input = await self.page.query_selector(selector)
+                                if topic_input:
+                                    print(f"[INFO] 找到话题输入框 (selector: {selector})")
+                                    break
+                            
+                            if topic_input:
+                                # 清空并输入话题
+                                await topic_input.fill('')
+                                await asyncio.sleep(0.3)
+                                await topic_input.type(topic, delay=80)
+                                print(f"[INFO] 已输入话题文字: {topic}")
+                                await asyncio.sleep(1.5)  # 等待下拉列表出现
+                                
+                                # 点击下拉列表中的第一个选项
+                                print("[INFO] 正在查找话题下拉选项...")
+                                await asyncio.sleep(0.5)  # 确保下拉列表完全展开
+                                
+                                topic_option = None
+                                
+                                # 方法1：直接使用nth=0获取第一个选项
+                                print("[INFO] 方法1: 使用nth=0获取第一个选项...")
+                                try:
+                                    topic_option = await self.page.query_selector('div[role="option"] >> nth=0')
+                                    if topic_option:
+                                        is_visible = await topic_option.is_visible()
+                                        if is_visible:
+                                            print(f"[OK] 找到第一个话题选项 (nth=0)")
+                                        else:
+                                            print(f"[DEBUG] 第一个选项不可见")
+                                            topic_option = None
+                                except Exception as e:
+                                    print(f"[DEBUG] nth=0方法失败: {e}")
+                                    topic_option = None
+                                
+                                # 方法2：获取所有选项，打印详情，选第一个可见的
+                                if not topic_option:
+                                    print("[INFO] 方法2: 遍历所有选项...")
+                                    try:
+                                        all_options = await self.page.query_selector_all('div[role="option"]')
+                                        print(f"[INFO] 找到 {len(all_options)} 个话题选项")
+                                        
+                                        if all_options:
+                                            # 遍历找到第一个可见的
+                                            for i, option in enumerate(all_options):
+                                                is_visible = await option.is_visible()
+                                                
+                                                # 获取选项文本
+                                                try:
+                                                    option_text = await option.inner_text()
+                                                    print(f"[DEBUG] 选项 {i+1}: '{option_text[:20]}...' (visible={is_visible})")
+                                                except:
+                                                    print(f"[DEBUG] 选项 {i+1}: (visible={is_visible})")
+                                                
+                                                if is_visible and i == 0:  # 确保是第一个
+                                                    topic_option = option
+                                                    print(f"[OK] ✅ 确认选择第 1 个话题选项")
+                                                    break
+                                    except Exception as e:
+                                        print(f"[DEBUG] 方法2失败: {e}")
+                                
+                                # 方法3：使用first-of-type
+                                if not topic_option:
+                                    print("[INFO] 方法3: 使用first-of-type...")
+                                    try:
+                                        topic_option = await self.page.query_selector('div[role="option"]:first-of-type')
+                                        if topic_option and await topic_option.is_visible():
+                                            print(f"[OK] 找到第一个话题选项 (first-of-type)")
+                                        else:
+                                            topic_option = None
+                                    except Exception as e:
+                                        print(f"[DEBUG] first-of-type失败: {e}")
+                                
+                                if topic_option:
+                                    # 点击选择话题
+                                    await topic_option.click()
+                                    print(f"[OK] ✅ 已点击话题选项")
+                                    await asyncio.sleep(1)
+                                else:
+                                    # 如果没找到下拉选项，尝试按回车
+                                    print("[WARN] 未找到话题下拉选项，尝试按回车")
+                                    await self.page.keyboard.press('Enter')
+                                    await asyncio.sleep(1)
+                                
+                                print(f"[OK] 话题添加完成: {topic}")
+                            else:
+                                print(f"[WARN] 未找到话题输入框")
+                        except Exception as e:
+                            print(f"[WARN] 添加话题失败: {e}")
+                    else:
+                        print("[WARN] 未找到添加话题按钮")
+                else:
+                    print("[INFO] 未提取到合适的话题词，跳过话题添加")
+            except Exception as e:
+                print(f"[WARN] 话题添加失败（可选操作）: {e}")
+            
+            # 7.4 点击发布按钮
+            if progress_callback:
+                progress_callback("正在发布文章...")
+            
+            try:
+                print("\n" + "="*60)
+                print("🚀 准备点击发布按钮")
+                print("="*60)
+                
+                await asyncio.sleep(2.5)  # 等待页面稳定
+                
+                publish_btn = None
+                
+                # 先滚动到页面底部，确保发布按钮可见
+                print("[INFO] 滚动到页面底部...")
+                try:
+                    await self.page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+                    await asyncio.sleep(1)
+                except Exception as e:
+                    print(f"[DEBUG] 滚动失败: {e}")
+                
+                # 方法1：查找蓝色的主按钮（Primary）
+                print("[INFO] 方法1: 查找主按钮...")
+                primary_selectors = [
+                    'button.Button--primary:has-text("发布")',
+                    'button[class*="Button"][class*="primary"]:has-text("发布")',
+                    'button[class*="Primary"]:has-text("发布")',
+                    'button[type="submit"]:has-text("发布")'
+                ]
+                
+                for selector in primary_selectors:
+                    try:
+                        publish_btn = await self.page.query_selector(selector)
+                        if publish_btn:
+                            is_visible = await publish_btn.is_visible()
+                            is_enabled = await publish_btn.is_enabled()
+                            if is_visible and is_enabled:
+                                print(f"[OK] 找到主按钮 (selector: {selector})")
+                                break
+                            else:
+                                print(f"[DEBUG] 按钮不可用: visible={is_visible}, enabled={is_enabled}")
+                                publish_btn = None
+                    except Exception as e:
+                        print(f"[DEBUG] selector {selector} 失败: {e}")
+                        continue
+                
+                # 方法2：获取所有"发布"按钮，选最后一个（通常在页面底部）
+                if not publish_btn:
+                    print("[INFO] 方法2: 获取所有发布按钮...")
+                    try:
+                        all_publish_buttons = await self.page.query_selector_all('button:has-text("发布")')
+                        print(f"[INFO] 找到 {len(all_publish_buttons)} 个发布按钮")
+                        
+                        if all_publish_buttons:
+                            # 倒序遍历（从最后一个开始，通常页面底部的才是真正的发布按钮）
+                            for i in range(len(all_publish_buttons) - 1, -1, -1):
+                                btn = all_publish_buttons[i]
+                                is_visible = await btn.is_visible()
+                                is_enabled = await btn.is_enabled()
+                                
+                                # 获取按钮的类名，优先选择包含primary的
+                                try:
+                                    class_name = await btn.get_attribute('class') or ''
+                                    has_primary = 'primary' in class_name.lower()
+                                except:
+                                    has_primary = False
+                                
+                                if is_visible and is_enabled:
+                                    publish_btn = btn
+                                    print(f"[INFO] 选择第 {i+1} 个按钮 (primary={has_primary})")
+                                    if has_primary:
+                                        print("[OK] 这是主按钮，确认选择！")
+                                        break
+                    except Exception as e:
+                        print(f"[DEBUG] 方法2失败: {e}")
+                
+                # 方法3：使用页面右下角的固定位置按钮
+                if not publish_btn:
+                    print("[INFO] 方法3: 查找固定位置按钮...")
+                    fixed_selectors = [
+                        'button[style*="fixed"]:has-text("发布")',
+                        'div[style*="fixed"] button:has-text("发布")',
+                    ]
+                    
+                    for selector in fixed_selectors:
+                        try:
+                            publish_btn = await self.page.query_selector(selector)
+                            if publish_btn and await publish_btn.is_visible():
+                                print(f"[OK] 找到固定位置按钮")
+                                break
+                            else:
+                                publish_btn = None
+                        except:
+                            continue
+                
+                if publish_btn:
+                    print("\n[INFO] 🎯 找到发布按钮！准备点击...")
+                    
+                    # 再次确保按钮可见
+                    try:
+                        await publish_btn.scroll_into_view_if_needed()
+                        await asyncio.sleep(0.8)
+                    except Exception as e:
+                        print(f"[DEBUG] 滚动到按钮失败: {e}")
+                    
+                    # 点击发布按钮
+                    try:
+                        await publish_btn.click()
+                        print("\n" + "🎉"*20)
+                        print("✅✅✅ 已成功点击「发布」按钮！")
+                        print("📝 文章正在发布到知乎...")
+                        print("🎉"*20 + "\n")
+                        
+                        if progress_callback:
+                            progress_callback("✅ 文章已发布，等待跳转...")
+                        
+                        # 等待页面跳转
+                        await asyncio.sleep(3)
+                    except Exception as e:
+                        print(f"[ERROR] 点击按钮失败: {e}")
+                        raise
+                else:
+                    print("\n" + "❌"*20)
+                    print("⚠️ 未找到发布按钮！")
+                    print("请手动点击页面上的蓝色「发布」按钮")
+                    print("❌"*20 + "\n")
+                    
+                    if progress_callback:
+                        progress_callback("❌ 请手动点击发布按钮")
+            except Exception as e:
+                print(f"\n[ERROR] 发布流程失败: {e}")
+                import traceback
+                traceback.print_exc()
+                if progress_callback:
+                    progress_callback("❌ 请手动点击发布按钮")
             
             print("[INFO] 文章内容已填充，请手动检查并发布")
             print("[INFO] 您可以：")
@@ -523,6 +1021,112 @@ class ZhihuPublisher:
                 progress_callback(f"错误: {error_msg}")
             
             return False, error_msg
+    
+    async def _extract_topics_from_content(self, title: str, content: str) -> List[str]:
+        """
+        从标题和内容中智能提取知乎话题
+        
+        根据内容关键词匹配知乎真实存在的热门话题
+        
+        Args:
+            title: 文章标题
+            content: 文章内容
+            
+        Returns:
+            话题词列表（知乎真实话题）
+        """
+        try:
+            # 知乎热门话题映射库
+            # 格式：{关键词集合: 推荐话题}
+            topic_mapping = {
+                # 校园类
+                ('校园', '学生', '同学', '老师', '教室', '课堂', '班级', '操场', '宿舍', '高考', '中考'): '校园故事',
+                ('青春', '高中', '初中', '大学', '毕业'): '青春',
+                ('霸凌', '欺负', '被欺负'): '校园霸凌',
+                
+                # 职场类
+                ('职场', '公司', '上班', '同事', '领导', '老板', '工作', '面试', '加班', '辞职', '升职'): '职场',
+                ('创业', '创业者', '企业'): '创业故事',
+                
+                # 情感类
+                ('爱情', '恋爱', '男友', '女友', '男朋友', '女朋友', '前任', '分手', '表白', '暗恋'): '情感故事',
+                ('婚姻', '老公', '老婆', '丈夫', '妻子', '离婚', '结婚'): '婚姻',
+                ('亲情', '父母', '妈妈', '爸爸', '母亲', '父亲', '家人'): '亲情',
+                ('友情', '朋友', '闺蜜', '兄弟'): '友情',
+                
+                # 成长类
+                ('成长', '改变', '蜕变', '转变', '成熟'): '个人成长',
+                ('人生', '经历', '往事', '回忆', '过去'): '人生故事',
+                ('励志', '奋斗', '坚持', '努力', '拼搏'): '励志',
+                ('逆袭', '反转', '翻身'): '逆袭',
+                
+                # 悬疑惊悚类
+                ('悬疑', '推理', '侦探', '案件', '真相'): '悬疑',
+                ('恐怖', '鬼', '灵异', '诡异', '惊悚'): '惊悚故事',
+                ('谜团', '秘密', '隐藏'): '悬疑推理',
+                
+                # 都市生活类
+                ('都市', '城市', '北京', '上海', '深圳', '广州'): '都市故事',
+                ('生活', '日常', '平凡'): '生活故事',
+                ('家庭', '家族', '亲人'): '家庭',
+                
+                # 玄幻奇幻类
+                ('穿越', '重生', '系统', '异世界'): '网络小说',
+                ('修仙', '武侠', '江湖'): '武侠',
+                
+                # 社会类
+                ('社会', '现实', '人性', '道德'): '社会',
+                ('正义', '善恶', '报应'): '因果',
+            }
+            
+            # 合并标题和内容前300字
+            full_text = title + ' ' + content[:300]
+            
+            # 匹配话题
+            matched_topics = []
+            matched_scores = []
+            
+            for keywords, topic in topic_mapping.items():
+                # 计算匹配分数（关键词出现次数）
+                score = sum(1 for keyword in keywords if keyword in full_text)
+                if score > 0:
+                    matched_topics.append(topic)
+                    matched_scores.append(score)
+            
+            # 按匹配分数排序
+            if matched_topics:
+                sorted_topics = [topic for _, topic in sorted(zip(matched_scores, matched_topics), reverse=True)]
+                
+                # 去重
+                unique_topics = []
+                seen = set()
+                for topic in sorted_topics:
+                    if topic not in seen:
+                        unique_topics.append(topic)
+                        seen.add(topic)
+                        if len(unique_topics) >= 3:
+                            break
+                
+                # 如果匹配到的话题少于3个，添加通用话题
+                if len(unique_topics) < 3:
+                    default_topics = ['故事', '短篇小说', '小说']
+                    for topic in default_topics:
+                        if topic not in seen and len(unique_topics) < 3:
+                            unique_topics.append(topic)
+                            seen.add(topic)
+                
+                print(f"[INFO] 智能匹配到的知乎话题: {', '.join(unique_topics)}")
+                return unique_topics
+            else:
+                # 未匹配到任何话题，返回通用话题
+                default = ['故事', '短篇小说', '小说']
+                print(f"[INFO] 使用默认话题: {', '.join(default)}")
+                return default
+            
+        except Exception as e:
+            print(f"[ERROR] 提取话题词失败: {e}")
+            # 返回通用话题作为后备
+            return ['故事', '短篇小说']
     
     async def close(self):
         """关闭浏览器和清理资源"""

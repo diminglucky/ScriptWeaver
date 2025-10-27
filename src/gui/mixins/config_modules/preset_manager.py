@@ -85,9 +85,15 @@ class PresetManagerMixin:
 				import json
 				with open(custom_presets_file, 'r', encoding='utf-8') as f:
 					custom_presets = json.load(f)
-					self.api_presets.update(custom_presets)
-			except Exception:
-				pass  # 加载失败则跳过
+					if isinstance(custom_presets, dict):
+						self.api_presets.update(custom_presets)
+						print(f"[INFO] 已加载 {len(custom_presets)} 个自定义API预设")
+					else:
+						print(f"[WARN] 自定义预设格式错误，已跳过")
+			except json.JSONDecodeError as e:
+				print(f"[WARN] 自定义预设JSON格式错误: {e}")
+			except Exception as e:
+				print(f"[WARN] 加载自定义预设失败: {e}")
 	
 	
 	def _save_custom_preset(self) -> None:
@@ -196,9 +202,15 @@ class PresetManagerMixin:
 				import json
 				with open(custom_presets_file, 'r', encoding='utf-8') as f:
 					custom_presets = json.load(f)
-					self.img_api_presets.update(custom_presets)
-			except Exception:
-				pass  # 加载失败则跳过
+					if isinstance(custom_presets, dict):
+						self.img_api_presets.update(custom_presets)
+						print(f"[INFO] 已加载 {len(custom_presets)} 个自定义图片API预设")
+					else:
+						print(f"[WARN] 图片API预设格式错误，已跳过")
+			except json.JSONDecodeError as e:
+				print(f"[WARN] 图片API预设JSON格式错误: {e}")
+			except Exception as e:
+				print(f"[WARN] 加载图片API预设失败: {e}")
 	
 	
 	def _save_custom_image_preset(self) -> None:

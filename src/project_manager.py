@@ -31,8 +31,8 @@ class Project:
 			try:
 				with open(self.meta_file, "r", encoding="utf-8") as f:
 					return json.load(f)
-			except Exception:
-				pass
+			except Exception as e:
+				print(f"[WARN] 加载项目元数据失败: {e}，使用默认值")
 		return {
 			"name": self.project_dir.name,
 			"created_at": datetime.now().isoformat(),
@@ -51,13 +51,22 @@ class Project:
 	
 	def save_story(self, content: str, **params) -> None:
 		"""保存故事内容"""
-		with open(self.story_file, "w", encoding="utf-8") as f:
-			f.write(content)
-		
-		# 更新元数据
-		for key, value in params.items():
-			self.metadata[key] = value
-		self._save_metadata()
+		try:
+			# 创建备份（如果已存在）
+			if self.story_file.exists():
+				backup_file = self.project_dir / "story.txt.bak"
+				shutil.copy2(self.story_file, backup_file)
+			
+			with open(self.story_file, "w", encoding="utf-8") as f:
+				f.write(content)
+			
+			# 更新元数据
+			for key, value in params.items():
+				self.metadata[key] = value
+			self._save_metadata()
+		except Exception as e:
+			print(f"[ERROR] 保存故事失败: {e}")
+			raise
 	
 	def load_story(self) -> str:
 		"""加载故事内容"""
@@ -148,6 +157,25 @@ class ProjectManager:
 	def delete_project(self, project_dir: Path | str) -> None:
 		"""删除项目"""
 		project_path = Path(project_dir)
-		if project_path.exists() and project_path.is_dir():
-			shutil.rmtree(project_path)
+		
+		# 安全检查：确保要删除的是projects目录下的项目
+		try:
+			# 检查路径是否在workspace内
+			project_path = project_path.resolve()
+			workspace_path = self.workspace.resolve()
+			
+			if not str(project_path).startswith(str(workspace_path)):
+				raise ValueError(f"不能删除workspace外的目录: {project_path}")
+			
+			# 检查是否是有效的项目目录
+			if not (project_path / "project.json").exists():
+				raise ValueError(f"不是有效的项目目录: {project_path}")
+			
+			# 删除项目
+			if project_path.exists() and project_path.is_dir():
+				shutil.rmtree(project_path)
+				print(f"[INFO] 已删除项目: {project_path.name}")
+		except Exception as e:
+			print(f"[ERROR] 删除项目失败: {e}")
+			raise
 

@@ -38,6 +38,16 @@ def main():
         print("1. 是否安装了所有依赖: pip install -r requirements.txt")
         print("2. 是否在正确的目录运行")
         print("3. 查看错误信息并修复")
+        import traceback
+        traceback.print_exc()
+        sys.exit(1)
+    except KeyboardInterrupt:
+        print("\n\n用户中断，正在退出...")
+        sys.exit(0)
+    except Exception as e:
+        print(f"❌ 程序运行出错: {e}")
+        import traceback
+        traceback.print_exc()
         sys.exit(1)
 
 if __name__ == "__main__":
