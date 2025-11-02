@@ -92,24 +92,28 @@ class ImageUICharacterTabMixin:
 		tk.Label(info_frame, text="当前项目/characters/", font=("", 9, "bold"), fg="#4CAF50", bg="#1e3a5f").pack(side=LEFT)
 		tk.Label(info_frame, text=" 文件夹", font=("", 9), fg="white", bg="#1e3a5f").pack(side=LEFT, padx=(0, 6))
 		
-		# 按钮区域
+		# 按钮区域（一行显示所有按钮）
 		btn_frame = ttk.Frame(grp_characters)
 		btn_frame.pack(fill="x", padx=6, pady=(0, 8))
+		
+		# 提取故事人物按钮
 		self.char_btn_extract = ttk.Button(btn_frame, text="🔍 提取故事人物", 
 										   command=self._on_extract_characters, width=15, style="Accent.TButton")
-		self.char_btn_extract.pack(side=LEFT, padx=(0, 3))
+		self.char_btn_extract.pack(side=LEFT, padx=(0, 6))
+		
+		# 重新提取按钮
 		self.char_btn_refresh = ttk.Button(btn_frame, text="🔄 重新提取", 
 										   command=self._on_extract_characters, width=12, state=DISABLED, style="TButton")
-		self.char_btn_refresh.pack(side=LEFT, padx=(0, 3))
+		self.char_btn_refresh.pack(side=LEFT, padx=(0, 6))
 		
-		# 第二行按钮
-		btn_frame2 = ttk.Frame(grp_characters)
-		btn_frame2.pack(fill="x", padx=6, pady=(0, 8))
-		self.char_btn_edit_detail = ttk.Button(btn_frame2, text="✏️ 编辑人物详情", 
+		# 编辑人物详情按钮
+		self.char_btn_edit_detail = ttk.Button(btn_frame, text="✏️ 编辑人物详情", 
 											   command=self._on_edit_character_detail, width=15, 
 											   state=DISABLED, style="TButton")
-		self.char_btn_edit_detail.pack(side=LEFT, padx=(0, 3))
-		ttk.Label(btn_frame2, text="完善外观、服装等信息", font=("", 8), foreground="#888").pack(side=LEFT, padx=(5, 0))
+		self.char_btn_edit_detail.pack(side=LEFT, padx=(0, 6))
+		
+		# 提示文本
+		ttk.Label(btn_frame, text="完善外观、服装等信息", font=("", 8), foreground="#888").pack(side=LEFT, padx=(5, 0))
 		
 		# 人物列表框（使用Listbox）
 		list_frame = ttk.Frame(grp_characters)

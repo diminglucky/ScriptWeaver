@@ -145,11 +145,13 @@ class PromptOperationsMixin:
 	
 	def _manual_input_style(self) -> None:
 		"""手动输入自定义风格"""
-		from tkinter import simpledialog
-		custom_style = simpledialog.askstring(
+		from ...helpers.dialogs import show_input_dialog
+		custom_style = show_input_dialog(
+			self,
 			"手动输入风格",
-			"请输入自定义风格标签:\n\n（例如：日系清新、赛博朋克、武侠风等）",
-			initialvalue=""
+			"请输入自定义风格标签：\n\n（例如：日系清新、赛博朋克、武侠风等）",
+			width=450,
+			height=200
 		)
 		if custom_style and custom_style.strip():
 			self._add_style_tag(custom_style.strip())

@@ -1,22 +1,7 @@
 """
-服务层 - 业务逻辑处理
+导演模块服务 - 已迁移到 src/services/director/
 """
+# 此模块已废弃，所有服务已迁移到 src.services.director
+# 如需使用服务，请从 src.services.director 导入
 
-try:
-    from .prompt_builder_service import PromptBuilderService
-    from .image_generator_service import ImageGeneratorService
-    from .shot_manager_service import ShotManagerService
-    from .character_service import CharacterService
-except ImportError:
-    from prompt_builder_service import PromptBuilderService
-    from image_generator_service import ImageGeneratorService
-    from shot_manager_service import ShotManagerService
-    from character_service import CharacterService
-
-__all__ = [
-    'PromptBuilderService',
-    'ImageGeneratorService',
-    'ShotManagerService',
-    'CharacterService',
-]
-
+__all__ = []

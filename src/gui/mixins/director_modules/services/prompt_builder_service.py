@@ -436,7 +436,10 @@ class PromptBuilderService:
     def generate_character_seed(self, character_name: str) -> int:
         """为人物生成固定种子"""
         if character_name not in self.character_seed_map:
-            self.character_seed_map[character_name] = abs(hash(character_name)) % 1000000
+            # 🔥 修复：使用md5而不是hash，确保一致性和跨平台稳定性
+            import hashlib
+            seed = int(hashlib.md5(character_name.encode('utf-8')).hexdigest()[:8], 16) % 1000000
+            self.character_seed_map[character_name] = seed
         return self.character_seed_map[character_name]
     
     def set_consistency_mode(self, mode: str):

@@ -6,10 +6,111 @@ from tkinter import BOTH, LEFT, RIGHT, DISABLED, NORMAL, END, messagebox, filedi
 import tkinter as tk
 from tkinter import ttk
 from .project_modules import EnhancedProjectManager
+from ..theme import Theme
+from src.core.logging_config import get_logger
+
+logger = get_logger(__name__)
 
 
 class ProjectMixin(EnhancedProjectManager):
 	"""Project管理功能"""
+	
+	def _clear_all_ui_data(self) -> None:
+		"""清理所有UI界面上的数据缓存"""
+		try:
+			# 1. 清空故事输出区
+			if hasattr(self, 'output'):
+				self.output.delete("1.0", END)
+			
+			# 2. 清空提示词输入区（恢复占位符）
+			if hasattr(self, 'prompt_text'):
+				self.prompt_text.delete("1.0", END)
+				placeholder_text = "📝 请详细描述你的故事创意...\n\n💡 提示：你可以输入：\n· 故事主题和关键情节\n· 人物设定和性格特点\n· 故事背景和时代环境\n· 特殊的叙事要求或风格\n\n✨ 越详细的描述，生成的故事越符合你的期望！"
+				self.prompt_text.insert("1.0", placeholder_text)
+				self.prompt_text.tag_add("placeholder", "1.0", "end")
+				self.prompt_text.config(fg=Theme.TEXT_HINT)  # 使用主题的提示文本颜色
+				# 保存空状态到缓存（新建项目时清除缓存）
+				if hasattr(self, '_save_input_cache'):
+					self.after(100, lambda: self._save_input_cache(delay=False))
+			
+			# 3. 重置下拉框选项到默认值
+			if hasattr(self, 'category'):
+				self.category.set("悬疑推理")
+			if hasattr(self, 'style'):
+				self.style.set("电影化叙事")
+			if hasattr(self, 'target_chars'):
+				self.target_chars.set(3000)
+			
+			# 4. 清空导演页面的数据
+			if hasattr(self, 'script_text'):
+				self.script_text.delete("1.0", END)
+			
+			if hasattr(self, 'shots_text'):
+				self.shots_text.delete("1.0", END)
+			
+			if hasattr(self, 'jimeng_prompts_text'):
+				self.jimeng_prompts_text.delete("1.0", END)
+			
+			# 5. 清空分镜选择下拉框
+			if hasattr(self, 'shot_select_combo'):
+				self.shot_select_combo['values'] = ["全部分镜"]
+				self.shot_select_combo.current(0)
+			
+			# 6. 清空图片预览区域
+			if hasattr(self, 'director_images_canvas'):
+				# 删除canvas上的所有项目
+				self.director_images_canvas.delete("all")
+				# 如果canvas有内部frame，也需要清理其子控件
+				if hasattr(self, 'director_images_container'):
+					for widget in self.director_images_container.winfo_children():
+						widget.destroy()
+			
+			# 7. 清空图片管理页面
+			if hasattr(self, 'image_gallery_frame'):
+				for widget in self.image_gallery_frame.winfo_children():
+					widget.destroy()
+			
+			# 8. 清空人物列表
+			if hasattr(self, 'character_listbox'):
+				self.character_listbox.delete(0, END)
+			
+			if hasattr(self, 'ref_character_listbox'):
+				self.ref_character_listbox.delete(0, END)
+			
+			# 9. 清空人物描述文本框
+			if hasattr(self, 'character_desc_text'):
+				self.character_desc_text.delete("1.0", END)
+			
+			# 10. 重置进度条
+			if hasattr(self, 'image_progress_var'):
+				self.image_progress_var.set(0)
+			
+			if hasattr(self, 'image_progress_label'):
+				self.image_progress_label.config(text="")
+			
+			# 11. 清空内部数据缓存
+			if hasattr(self, 'character_seed_map'):
+				self.character_seed_map = {}
+			
+			if hasattr(self, '_current_negative_prompt'):
+				self._current_negative_prompt = {}
+			
+			# 12. 清空分镜数据
+			if hasattr(self, 'shots_data'):
+				self.shots_data = []
+			
+			# 13. 清空人物信息缓存
+			if hasattr(self, 'characters_info'):
+				self.characters_info = {}
+			
+			from src.core.logging_config import get_logger
+			logger = get_logger(__name__)
+			logger.info("已清理所有UI界面缓存数据")
+			
+		except Exception as e:
+			from src.core.logging_config import get_logger
+			logger = get_logger(__name__)
+			logger.warning(f"清理UI数据时出现错误: {e}", exc_info=True)
 	
 	def _refresh_project_list(self) -> None:
 		"""刷新项目列表"""
@@ -36,13 +137,16 @@ class ProjectMixin(EnhancedProjectManager):
 	
 	def _on_new_project(self) -> None:
 		"""创建新项目"""
-		# 弹出对话框让用户输入项目名称
-		from tkinter import simpledialog
-		project_name = simpledialog.askstring("新建项目", "请输入项目名称:")
+		# 弹出自定义对话框让用户输入项目名称
+		from ..helpers.dialogs import show_input_dialog
+		project_name = show_input_dialog(self, "新建项目", "请输入项目名称:", width=400)
 		if not project_name or not project_name.strip():
 			return
 		
 		try:
+			# ★★★ 清理所有UI界面缓存数据 ★★★
+			self._clear_all_ui_data()
+			
 			self.current_project = self.project_manager.create_project(project_name.strip())
 			self.lbl_current_project.config(text=f"当前项目: {project_name}", fg="#4CAF50")
 			self.btn_save_story.config(state=NORMAL)
@@ -53,7 +157,7 @@ class ProjectMixin(EnhancedProjectManager):
 				from pathlib import Path
 				characters_dir = self.current_project.project_dir / "characters"
 				characters_dir.mkdir(parents=True, exist_ok=True)
-				print(f"📁 已创建人物照片文件夹：{characters_dir}")
+				logger.info(f"已创建人物照片文件夹：{characters_dir}")
 			
 			self._refresh_project_list()
 			if hasattr(self, 'status'):
@@ -103,7 +207,7 @@ class ProjectMixin(EnhancedProjectManager):
 				characters_dir = self.current_project.project_dir / "characters"
 				if not characters_dir.exists():
 					characters_dir.mkdir(parents=True, exist_ok=True)
-					print(f"📁 自动创建人物照片文件夹：{characters_dir}")
+					logger.info(f"自动创建人物照片文件夹：{characters_dir}")
 			
 			# 加载项目的人物照片
 			if hasattr(self, '_load_project_characters'):
@@ -114,29 +218,31 @@ class ProjectMixin(EnhancedProjectManager):
 			try:
 				enhanced_load_success = self.load_complete_project()
 				if enhanced_load_success:
-					print("✅ 使用增强加载功能成功加载项目")
+					logger.info("使用增强加载功能成功加载项目")
 			except Exception as e:
-				print(f"增强加载失败，使用传统方式: {e}")
+				logger.warning(f"增强加载失败，使用传统方式: {e}")
 			
 			# 如果增强加载失败，使用传统方式
 			if not enhanced_load_success:
 				# 加载导演项目数据（如果存在）
 				if hasattr(self, 'load_director_project'):
-					print(f"📂 正在加载导演项目数据...")
+					logger.info("正在加载导演项目数据...")
 					self.load_director_project(project_path)
 				
-				# 恢复创作参数
-				meta = self.current_project.metadata
-				if meta.get("category"):
-					self.category.set(meta["category"])
-				if meta.get("requirement"):
+			# 恢复创作参数
+			meta = self.current_project.metadata
+			if meta.get("category"):
+				self.category.set(meta["category"])
+			if meta.get("requirement"):
+				if hasattr(self, 'prompt_text'):
 					self.prompt_text.delete("1.0", END)
 					self.prompt_text.insert("1.0", meta["requirement"])
 					self.prompt_text.tag_remove("placeholder", "1.0", "end")
-				if meta.get("style"):
-					self.style.set(meta["style"])
-				if meta.get("target_chars"):
-					self.target_chars.set(meta["target_chars"])
+					self.prompt_text.config(fg=Theme.TEXT_PRIMARY)  # 使用主题的主文本颜色
+			if meta.get("style"):
+				self.style.set(meta["style"])
+			if meta.get("target_chars"):
+				self.target_chars.set(meta["target_chars"])
 			
 			messagebox.showinfo("成功", f"项目已加载: {project_name}\n\n所有内容已恢复")
 			# 切换到故事生成页面
@@ -167,7 +273,7 @@ class ProjectMixin(EnhancedProjectManager):
 			
 			# 使用增强的保存功能保存完整项目
 			if self.save_complete_project():
-				print("✅ 完整项目数据已保存")
+				logger.info("完整项目数据已保存")
 			
 			self._refresh_project_list()
 			if hasattr(self, 'status'):

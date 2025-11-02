@@ -24,16 +24,29 @@ sys.path.insert(0, str(project_root))
 def main():
     """主函数"""
     try:
+        # 初始化日志系统（最先执行）
+        from src.core.logging_config import init_logging
+        logger = init_logging()
+        
         # 使用现代化UI - 保留所有功能
         from src.gui.modern_app import ModernApp
-        print("启动 AI Story Creator Pro...")
-        print("窗口尺寸: 1500x850")
-        print("设计风格: 精致 · 简约 · 专业")
-        print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+        
+        logger.info("=" * 60)
+        logger.info("启动 AI Story Creator Pro")
+        logger.info("窗口尺寸: 1500x850")
+        logger.info("设计风格: 精致 · 简约 · 专业")
+        logger.info("=" * 60)
+        
         app = ModernApp()
         app.mainloop()
     except ImportError as e:
-        print(f"❌ 无法加载现代化UI: {e}")
+        try:
+            from src.core.logging_config import get_logger
+            logger = get_logger(__name__)
+            logger.error(f"无法加载现代化UI: {e}", exc_info=True)
+        except:
+            print(f"❌ 无法加载现代化UI: {e}")
+        
         print("\n请检查以下内容:")
         print("1. 是否安装了所有依赖: pip install -r requirements.txt")
         print("2. 是否在正确的目录运行")
@@ -42,12 +55,25 @@ def main():
         traceback.print_exc()
         sys.exit(1)
     except KeyboardInterrupt:
+        try:
+            from src.core.logging_config import get_logger
+            logger = get_logger(__name__)
+            logger.info("用户中断，正在退出...")
+        except:
+            pass
         print("\n\n用户中断，正在退出...")
         sys.exit(0)
     except Exception as e:
-        print(f"❌ 程序运行出错: {e}")
-        import traceback
-        traceback.print_exc()
+        try:
+            from src.core.logging_config import get_logger
+            from src.core.exception_handler import ExceptionHandler
+            logger = get_logger(__name__)
+            error_msg = ExceptionHandler.handle_exception(e, context="程序启动失败")
+            logger.error(error_msg, exc_info=True)
+        except:
+            print(f"❌ 程序运行出错: {e}")
+            import traceback
+            traceback.print_exc()
         sys.exit(1)
 
 if __name__ == "__main__":

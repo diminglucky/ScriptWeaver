@@ -1,0 +1,207 @@
+2025-11-01 17:10:29 | ERROR    | __main__ | main:46 | 无法加载现代化UI: No module named 'src.gui.mixins.helpers'
+Traceback (most recent call last):
+  File "D:\code\play\Zhihu_short_stories\run_modern_app.py", line 32, in main
+    from src.gui.modern_app import ModernApp
+  File "D:\code\play\Zhihu_short_stories\src\gui\__init__.py", line 3, in <module>
+    from .modern_app import ModernApp
+  File "D:\code\play\Zhihu_short_stories\src\gui\modern_app.py", line 12, in <module>
+    from .mixins.story_modules import StoryMixin
+  File "D:\code\play\Zhihu_short_stories\src\gui\mixins\__init__.py", line 5, in <module>
+    from .image_modules import ImageMixin
+  File "D:\code\play\Zhihu_short_stories\src\gui\mixins\image_modules\__init__.py", line 10, in <module>
+    from .char_photo import CharacterPhotoMixin  # ✅ 恢复：人物照片在图片管理页面生成
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\code\play\Zhihu_short_stories\src\gui\mixins\image_modules\char_photo.py", line 17, in <module>
+    from .handlers import (
+  File "D:\code\play\Zhihu_short_stories\src\gui\mixins\image_modules\handlers\__init__.py", line 4, in <module>
+    from .character_photo_generator import CharacterPhotoGenerator
+  File "D:\code\play\Zhihu_short_stories\src\gui\mixins\image_modules\handlers\character_photo_generator.py", line 13, in <module>
+    from ...helpers.character_prompt_builder import CharacterPromptBuilder
+ModuleNotFoundError: No module named 'src.gui.mixins.helpers'
+2025-11-01 17:23:45 | ERROR    | __main__ | main:46 | 无法加载现代化UI: No module named 'models'
+Traceback (most recent call last):
+  File "D:\code\play\Zhihu_short_stories\src\gui\mixins\director_modules\director_controller.py", line 12, in <module>
+    from src.services.director import (
+  File "D:\code\play\Zhihu_short_stories\src\services\director\__init__.py", line 4, in <module>
+    from .character_service import CharacterService
+ImportError: cannot import name 'CharacterService' from 'src.services.director.character_service' (D:\code\play\Zhihu_short_stories\src\services\director\character_service.py)
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "D:\code\play\Zhihu_short_stories\run_modern_app.py", line 32, in main
+    from src.gui.modern_app import ModernApp
+  File "D:\code\play\Zhihu_short_stories\src\gui\__init__.py", line 3, in <module>
+    from .modern_app import ModernApp
+  File "D:\code\play\Zhihu_short_stories\src\gui\modern_app.py", line 18, in <module>
+    from .mixins.director_modules import DirectorMixin
+  File "D:\code\play\Zhihu_short_stories\src\gui\mixins\director_modules\__init__.py", line 5, in <module>
+    from .director_controller import DirectorController
+  File "D:\code\play\Zhihu_short_stories\src\gui\mixins\director_modules\director_controller.py", line 23, in <module>
+    from models import Shot, Character, DirectorProject
+ModuleNotFoundError: No module named 'models'
+2025-11-01 17:25:14 | ERROR    | __main__ | main:46 | 无法加载现代化UI: No module named 'models'
+Traceback (most recent call last):
+  File "D:\code\play\Zhihu_short_stories\src\gui\mixins\director_modules\director_controller.py", line 12, in <module>
+    from src.services.director import (
+  File "D:\code\play\Zhihu_short_stories\src\services\director\__init__.py", line 4, in <module>
+    from .character_service import CharacterService
+ImportError: cannot import name 'CharacterService' from 'src.services.director.character_service' (D:\code\play\Zhihu_short_stories\src\services\director\character_service.py)
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "D:\code\play\Zhihu_short_stories\run_modern_app.py", line 32, in main
+    from src.gui.modern_app import ModernApp
+  File "D:\code\play\Zhihu_short_stories\src\gui\__init__.py", line 3, in <module>
+    from .modern_app import ModernApp
+  File "D:\code\play\Zhihu_short_stories\src\gui\modern_app.py", line 18, in <module>
+    from .mixins.director_modules import DirectorMixin
+  File "D:\code\play\Zhihu_short_stories\src\gui\mixins\director_modules\__init__.py", line 5, in <module>
+    from .director_controller import DirectorController
+  File "D:\code\play\Zhihu_short_stories\src\gui\mixins\director_modules\director_controller.py", line 23, in <module>
+    from models import Shot, Character, DirectorProject
+ModuleNotFoundError: No module named 'models'
+2025-11-01 17:27:05 | ERROR    | src.core.exception_handler | handle_exception:66 | 程序启动失败: AttributeError: '_tkinter.tkapp' object has no attribute '_on_generate_shots'
+Traceback (most recent call last):
+  File "D:\code\play\Zhihu_short_stories\run_modern_app.py", line 40, in main
+    app = ModernApp()
+          ^^^^^^^^^^^
+  File "D:\code\play\Zhihu_short_stories\src\gui\modern_app.py", line 67, in __init__
+    self._build_ui()
+  File "D:\code\play\Zhihu_short_stories\src\gui\mixins\ui_mixin.py", line 33, in _build_ui
+    self._build_director_page()
+  File "D:\code\play\Zhihu_short_stories\src\gui\mixins\director_modules\director_mixin.py", line 56, in _build_director_page
+    DirectorUIBuilder.build_left_workflow_panel(director_frame, self)
+  File "D:\code\play\Zhihu_short_stories\src\gui\mixins\director_modules\ui\director_ui_builder.py", line 56, in build_left_workflow_panel
+    DirectorUIBuilder._add_step2_shots(left_panel, mixin_instance)
+  File "D:\code\play\Zhihu_short_stories\src\gui\mixins\director_modules\ui\director_ui_builder.py", line 88, in _add_step2_shots
+    command=mixin_instance._on_generate_shots
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\software\anaconda\envs\play\Lib\tkinter\__init__.py", line 2433, in __getattr__
+    return getattr(self.tk, attr)
+           ^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: '_tkinter.tkapp' object has no attribute '_on_generate_shots'
+2025-11-01 17:27:05 | ERROR    | __main__ | main:72 | 程序启动失败
+发生错误: '_tkinter.tkapp' object has no attribute '_on_generate_shots'
+Traceback (most recent call last):
+  File "D:\code\play\Zhihu_short_stories\run_modern_app.py", line 40, in main
+    app = ModernApp()
+          ^^^^^^^^^^^
+  File "D:\code\play\Zhihu_short_stories\src\gui\modern_app.py", line 67, in __init__
+    self._build_ui()
+  File "D:\code\play\Zhihu_short_stories\src\gui\mixins\ui_mixin.py", line 33, in _build_ui
+    self._build_director_page()
+  File "D:\code\play\Zhihu_short_stories\src\gui\mixins\director_modules\director_mixin.py", line 56, in _build_director_page
+    DirectorUIBuilder.build_left_workflow_panel(director_frame, self)
+  File "D:\code\play\Zhihu_short_stories\src\gui\mixins\director_modules\ui\director_ui_builder.py", line 56, in build_left_workflow_panel
+    DirectorUIBuilder._add_step2_shots(left_panel, mixin_instance)
+  File "D:\code\play\Zhihu_short_stories\src\gui\mixins\director_modules\ui\director_ui_builder.py", line 88, in _add_step2_shots
+    command=mixin_instance._on_generate_shots
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\software\anaconda\envs\play\Lib\tkinter\__init__.py", line 2433, in __getattr__
+    return getattr(self.tk, attr)
+           ^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: '_tkinter.tkapp' object has no attribute '_on_generate_shots'
+2025-11-01 17:28:57 | ERROR    | src.gui.mixins.director_modules.handlers.project_handler | load_director_data_from_project:99 | 加载项目数据失败: 'str' object has no attribute 'get'
+Traceback (most recent call last):
+  File "D:\code\play\Zhihu_short_stories\src\gui\mixins\director_modules\handlers\project_handler.py", line 95, in load_director_data_from_project
+    mixin_instance._refresh_shot_combo(silent=True)
+  File "D:\code\play\Zhihu_short_stories\src\gui\mixins\director_modules\director_mixin.py", line 87, in _refresh_shot_combo
+    f"分镜{s.get('shot_number', i + 1)}"
+           ^^^^^
+AttributeError: 'str' object has no attribute 'get'
+2025-11-01 18:16:56 | ERROR    | src.services.zhihu.article_publisher | _wait_for_publish_complete:748 | 点击按钮失败: ElementHandle.click: Timeout 30000ms exceeded.
+Call log:
+  - attempting click action
+    2 × waiting for element to be visible, enabled and stable
+      - element is visible, enabled and stable
+      - scrolling into view if needed
+      - done scrolling
+      - <div class="Modal-backdrop"></div> from <div>…</div> subtree intercepts pointer events
+    - retrying click action
+    - waiting 20ms
+    2 × waiting for element to be visible, enabled and stable
+      - element is visible, enabled and stable
+      - scrolling into view if needed
+      - done scrolling
+      - <div class="Modal-backdrop"></div> from <div>…</div> subtree intercepts pointer events
+    - retrying click action
+      - waiting 100ms
+    56 × waiting for element to be visible, enabled and stable
+       - element is visible, enabled and stable
+       - scrolling into view if needed
+       - done scrolling
+       - <div class="Modal-backdrop"></div> from <div>…</div> subtree intercepts pointer events
+     - retrying click action
+       - waiting 500ms
+
+2025-11-01 18:16:56 | ERROR    | src.services.zhihu.article_publisher | _wait_for_publish_complete:771 | 等待发布完成失败: ElementHandle.click: Timeout 30000ms exceeded.
+Call log:
+  - attempting click action
+    2 × waiting for element to be visible, enabled and stable
+      - element is visible, enabled and stable
+      - scrolling into view if needed
+      - done scrolling
+      - <div class="Modal-backdrop"></div> from <div>…</div> subtree intercepts pointer events
+    - retrying click action
+    - waiting 20ms
+    2 × waiting for element to be visible, enabled and stable
+      - element is visible, enabled and stable
+      - scrolling into view if needed
+      - done scrolling
+      - <div class="Modal-backdrop"></div> from <div>…</div> subtree intercepts pointer events
+    - retrying click action
+      - waiting 100ms
+    56 × waiting for element to be visible, enabled and stable
+       - element is visible, enabled and stable
+       - scrolling into view if needed
+       - done scrolling
+       - <div class="Modal-backdrop"></div> from <div>…</div> subtree intercepts pointer events
+     - retrying click action
+       - waiting 500ms
+Traceback (most recent call last):
+  File "D:\code\play\Zhihu_short_stories\src\services\zhihu\article_publisher.py", line 739, in _wait_for_publish_complete
+    await publish_btn.click()
+  File "D:\software\anaconda\envs\play\Lib\site-packages\playwright\async_api\_generated.py", line 2132, in click
+    await self._impl_obj.click(
+  File "D:\software\anaconda\envs\play\Lib\site-packages\playwright\_impl\_element_handle.py", line 142, in click
+    await self._channel.send(
+  File "D:\software\anaconda\envs\play\Lib\site-packages\playwright\_impl\_connection.py", line 69, in send
+    return await self._connection.wrap_api_call(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\software\anaconda\envs\play\Lib\site-packages\playwright\_impl\_connection.py", line 558, in wrap_api_call
+    raise rewrite_error(error, f"{parsed_st['apiName']}: {error}") from None
+playwright._impl._errors.TimeoutError: ElementHandle.click: Timeout 30000ms exceeded.
+Call log:
+  - attempting click action
+    2 × waiting for element to be visible, enabled and stable
+      - element is visible, enabled and stable
+      - scrolling into view if needed
+      - done scrolling
+      - <div class="Modal-backdrop"></div> from <div>…</div> subtree intercepts pointer events
+    - retrying click action
+    - waiting 20ms
+    2 × waiting for element to be visible, enabled and stable
+      - element is visible, enabled and stable
+      - scrolling into view if needed
+      - done scrolling
+      - <div class="Modal-backdrop"></div> from <div>…</div> subtree intercepts pointer events
+    - retrying click action
+      - waiting 100ms
+    56 × waiting for element to be visible, enabled and stable
+       - element is visible, enabled and stable
+       - scrolling into view if needed
+       - done scrolling
+       - <div class="Modal-backdrop"></div> from <div>…</div> subtree intercepts pointer events
+     - retrying click action
+       - waiting 500ms
+
+2025-11-01 23:42:50 | ERROR    | src.gui.mixins.director_modules.handlers.project_handler | load_director_data_from_project:99 | 加载项目数据失败: 'str' object has no attribute 'get'
+Traceback (most recent call last):
+  File "D:\code\play\Zhihu_short_stories\src\gui\mixins\director_modules\handlers\project_handler.py", line 95, in load_director_data_from_project
+    mixin_instance._refresh_shot_combo(silent=True)
+  File "D:\code\play\Zhihu_short_stories\src\gui\mixins\director_modules\director_mixin.py", line 87, in _refresh_shot_combo
+    f"分镜{s.get('shot_number', i + 1)}"
+           ^^^^^
+AttributeError: 'str' object has no attribute 'get'

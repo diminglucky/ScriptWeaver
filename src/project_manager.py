@@ -10,6 +10,10 @@ from pathlib import Path
 from datetime import datetime
 from typing import Any
 
+from src.core.logging_config import get_logger
+
+logger = get_logger(__name__)
+
 
 class Project:
 	"""单个创作项目"""
@@ -32,7 +36,7 @@ class Project:
 				with open(self.meta_file, "r", encoding="utf-8") as f:
 					return json.load(f)
 			except Exception as e:
-				print(f"[WARN] 加载项目元数据失败: {e}，使用默认值")
+				logger.warning(f"加载项目元数据失败: {e}，使用默认值")
 		return {
 			"name": self.project_dir.name,
 			"created_at": datetime.now().isoformat(),
@@ -65,7 +69,7 @@ class Project:
 				self.metadata[key] = value
 			self._save_metadata()
 		except Exception as e:
-			print(f"[ERROR] 保存故事失败: {e}")
+			logger.error(f"保存故事失败: {e}", exc_info=True)
 			raise
 	
 	def load_story(self) -> str:
@@ -174,8 +178,8 @@ class ProjectManager:
 			# 删除项目
 			if project_path.exists() and project_path.is_dir():
 				shutil.rmtree(project_path)
-				print(f"[INFO] 已删除项目: {project_path.name}")
+				logger.info(f"已删除项目: {project_path.name}")
 		except Exception as e:
-			print(f"[ERROR] 删除项目失败: {e}")
+			logger.error(f"删除项目失败: {e}", exc_info=True)
 			raise
 

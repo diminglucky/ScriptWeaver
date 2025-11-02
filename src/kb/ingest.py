@@ -14,6 +14,9 @@ from sentence_transformers import SentenceTransformer
 from tqdm import tqdm
 
 from src.utils.text import discover_text_files, read_file_text, clean_text, split_by_length
+from src.core.logging_config import get_logger
+
+logger = get_logger(__name__)
 
 
 @dataclass
@@ -49,7 +52,7 @@ class KnowledgeBaseIngestor:
 				try:
 					text = clean_text(read_file_text(fp))
 					if not text or len(text) < 50:  # 跳过太短的文件
-						print(f"[WARN] 跳过空文件或过短文件: {fp.name}")
+						logger.warning(f"跳过空文件或过短文件: {fp.name}")
 						continue
 					
 					parts = split_by_length(text, self.config.max_chars, self.config.overlap)
@@ -58,13 +61,13 @@ class KnowledgeBaseIngestor:
 							chunks.append(part)
 							metas.append((str(fp), i))
 				except Exception as e:
-					print(f"[WARN] 处理文件失败，跳过: {fp.name}, 错误: {e}")
+					logger.warning(f"处理文件失败，跳过: {fp.name}, 错误: {e}")
 					continue
 
 			if not chunks:
 				raise RuntimeError("没有生成任何有效的文本片段，请检查数据文件")
 
-			print(f"[INFO] 共生成 {len(chunks)} 个文本片段，开始向量化...")
+			logger.info(f"共生成 {len(chunks)} 个文本片段，开始向量化...")
 			
 			embeddings = self._embed(chunks).astype("float32")
 			
@@ -78,9 +81,9 @@ class KnowledgeBaseIngestor:
 			np.save(self.config.index_dir / "chunks.npy", np.array(chunks, dtype=object))
 			np.save(self.config.index_dir / "meta.npy", np.array(metas, dtype=object))
 
-			print(f"[OK] 索引已保存到 {self.config.index_dir}")
-			print(f"[OK] 文件数: {len(files)}, 片段数: {len(chunks)}")
+			logger.info(f"索引已保存到 {self.config.index_dir}")
+			logger.info(f"文件数: {len(files)}, 片段数: {len(chunks)}")
 		except Exception as e:
-			print(f"[ERROR] 构建索引失败: {e}")
+			logger.error(f"构建索引失败: {e}", exc_info=True)
 			raise
 

@@ -3,7 +3,7 @@
 """
 
 import tkinter as tk
-from tkinter import ttk
+from tkinter import ttk, DISABLED, END
 import os
 from pathlib import Path
 from datetime import datetime
@@ -16,6 +16,9 @@ from .mixins.config_modules import ConfigMixin
 from .mixins.kb_mixin import KbMixin
 from .mixins.ui_mixin import UiMixin
 from .mixins.director_modules import DirectorMixin
+from src.core.logging_config import get_logger
+
+logger = get_logger(__name__)
 
 
 class ModernApp(tk.Tk, ProjectMixin, StoryMixin, ImageMixin, KbMixin, ConfigMixin, UiMixin, DirectorMixin):
@@ -72,13 +75,208 @@ class ModernApp(tk.Tk, ProjectMixin, StoryMixin, ImageMixin, KbMixin, ConfigMixi
         # 更新时间显示
         self._update_time()
         
+        # 初始化输入缓存
+        self._init_input_cache()
+        
         # 启动后自动加载配置
         self.after(100, self._auto_load_api_config)
+        
+        # 绑定输入自动保存
+        self.after(300, self._bind_input_cache_events)
         
         # 启用自动保存（每5分钟）
         if hasattr(self, 'enable_auto_save'):
             self.enable_auto_save(interval_minutes=5)
-            print("✅ 自动保存功能已启用（每5分钟）")
+            from src.core.logging_config import get_logger
+            logger = get_logger(__name__)
+            logger.info("✅ 自动保存功能已启用（每5分钟）")
+        
+        # ★★★ 启动时初始化UI状态 ★★★
+        # 延迟执行，确保所有UI组件都已创建
+        # 先加载缓存/项目数据，再决定是否清空
+        self.after(500, self._init_startup_state)
+    
+    def _init_startup_state(self):
+        """启动时初始化UI状态：先加载缓存，再决定是否清空"""
+        try:
+            # 先加载输入缓存（如果有）
+            cache_loaded = False
+            cache_has_content = False
+            if hasattr(self, 'cache_file') and self.cache_file.exists():
+                try:
+                    import json
+                    with open(self.cache_file, 'r', encoding='utf-8') as f:
+                        cache = json.load(f)
+                    if cache.get('requirement'):
+                        cache_has_content = True
+                except:
+                    pass
+            
+            # 加载输入缓存
+            if cache_has_content:
+                self._load_input_cache()
+                cache_loaded = True
+            
+            # 检查是否有当前项目
+            has_project = hasattr(self, 'current_project') and self.current_project is not None
+            
+            if not has_project:
+                # 没有项目时：
+                # 如果缓存已加载且有内容，不清空创作需求
+                # 否则清理UI缓存，提供干净的初始状态
+                if not cache_loaded or not cache_has_content:
+                    self._clear_startup_cache()
+                else:
+                    # 只清空其他区域，保留创作需求
+                    if hasattr(self, 'output'):
+                        self.output.delete("1.0", END)
+                    if hasattr(self, 'lbl_current_project'):
+                        self.lbl_current_project.config(text="未选择项目", fg="#888888")
+                    if hasattr(self, 'btn_save_story'):
+                        self.btn_save_story.config(state=DISABLED)
+                    if hasattr(self, 'btn_save_all'):
+                        self.btn_save_all.config(state=DISABLED)
+            else:
+                # 有项目时，确保项目状态正确显示
+                self._ensure_project_state()
+            
+            logger.info(f"启动状态初始化完成（{'有项目' if has_project else '无项目'}, {'有缓存' if cache_has_content else '无缓存'}）")
+        except Exception as e:
+            logger.error(f"初始化启动状态时出错: {e}", exc_info=True)
+    
+    def _clear_startup_cache(self):
+        """清理所有UI缓存，提供干净的初始状态（仅在无项目时调用）"""
+        try:
+            # 更新项目标签为未选择
+            if hasattr(self, 'lbl_current_project'):
+                self.lbl_current_project.config(text="未选择项目", fg="#888888")
+            
+            # 禁用保存按钮
+            if hasattr(self, 'btn_save_story'):
+                self.btn_save_story.config(state=DISABLED)
+            if hasattr(self, 'btn_save_all'):
+                self.btn_save_all.config(state=DISABLED)
+            
+            # ★★★ 清空创作需求输入框（恢复占位符）★★★
+            # 但只在没有缓存内容时才清空
+            if hasattr(self, 'prompt_text'):
+                current_content = self.prompt_text.get("1.0", "end-1c").strip()
+                # 检查是否有有效内容（不是占位符）
+                is_placeholder = False
+                if current_content:
+                    tags = self.prompt_text.tag_names("1.0")
+                    if "placeholder" in tags:
+                        is_placeholder = True
+                    placeholder_texts = ["例如：", "📝 请详细描述你的故事创意", "请详细描述你的故事创意"]
+                    for placeholder in placeholder_texts:
+                        if placeholder in current_content and len(current_content) < 200:
+                            is_placeholder = True
+                            break
+                
+                # 只有在占位符或空内容时才清空
+                if is_placeholder or not current_content:
+                    self.prompt_text.delete("1.0", END)
+                    placeholder_text = "📝 请详细描述你的故事创意...\n\n💡 提示：你可以输入：\n· 故事主题和关键情节\n· 人物设定和性格特点\n· 故事背景和时代环境\n· 特殊的叙事要求或风格\n\n✨ 越详细的描述，生成的故事越符合你的期望！"
+                    self.prompt_text.insert("1.0", placeholder_text)
+                    self.prompt_text.tag_add("placeholder", "1.0", "end")
+                    self.prompt_text.config(fg=Theme.TEXT_HINT)  # 使用主题的提示文本颜色
+            
+            # 清空故事输出区
+            if hasattr(self, 'output'):
+                self.output.delete("1.0", END)
+            
+            # 清空导演页面的数据
+            if hasattr(self, 'script_text'):
+                self.script_text.delete("1.0", END)
+            if hasattr(self, 'shots_text'):
+                self.shots_text.delete("1.0", END)
+            if hasattr(self, 'jimeng_prompts_text'):
+                self.jimeng_prompts_text.delete("1.0", END)
+            
+            # 清空分镜选择下拉框
+            if hasattr(self, 'shot_select_combo'):
+                self.shot_select_combo['values'] = ["全部分镜"]
+                self.shot_select_combo.current(0)
+            
+            # 清空人物列表
+            if hasattr(self, 'character_listbox'):
+                self.character_listbox.delete(0, END)
+            if hasattr(self, 'ref_character_listbox'):
+                self.ref_character_listbox.delete(0, END)
+            
+            # 清空人物描述
+            if hasattr(self, 'character_desc_text'):
+                self.character_desc_text.delete("1.0", END)
+            
+            # 清空图片预览区域
+            if hasattr(self, 'director_images_canvas'):
+                self.director_images_canvas.delete("all")
+            
+            # 清空内部数据缓存
+            if hasattr(self, 'character_seed_map'):
+                self.character_seed_map = {}
+            if hasattr(self, '_current_negative_prompt'):
+                self._current_negative_prompt = {}
+            if hasattr(self, 'shots_data'):
+                self.shots_data = []
+            if hasattr(self, 'characters_info'):
+                self.characters_info = {}
+            
+            logger.info("已清理启动时的UI缓存数据（无项目状态）")
+        except Exception as e:
+            logger.warning(f"清理启动缓存时出错: {e}", exc_info=True)
+    
+    def _ensure_project_state(self):
+        """确保项目状态正确显示（有项目时调用）"""
+        try:
+            if not hasattr(self, 'current_project') or not self.current_project:
+                return
+            
+            project_name = self.current_project.metadata.get("name", "")
+            if hasattr(self, 'lbl_current_project'):
+                self.lbl_current_project.config(text=f"当前项目: {project_name}", fg="#4CAF50")
+            
+            # 启用保存按钮
+            if hasattr(self, 'btn_save_story'):
+                self.btn_save_story.config(state=NORMAL)
+            if hasattr(self, 'btn_save_all'):
+                self.btn_save_all.config(state=NORMAL)
+            
+            # 确保项目数据已加载到UI
+            # 故事内容
+            story_content = self.current_project.load_story()
+            if story_content and hasattr(self, 'output'):
+                current_output = self.output.get("1.0", "end-1c").strip()
+                if not current_output:  # 只在输出区为空时才加载
+                    self.output.delete("1.0", END)
+                    self.output.insert(END, story_content)
+            
+            # 创作需求
+            meta = self.current_project.metadata
+            if meta.get("requirement") and hasattr(self, 'prompt_text'):
+                current_prompt = self.prompt_text.get("1.0", "end-1c").strip()
+                # 检查是否是占位符
+                is_placeholder = False
+                if current_prompt:
+                    tags = self.prompt_text.tag_names("1.0")
+                    if "placeholder" in tags:
+                        is_placeholder = True
+                    placeholder_texts = ["例如：", "📝 请详细描述你的故事创意", "请详细描述你的故事创意"]
+                    for placeholder in placeholder_texts:
+                        if placeholder in current_prompt and len(current_prompt) < 200:
+                            is_placeholder = True
+                            break
+                
+                # 如果是占位符或空内容，则加载项目数据
+                if is_placeholder or not current_prompt:
+                    self.prompt_text.delete("1.0", END)
+                    self.prompt_text.insert("1.0", meta["requirement"])
+                    self.prompt_text.tag_remove("placeholder", "1.0", "end")
+                    self.prompt_text.config(fg=Theme.TEXT_PRIMARY)  # 使用主题的主文本颜色
+            
+            logger.info(f"项目状态已确保正确: {project_name}")
+        except Exception as e:
+            logger.warning(f"确保项目状态时出错: {e}", exc_info=True)
     
     def _init_variables(self):
         """初始化所有必需的变量"""
@@ -98,6 +296,7 @@ class ModernApp(tk.Tk, ProjectMixin, StoryMixin, ImageMixin, KbMixin, ConfigMixi
         self.style = tk.StringVar(value="情感起伏/反转/细节描写/有画面感/口语化")
         self.target_chars = tk.IntVar(value=1800)
         self.model_only = tk.BooleanVar(value=True)
+        self.use_project_stories = tk.BooleanVar(value=False)  # 是否使用项目故事作为知识库
         
         # 状态变量
         self.status = tk.StringVar(value="就绪")
@@ -336,6 +535,19 @@ class ModernApp(tk.Tk, ProjectMixin, StoryMixin, ImageMixin, KbMixin, ConfigMixi
         )
         main_title.pack(anchor="w")
         
+        # 中间：快捷操作按钮
+        center_frame = tk.Frame(header, bg=Theme.BG_PRIMARY)
+        center_frame.pack(side="left", expand=True, padx=20, pady=8)
+        
+        # 完整保存项目按钮
+        self.header_save_btn = ttk.Button(
+            center_frame,
+            text="💾 完整保存项目",
+            command=self._on_quick_save_all,
+            style="Accent.TButton"
+        )
+        self.header_save_btn.pack(side="left", padx=5)
+        
         # 右侧：简约状态指示
         right_frame = tk.Frame(header, bg=Theme.BG_PRIMARY)
         right_frame.pack(side="right", padx=20, pady=12)
@@ -514,6 +726,50 @@ class ModernApp(tk.Tk, ProjectMixin, StoryMixin, ImageMixin, KbMixin, ConfigMixi
         except:
             pass
     
+    def _on_quick_save_all(self):
+        """快捷保存项目 - 从顶部栏调用"""
+        # 更新状态为保存中
+        self.update_header_status("正在保存项目...", "💾")
+        
+        if not hasattr(self, 'current_project') or not self.current_project:
+            self.update_header_status("请先创建或加载项目", "⚠️")
+            from tkinter import messagebox
+            messagebox.showwarning("提示", "请先创建或加载一个项目")
+            # 2秒后恢复状态
+            self.after(2000, lambda: self.update_header_status("就绪", "✅"))
+            return
+        
+        try:
+            # 调用完整保存功能
+            if self.save_complete_project():
+                project_name = ""
+                if hasattr(self.current_project, 'metadata'):
+                    project_name = self.current_project.metadata.get('name', '未命名项目')
+                elif isinstance(self.current_project, dict):
+                    project_name = self.current_project.get('name', '未命名项目')
+                
+                # 显示成功状态
+                success_msg = f"项目已保存: {project_name}" if project_name else "项目已保存"
+                self.update_header_status(success_msg, "✅")
+                
+                # 更新底部状态栏（如果有）
+                if hasattr(self, 'status'):
+                    self.status.set(f"✅ {success_msg}")
+                
+                # 5秒后恢复默认状态
+                self.after(5000, lambda: self.update_header_status("就绪", "✅"))
+            else:
+                self.update_header_status("保存失败", "❌")
+                # 3秒后恢复状态
+                self.after(3000, lambda: self.update_header_status("就绪", "✅"))
+        except Exception as e:
+            error_msg = f"保存出错: {str(e)}"
+            self.update_header_status("保存失败", "❌")
+            from tkinter import messagebox
+            messagebox.showerror("错误", error_msg)
+            # 3秒后恢复状态
+            self.after(3000, lambda: self.update_header_status("就绪", "✅"))
+    
     def update_header_status(self, text: str, icon: str = "🔄", color: str = None):
         """
         更新顶部状态栏的显示
@@ -553,4 +809,4 @@ class ModernApp(tk.Tk, ProjectMixin, StoryMixin, ImageMixin, KbMixin, ConfigMixi
                 # 强制刷新UI
                 self.update_idletasks()
         except Exception as e:
-            print(f"更新状态栏失败: {e}")
+            logger.warning(f"更新状态栏失败: {e}")

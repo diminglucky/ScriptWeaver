@@ -8,6 +8,10 @@ import faiss  # type: ignore
 import numpy as np
 from sentence_transformers import SentenceTransformer
 
+from src.core.logging_config import get_logger
+
+logger = get_logger(__name__)
+
 
 @dataclass
 class SearchConfig:
@@ -55,8 +59,9 @@ class KnowledgeBaseSearcher:
 			if self.index.ntotal != len(self.chunks):
 				raise RuntimeError(f"索引不一致: 索引条目({self.index.ntotal}) != chunks数量({len(self.chunks)})")
 			
-			print(f"[OK] 成功加载知识库: {len(self.chunks)} 个片段")
+			logger.info(f"成功加载知识库: {len(self.chunks)} 个片段")
 		except Exception as e:
+			logger.error(f"加载知识库失败: {e}", exc_info=True)
 			raise RuntimeError(f"加载知识库失败: {e}")
 
 	def search(self, query: str, top_k: int | None = None) -> List[Tuple[str, float, Tuple[str, int]]]:

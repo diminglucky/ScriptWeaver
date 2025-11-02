@@ -93,18 +93,87 @@ class StoryUIBuilderMixin:
 		grp_paths.pack(fill="x", padx=15, pady=(15, 8))
 		grp_paths.columnconfigure(1, weight=1)
 
-		tk.Label(grp_paths, text="数据目录:").grid(row=0, column=0, sticky="w", padx=8, pady=6)
+		# 添加说明文字
+		help_label = tk.Label(
+			grp_paths, 
+			text="💡 提示：你可以选择包含故事txt文件的任意目录作为知识库（支持.txt/.md/.markdown文件）",
+			font=("", 9),
+			fg=Theme.TEXT_HINT,
+			bg=Theme.BG_SECONDARY,
+			wraplength=600,
+			justify="left"
+		)
+		help_label.grid(row=0, column=0, columnspan=4, sticky="w", padx=8, pady=(6, 4))
+		
+		tk.Label(grp_paths, text="数据目录:").grid(row=1, column=0, sticky="w", padx=8, pady=6)
 		self.entry_data = tk.Entry(grp_paths, textvariable=self.data_dir)
-		self.entry_data.grid(row=0, column=1, sticky="we", padx=8)
-		tk.Button(grp_paths, text="选择...", command=self.choose_data).grid(row=0, column=2, padx=(4, 8), pady=6)
-		tk.Button(grp_paths, text="一键选择库", command=self.choose_library_quick).grid(row=0, column=3, padx=(0, 8), pady=6)
+		self.entry_data.grid(row=1, column=1, sticky="we", padx=8)
+		tk.Button(grp_paths, text="选择...", command=self.choose_data).grid(row=1, column=2, padx=(4, 8), pady=6)
+		tk.Button(grp_paths, text="一键选择库", command=self.choose_library_quick).grid(row=1, column=3, padx=(0, 8), pady=6)
 
-		tk.Label(grp_paths, text="索引目录:").grid(row=1, column=0, sticky="w", padx=8, pady=(0, 6))
+		tk.Label(grp_paths, text="索引目录:").grid(row=2, column=0, sticky="w", padx=8, pady=(0, 6))
 		self.entry_index = tk.Entry(grp_paths, textvariable=self.index_dir)
-		self.entry_index.grid(row=1, column=1, sticky="we", padx=8)
-		tk.Button(grp_paths, text="选择...", command=self.choose_index).grid(row=1, column=2, padx=(4, 8), pady=(0, 6))
-		self.btn_ingest = tk.Button(grp_paths, text="构建索引", command=self.on_ingest)
-		self.btn_ingest.grid(row=1, column=3, padx=(0, 8), pady=(0, 6))
+		self.entry_index.grid(row=2, column=1, sticky="we", padx=8)
+		tk.Button(grp_paths, text="选择...", command=self.choose_index).grid(row=2, column=2, padx=(4, 8), pady=(0, 6))
+		self.btn_ingest = tk.Button(grp_paths, text="🔨 构建索引", command=self.on_ingest)
+		self.btn_ingest.grid(row=2, column=3, padx=(0, 8), pady=(0, 6))
+		
+		# 添加快速操作按钮行
+		quick_actions_frame = tk.Frame(grp_paths, bg=Theme.BG_SECONDARY)
+		quick_actions_frame.grid(row=3, column=0, columnspan=4, sticky="we", padx=8, pady=(8, 6))
+		
+		# 快速添加故事文件按钮
+		btn_add_stories = tk.Button(
+			quick_actions_frame,
+			text="📁 快速添加故事文件",
+			command=self.on_quick_add_stories,
+			font=("", 9),
+			bg="#2196F3",
+			fg="white",
+			relief=tk.FLAT,
+			padx=12,
+			pady=5,
+			cursor="hand2"
+		)
+		btn_add_stories.pack(side=LEFT, padx=(0, 8))
+		
+		# 项目故事知识库选项
+		self.chk_use_project_stories = ttk.Checkbutton(
+			quick_actions_frame, 
+			text="📖 使用项目故事作为知识库", 
+			variable=self.use_project_stories,
+			command=self._on_project_stories_toggle
+		)
+		self.chk_use_project_stories.pack(side=LEFT, padx=(8, 4))
+		
+		self.btn_build_project_kb = tk.Button(
+			quick_actions_frame, 
+			text="🚀 构建项目故事库", 
+			command=self.on_build_project_stories_kb,
+			font=("", 9),
+			bg="#FF9800",
+			fg="white",
+			relief=tk.FLAT,
+			padx=12,
+			pady=5,
+			cursor="hand2"
+		)
+		self.btn_build_project_kb.pack(side=LEFT, padx=(0, 8))
+		
+		# 查看知识库信息按钮
+		btn_view_kb_info = tk.Button(
+			quick_actions_frame,
+			text="ℹ️ 查看知识库信息",
+			command=self.on_view_kb_info,
+			font=("", 9),
+			bg="#9E9E9E",
+			fg="white",
+			relief=tk.FLAT,
+			padx=12,
+			pady=5,
+			cursor="hand2"
+		)
+		btn_view_kb_info.pack(side=LEFT)
 
 		# Group 2: 参数（简化布局）
 		grp_params = ttk.LabelFrame(scrollable_frame, text="⚙️ 生成参数")
@@ -348,6 +417,39 @@ class StoryUIBuilderMixin:
 		prompt_frame = tk.Frame(self.story_tab_create, bg=Theme.BG_SECONDARY)
 		prompt_frame.grid(row=1, column=1, sticky="we", padx=(0, 15), pady=(0, 12))
 		
+		# ★★★ 添加展开/收起控制条 ★★★
+		control_bar = tk.Frame(prompt_frame, bg=Theme.SURFACE, height=20)
+		control_bar.pack(fill="x", side="top")
+		
+		# 展开/收起状态
+		self.prompt_expanded = tk.BooleanVar(value=False)  # 默认收起（3行）
+		
+		# 展开/收起按钮（左上角）
+		def toggle_prompt_size():
+			if self.prompt_expanded.get():
+				# 当前已展开，点击后收起
+				self.prompt_text.config(height=3)
+				toggle_btn.config(text="▼")
+				self.prompt_expanded.set(False)
+			else:
+				# 当前收起，点击后展开
+				self.prompt_text.config(height=10)
+				toggle_btn.config(text="▲")
+				self.prompt_expanded.set(True)
+		
+		toggle_btn = tk.Button(control_bar, text="▼", font=("", 10), 
+							   bg=Theme.SURFACE, fg=Theme.TEXT_SECONDARY,
+							   relief=tk.FLAT, cursor="hand2",
+							   command=toggle_prompt_size,
+							   padx=8, pady=0,
+							   activebackground=Theme.BG_HOVER,
+							   activeforeground=Theme.TEXT_PRIMARY)
+		toggle_btn.pack(side="left", padx=2, pady=2)
+		
+		# 提示文字
+		tk.Label(control_bar, text="点击展开/收起", font=("", 8), 
+				 bg=Theme.SURFACE, fg=Theme.TEXT_HINT).pack(side="left", padx=5)
+		
 		# 多行文本框
 		self.prompt_text = tk.Text(prompt_frame, height=3, font=("", 12), wrap=tk.WORD, 
 								   relief=tk.FLAT, borderwidth=1, bg=Theme.SURFACE, fg=Theme.TEXT_PRIMARY,
@@ -356,12 +458,19 @@ class StoryUIBuilderMixin:
 								   highlightbackground=Theme.BORDER, highlightcolor=Theme.BORDER_FOCUS)
 		self.prompt_text.pack(fill="both", expand=True)
 		
-		# 提示文字
-		self.prompt_text.insert("1.0", "例如：写一个惊悚短篇，要求特别惊奇感人，跌宕起伏...")
+		# 提示文字（使用完整的占位符文本）
+		placeholder_text = "📝 请详细描述你的故事创意...\n\n💡 提示：你可以输入：\n· 故事主题和关键情节\n· 人物设定和性格特点\n· 故事背景和时代环境\n· 特殊的叙事要求或风格\n\n✨ 越详细的描述，生成的故事越符合你的期望！"
+		self.prompt_text.insert("1.0", placeholder_text)
+		
+		# 绑定事件：清除占位符
 		self.prompt_text.bind("<FocusIn>", self._clear_prompt_placeholder)
+		self.prompt_text.bind("<KeyPress>", self._on_prompt_key_press)  # 处理首次输入
 		self.prompt_text.bind("<FocusOut>", self._restore_prompt_placeholder)
-		self.prompt_text.tag_configure("placeholder", foreground="#666666")
+		
+		# 配置占位符样式
+		self.prompt_text.tag_configure("placeholder", foreground=Theme.TEXT_HINT)
 		self.prompt_text.tag_add("placeholder", "1.0", "end")
+		self.prompt_text.config(fg=Theme.TEXT_HINT)  # 设置占位符颜色（使用主题色）
 		
 		# 保持旧的self.prompt兼容性（用于读取）
 		self.prompt = tk.Entry(self.story_tab_create)  # 隐藏但保持引用
@@ -453,6 +562,70 @@ class StoryUIBuilderMixin:
 		self.story_tab_create.rowconfigure(3, weight=1)
 
 	
+	def _extract_explicit_opening(self, requirement):
+		"""提取用户明确指定的开头"""
+		import re
+		# 匹配常见的开头指定格式
+		patterns = [
+			r'以[「"]([^「」""]+)[」"]为开头',
+			r'以[「"]([^「」""]+)[」"]开头',
+			r'开头是[「"]([^「」""]+)[」"]',
+			r'开头用[「"]([^「」""]+)[」"]',
+			r'开头[「"]([^「」""]+)[」"]',
+			r'以([^为]+)为开头',
+			r'开头是([^，。]+)',
+		]
+		for pattern in patterns:
+			match = re.search(pattern, requirement)
+			if match:
+				opening = match.group(1).strip()
+				# 清理可能的引号
+				opening = opening.strip('"\'「」""')
+				return opening
+		return None
+	
+	def _get_category_guidance(self, category):
+		"""根据故事类型生成针对性指导"""
+		category_map = {
+			"爱情": (
+				"【💕 爱情故事特别要求】\n"
+				"• 必须甜美：让人感觉特别甜蜜、温馨、心动\n"
+				"• 但不无脑：要有真实的情感发展、合理的冲突、自然的转折\n"
+				"• 真实细节：\"我那时候心跳特别快\"、\"我当时真的紧张，手心全是汗\"、\"我记得他笑了，特别好看\"\n"
+				"• 情感真实：\"我当时真的懵了\"、\"说实话，我现在想起来还觉得甜\"、\"我当时都不知道该怎么办\"\n"
+				"• 甜蜜时刻：用生活化的细节展现甜蜜（\"他给我递了杯水\"、\"我记得他那时候的表情\"）\n"
+				"• 避免无脑：不要过于完美、不要过于戏剧化、要有真实的不确定性\n\n"
+			),
+			"悬疑": (
+				"【🔍 悬疑/惊悚故事特别要求】\n"
+				"• 必须惊悚：让人感觉特别害怕、紧张、恐惧\n"
+				"• 真实感就是最好的恐怖：真实感会让读者更害怕，因为\"如果这是真的...\"\n"
+				"• 真实细节：\"我当时真的吓到了\"、\"我那时候心跳特别快\"、\"我记得那时候特别安静，安静得有点吓人\"\n"
+				"• 真实反应：\"我当时就愣住了\"、\"我当时都不知道该怎么办\"、\"说实话，我现在想起来还后怕\"\n"
+				"• 循序渐进：不要一开始就太吓人，要逐步增加紧张感\n"
+				"• 真实场景：用生活化的场景（\"我们宿舍楼下\"、\"那家24小时便利店\"）让恐怖更真实\n\n"
+			),
+			"职场": (
+				"【💼 职场故事特别要求】\n"
+				"• 真实职场：用真实的职场场景、真实的职场冲突、真实的职场细节\n"
+				"• 真实反应：\"我当时真的懵了\"、\"我当时都不知道该怎么办\"、\"说实话，我现在想起来还觉得紧张\"\n"
+				"• 真实细节：\"我记得那时候会议室特别安静\"、\"我记得他那时候的表情\"、\"我记得那时候我手心全是汗\"\n\n"
+			),
+			"成长": (
+				"【🌱 成长故事特别要求】\n"
+				"• 真实变化：展现真实的成长过程、真实的挣扎、真实的改变\n"
+				"• 真实反思：\"现在想想\"、\"那时候我还...\"、\"说实话，我现在明白了\"\n"
+				"• 真实细节：\"我记得那时候\"、\"我记得那天\"、\"我记得那时候的我\"\n\n"
+			),
+			"亲情": (
+				"【❤️ 亲情故事特别要求】\n"
+				"• 真实情感：用真实的情感表达、真实的细节、真实的对话\n"
+				"• 真实细节：\"我记得那时候\"、\"我记得我妈那时候的表情\"、\"我记得那时候我哭了\"\n"
+				"• 真实情感：\"我当时真的哭了\"、\"说实话，我现在想起来还觉得...\"、\"我当时真的感动了\"\n\n"
+			),
+		}
+		return category_map.get(category, "")
+	
 	def _build_outline_prompt(self, requirement, contexts, category):
 		ctx = "\n\n".join(f"【资料{i+1}】\n{c}" for i, c in enumerate(contexts))
 		target_chars = self.target_chars.get()
@@ -474,97 +647,244 @@ class StoryUIBuilderMixin:
 			"- 章节名简短有力（5-10字），能体现故事发展\n"
 			"- 结构要符合：开端 → 发展 → 高潮 → 结局\n"
 			"- 不要写\"第一章\"、\"第二章\"，直接写章节内容主题\n\n"
+			"【章节标题吸引力要求】\n"
+			"- 每个章节标题都要有吸引力，包含冲突/悬念/情绪词\n"
+			"- 避免平淡的描述性标题，要用能激起好奇心的标题\n"
+			"- 示例对比：\n"
+			"  ❌ 差：\"平静的开端\"、\"意外降临\"、\"危机爆发\"（太常见）\n"
+			"  ✅ 好：\"平安夜初遇\"、\"疯狂追求记\"、\"浪漫告白夜\"（有画面感）\n"
+			"  ✅ 好：\"凌晨两点的医院\"、\"死者的照片\"、\"消失的真相\"（有悬念）\n"
+			"  ✅ 好：\"那个决定改变一切\"、\"我终于明白\"、\"最后的赌注\"（有情感）\n\n"
 			f"【创作信息】\n"
 			f"- 主题/需求：{requirement}\n"
 			f"- 种类：{category}\n"
 			f"- 目标字数：{target_chars}字\n\n"
 			f"【参考资料】\n{ctx if ctx else '无特定资料'}\n\n"
 			"请直接输出章节列表，格式如下：\n"
-			"1. 平静的开端\n"
-			"2. 意外降临\n"
-			"3. 危机爆发\n"
-			"4. 绝地反击\n"
-			"5. 尘埃落定"
+			"1. 平安夜初遇\n"
+			"2. 疯狂追求记\n"
+			"3. 暧昧升温时\n"
+			"4. 浪漫告白夜\n"
+			"5. 终成眷属日"
 		)
 
 	
 	def _build_prompt(self, requirement, contexts, category, outline=""):
-		ctx = "\n\n".join(f"【资料{i+1}】\n{c}" for i, c in enumerate(contexts))
+		ctx = "\n\n".join(f"【参考故事{i+1}】\n{c}" for i, c in enumerate(contexts))
 		outline_part = ("\n\n请严格参照下述目录完成写作：\n" + outline.strip()) if outline else ""
 		style_part = self.style.get().strip()
 		target = self.target_chars.get()
 		# 计算字数范围
 		min_chars = int(target * 0.9)
 		max_chars = int(target * 1.1)
-		return (
-			"请基于以下资料，创作一篇知乎风格的长篇故事/回答。\n\n"
-			"【核心要求】\n"
-			f"1. **字数要求（强制）**：必须写足 {min_chars}-{max_chars} 字之间，目标 {target} 字。请务必写够长度，不要过早结束。\n"
-			f"2. **种类**：{category}\n"
-			f"3. **风格倾向**：{style_part}\n"
-			f"4. **创作主题/需求**：{requirement}\n\n"
-			"【写作规范】\n"
-			"- 语言自然口语化，逻辑清晰，富有生活气息；\n"
-			"- 不要写标题，直接进入正文；段落衔接自然，避免列表化与生硬小标题；\n"
-			"- 开头要抓人，中段有冲突与反转，结尾有观点或反思；\n"
-			"- 输出为纯文本，不使用任何 Markdown 标记（不要 #、*、-、**、``` 等）；\n"
-			"- 即使参考目录，也不要显式输出分节标题；将要点融合到连续正文中；\n"
-			"- 可以适当分段，但段落之间要自然过渡。\n\n"
-			"【特别提醒】\n"
-			f"请一定要写到至少 {min_chars} 字，不要因为觉得写完了就停止。如果还没达到字数，请继续展开细节、增加情节、深化描写。\n"
-			f"{outline_part}\n\n"
-			f"【参考资料】\n{ctx if ctx else '无特定资料，请根据主题自由创作。'}"
-		)
-
-	
-	def _build_section_prompt(self, section, section_index, total_sections, previous_content, requirement, contexts, category, style_part, target_chars_per_section):
-		"""构建单个章节的生成提示词"""
-		ctx = "\n\n".join(f"【资料{i+1}】\n{c}" for i, c in enumerate(contexts)) if contexts else ""
 		
-		# 计算本节字数范围
-		min_chars = int(target_chars_per_section * 0.85)
-		max_chars = int(target_chars_per_section * 1.15)
+		# 检测用户是否明确指定了开头
+		explicit_opening = self._extract_explicit_opening(requirement)
 		
-		# 构建章节要点
-		section_title = section["title"]
-		section_items = "\n".join(f"  - {item}" for item in section["items"]) if section["items"] else ""
+		# 根据故事类型生成针对性要求
+		category_guidance = self._get_category_guidance(category)
 		
-		# 上下文提示
-		context_hint = ""
-		if section_index == 0:
-			context_hint = "这是故事的开篇部分，需要引人入胜，设置场景和主要人物。"
-		elif section_index == total_sections - 1:
-			context_hint = f"这是故事的最后部分，需要收尾总结，呼应前文。\n\n前文概要：\n{previous_content[-500:] if previous_content else '无'}"
+		# 判断是否使用项目故事库
+		use_project_stories = self.use_project_stories.get() if hasattr(self, 'use_project_stories') else False
+		rag_guidance = ""
+		if contexts:
+			if use_project_stories:
+				rag_guidance = (
+					"\n【🎯 RAG增强创作指导】\n"
+					"以下是系统从你的过往优秀故事中检索到的相关片段，作为创作参考。\n\n"
+					"你的任务：\n"
+					"1. **深度分析参考故事**：仔细阅读这些参考故事，理解它们的：\n"
+					"   • 叙事技巧和节奏把控\n"
+					"   • 人物塑造和情感刻画方式\n"
+					"   • 情节设计和反转手法\n"
+					"   • 语言风格和细节描写方法\n"
+					"   • 吸引读者的关键要素\n\n"
+					"2. **创新性超越参考**：\n"
+					"   • 不要直接复制或改写参考故事，而是**学习并超越**\n"
+					"   • 提取参考故事中的**优秀技巧**，但创造出**全新的故事**\n"
+					"   • 借鉴参考故事的**叙事节奏**，但设计**更精彩的情节**\n"
+					"   • 学习参考故事的**情感刻画方式**，但描绘**更深层的情感**\n"
+					"   • 参考故事的**语言风格**，但写出**更精炼有力的文字**\n\n"
+					"3. **创作要求**：\n"
+					"   • 你的新故事应该在**所有维度上都超越参考故事**\n"
+					"   • 开篇要**更抓人**，情节要**更紧凑**，反转要**更震撼**\n"
+					"   • 人物要**更立体**，情感要**更细腻**，细节要**更丰富**\n"
+					"   • 语言要**更流畅**，节奏要**更完美**，结尾要**更震撼**\n"
+					"   • 这是你的**代表作**，每一个字都要体现你的最高水准\n\n"
+					"4. **创新原则**：\n"
+					"   • 如果参考故事用了某个技巧，你可以用**更高明的技巧**\n"
+					"   • 如果参考故事有某个亮点，你可以创造**更多亮点**\n"
+					"   • 如果参考故事有某个不足，你要**完全避免**这个不足\n"
+					"   • 目标是：读者看完你的故事后会说\"这比之前的故事更好！\"\n\n"
+					"记住：参考故事是你的**老师**，但你的任务是**超越老师**！\n\n"
+				)
+			else:
+				rag_guidance = (
+					"\n【📚 参考资料使用指导】\n"
+					"以下是检索到的相关资料，请作为创作参考：\n"
+					"• 可以借鉴资料中的情节、人物设定、叙事技巧\n"
+					"• 但不要直接复制，需要进行改写与整合\n"
+					"• 结合你的创作需求，创造出全新的故事\n\n"
+				)
+		
+		# 构建完整的prompt - 使用列表然后join
+		parts = [
+			"🚨🚨🚨 **强制要求：你必须像在跟最好的朋友分享你的亲身经历一样写这个故事！** 🚨🚨🚨\n\n",
+		]
+		
+		# 如果用户明确指定了开头，优先使用用户指定的开头
+		if explicit_opening:
+			parts.append(
+				f"🎯🎯🎯 **用户明确指定的开头（最高优先级！必须严格遵守！）** 🎯🎯🎯\n"
+				f"用户明确要求：故事必须以以下内容开头：\n"
+				f"【{explicit_opening}】\n\n"
+				f"⚠️ 重要：\n"
+				f"1. 故事的第一句话必须是：{explicit_opening}\n"
+				f"2. 不能添加任何前缀，不能修改这句话\n"
+				f"3. 这是用户明确要求的，优先级高于所有其他规则\n"
+				f"4. 在这句话之后，再按照下面的要求继续写作\n\n"
+			)
+		
+		parts.extend([
+			"🎯 **核心目标**：像**用户亲身经历写出来的**，不是创作出来的小说。\n"
+			"   • 读者要感觉：\"这是他的真实经历，不是编的\"\n"
+			"   • 语言要像：真实的人在回忆和讲述自己的经历\n"
+			"   • 细节要像：只有亲身经历的人才有的细节\n"
+			"   • 情感要像：真实经历过的人才会有的反应\n\n",
+			"⚠️⚠️⚠️ **开头的绝对要求（必须严格遵守！）** ⚠️⚠️⚠️\n",
+		])
+		
+		# 如果用户没有明确指定开头，才应用以下规则
+		if not explicit_opening:
+			parts.append(
+				"1. **开头必须符合故事的时代背景**：\n"
+				"   ⚠️ 重要：开头必须符合故事发生的时代背景！\n"
+				"   ❌ 如果故事发生在70年代、80年代等没有手机的年代，绝对不能用手机相关开头！\n"
+				"   ❌ 如果故事发生在乡村、古代等场景，不能用手机相关开头！\n"
+				"   ✅ 只有现代城市故事才可以用手机相关开头，且不能千篇一律！\n"
+				"2. **开头必须自然、多样、独特，绝对不能千篇一律**：\n"
+				"   ❌ 禁止每次都用同一个开头模式（比如每次都\"手机震动\"、每次都\"手机屏幕亮起\"、每次都\"手机响了\"等）\n"
+				"   ❌ 禁止任何重复的开头模式！每次都要用完全不同的开头方式！\n"
+				"   ✅ 必须在以下方式中随机选择，且每次都要不同：\n"
+				"      • 直入主题：\"我推开宿舍门，看见他坐在我床上。\"、\"我妈给我打电话，说我爸不见了。\"（现代）\n"
+				"      • 真实感受：\"说实话，我现在都还记得那个晚上...\"、\"那时候我还不知道，这个决定会改变我的一生。\"\n"
+				"      • 突然发生：\"我在平安夜当着所有人的面...\"、\"我从来没想过，会在这个地方遇见他。\"\n"
+				"      • 真实对话：\"'你爸不见了。'我妈在电话里哭着说。\"（现代）、\"'你确定要这么做？'他看着我。\"\n"
+				"      • 真实场景：\"我推开宿舍门，看见他坐在我床上，手里拿着我的日记。\"、\"那天下雨，我站在车站等车。\"（现代）、\"我推开那扇木门，看见他坐在院子里。\"（乡村）、\"那是个夏天的傍晚，我坐在院子里乘凉。\"（70年代/乡村）\n"
+				"      • 真实回忆：\"一支520烟，毁了我三年，也救了我一辈子。\"、\"现在想想，那是我人生中最重要的一天。\"\n"
+				"      • 真实状态：\"我刚下班，累得不行，就想着赶紧回家。\"（现代）、\"我那时候还在上学，每天都很忙。\"、\"那时候我还小，每天都要下地干活。\"（70年代/乡村）\n"
+				"      • 时间起点：\"三年前，我还在上大学。\"、\"那是一个普通的下午。\"、\"那是1975年的夏天。\"（70年代）\n"
+				"      • 如果现代城市故事，可以用手机：\"手机响了，是我妈打来的\"、\"我收到一条短信\"（但要自然，且不能每次都一样）\n"
+				"   ⚠️ 写开头前必须：\n"
+				"      • 先判断故事的时代背景（70年代？现代？）\n"
+				"      • 如果70年代/80年代/乡村/古代等，绝对不能用手机相关开头！\n"
+				"      • 如果现代城市故事，可以用手机，但要看最近用过吗？如果用过，换一个！\n"
+				"      • 如果用过其他方式，也要换一个完全不同的！\n\n"
+			)
 		else:
-			context_hint = f"这是故事的第 {section_index + 1} 部分，需要承上启下，保持情节连贯。\n\n前文最后部分：\n{previous_content[-500:] if previous_content else '无'}"
+			parts.append(
+				"⚠️ 注意：用户已明确指定开头，请严格按照用户指定的开头开始，然后自然过渡到后续内容。\n\n"
+			)
 		
-		return (
-			f"请继续创作知乎风格故事的第 {section_index + 1}/{total_sections} 部分。\n\n"
-			f"【本节要求】\n"
-			f"1. **字数**：必须写足 {min_chars}-{max_chars} 字，目标 {target_chars_per_section} 字\n"
-			f"2. **章节主题**：{section_title}\n"
-			f"3. **要点**：\n{section_items if section_items else '  根据标题自由发挥'}\n"
-			f"4. **种类**：{category}\n"
-			f"5. **风格**：{style_part}\n\n"
-			f"【上下文】\n{context_hint}\n\n"
-			f"【写作规范】\n"
-			f"- 语言自然口语化，逻辑清晰，富有生活气息\n"
-			f"- **不要写章节标题**，直接进入正文内容\n"
-			f"- 与前文保持人物、情节、语气的连贯性\n"
-			f"- 段落衔接自然，避免列表化\n"
-			f"- 输出为纯文本，不使用任何 Markdown 标记\n"
-			f"- 如果前文已有内容，本节要自然承接，不要重复前文情节\n\n"
-		f"【特别提醒】\n"
-		f"请写够 {min_chars} 字以上，展开细节描写和情节发展。\n"
-		f"主题/需求：{requirement}\n\n"
-		f"{f'【参考资料】\n{ctx}\n' if ctx else ''}"
-		f"\n【严格禁止】\n"
-		f"❌ 绝对不要输出：\"第X章完成\"、\"✓\"、\"本章字数\"、\"准备生成\"等任何元信息\n"
-		f"❌ 绝对不要输出任何完成提示、字数统计、状态标记\n"
-		f"❌ 只输出故事正文，不要任何标记、符号、完成信息\n"
-		f"✅ 写完后直接结束，不要任何总结或提示\n\n"
-		f"立即开始写故事正文："
-		)
+		parts.extend([
+			"⚠️ **核心原则（必须严格遵守）**：\n",
+			"1. **这是你的亲身经历**：写的时候要问：如果这件事真的发生在我身上，我会怎么跟朋友说？\n",
+			"2. **禁止比喻和文学化**：不能用\"像...一样\"、\"飘得像血\"、\"心跳漏了一拍\"等\n",
+			"3. **必须像亲身经历**：记忆模糊（\"可能是我记错了\"）、真实时间感（\"那时候我记得\"）、真实情感（\"我当时真的懵了\"）、真实细节（\"我那天穿着那件黑T恤\"）\n",
+			"4. **必须口语化**：多用\"说实话\"、\"真的\"、\"可能是我看错了\"（每300字至少用1次）\n",
+			"5. **必须简单直接**：\"头发很长\"而不是\"长发垂到腰际\"，\"我当时真的吓到了\"而不是\"全身血液都凉了\"\n",
+			"6. **对话必须短**：\"这什么情况？\"而不是\"这到底是什么情况？\"\n\n",
+			"═══════════════════════════════════════\n",
+			"🎯 **任务**：用第一人称分享一个真实的故事，像在跟朋友聊天\n",
+			"═══════════════════════════════════════\n\n",
+			"【核心要求】\n",
+			f"1. **字数要求（强制）**：必须写足 {min_chars}-{max_chars} 字，目标 {target} 字。请写够长度，情节充分展开。\n",
+			f"2. **种类**：{category}\n",
+			f"3. **风格倾向**：{style_part}\n",
+			f"4. **创作主题/需求**：{requirement}\n\n",
+			"【核心写作要求】\n",
+			"1. **这是你的亲身经历**（最重要！）：\n",
+			"   ⚠️ 写的时候要问：如果这件事真的发生在我身上，我会怎么跟朋友说？\n",
+			"   ⚠️ 必须像：真实的人在回忆和讲述自己的经历，不是创作故事\n",
+			"   ⚠️ 必须有不完美：记忆模糊的地方、不确定的地方、可能记错的地方\n",
+			"   ⚠️ 必须有真实细节：只有亲身经历的人才有的细节和记忆\n",
+			"   ⚠️ 必须有真实情感：真实经历过的人才会有的反应和感受\n\n",
+			"2. **情节结构优化（必须严格遵守）**：\n",
+			"   📊 **节奏控制**：\n",
+			"   • 每200-300字必须有一个小冲突/转折/新信息/悬念（\"钩子\"）\n",
+			"   • 每500字必须有一个情绪起伏（紧张→舒缓→更紧张，或开心→低落→更开心）\n",
+			"   • 每800字必须有一个情节推进（事情有进展，不是原地踏步）\n",
+			"   • 禁止平铺直叙：不能连续500字都没有任何冲突或转折\n\n",
+			"   🎢 **冲突设计**：\n",
+			"   • 开篇100字内必须有第一个冲突或悬念（立即抓住读者）\n",
+			"   • 每个冲突都要有铺垫：重要转折前必须有2-3个细节铺垫\n",
+			"   • 冲突要有层次：小冲突→中等冲突→大冲突，逐步升级\n",
+			"   • 冲突要有后果：每个冲突都要有结果，不能不了了之\n",
+			"   • 冲突要真实：\"他给我打电话，但我没接\"、\"我到了才发现门锁了\"这种真实的小冲突\n\n",
+			"   🔄 **反转设置**：\n",
+			"   • 每个故事至少要有1-2个反转（读者意想不到的发展）\n",
+			"   • 反转必须有铺垫：前面不经意提到的细节，后面成为关键\n",
+			"   • 反转要合理：既要意外，又要合理（\"原来是...\"）\n",
+			"   • 反转要真实：\"我以为是A，结果是B\"（真实的反转，不是戏剧化的）\n\n",
+			"   📈 **情节推进**：\n",
+			"   • 每段都要推进情节：不能只是描述，要有事情发生\n",
+			"   • 每段都要有新信息：揭示新事实、新人物、新情况\n",
+			"   • 每段都要有情感变化：人物情绪要有变化（平静→紧张→恐惧）\n",
+			"   • 每段都要有行动：人物要有具体行动，不能只是思考\n\n",
+			"   🎯 **悬念设置**：\n",
+			"   • 开篇就要有悬念：\"我从来没想过...\"、\"直到那天我才知道...\"\n",
+			"   • 每300字埋一个悬念：\"我当时还不知道...\"、\"后来我才明白...\"\n",
+			"   • 悬念要逐步揭示：不要一次性全说出来，要慢慢揭示\n",
+			"   • 悬念要有答案：每个悬念都要有答案，不能悬而不决\n\n",
+			"3. **细节层次优化**：\n",
+			"   • **环境细节**：每500字至少3个环境细节（\"那天特别冷\"、\"房间里特别安静\"、\"灯光特别暗\"）\n",
+			"   • **动作细节**：每300字至少2个动作细节（\"我推开门\"、\"他抬头看我\"、\"我拿出手机\"）\n",
+			"   • **情感细节**：每400字至少1个情感细节（\"我当时真的懵了\"、\"我那时候心跳特别快\"）\n",
+			"   • **对话细节**：每500字至少1段对话（推动情节，不是废话）\n",
+			"   • 细节要真实：\"我记得那时候特别安静\"、\"我记得他那时候的表情\"\n\n",
+			"4. **对话优化**：\n",
+			"   • 对话要短：每句话不超过15字（\"你确定？\"、\"我也不知道\"）\n",
+			"   • 对话要有信息量：每句话都要推进情节或揭示人物\n",
+			"   • 对话要有潜台词：\"你觉得呢？\"（暗示不确定）、\"好吧\"（暗示妥协）\n",
+			"   • 对话要有冲突：\"不行\"、\"为什么？\"、\"因为...\"\n",
+			"   • 对话要真实：\"我当时真的不知道该怎么办\"、\"说实话，我也没想好\"\n\n",
+			"5. **情感递进**：\n",
+			"   • 情感要有变化：不能一直保持同一情绪（平静→紧张→恐惧→震惊）\n",
+			"   • 情感要有层次：\"我当时有点紧张\"→\"我那时候心跳特别快\"→\"我当时真的吓到了\"\n",
+			"   • 情感要真实：\"我当时真的懵了\"、\"说实话，我现在想起来还后怕\"\n",
+			"   • 情感要有原因：每个情感变化都要有明确的原因\n\n",
+			"6. **每300字一个钩子**：冲突/反转/新信息/悬念，让读者停不下来\n",
+			"7. **震撼力来自真实**：真实感让读者更投入，恐怖故事更吓人\n\n",
+			f"{category_guidance}\n",
+			f"{outline_part}\n\n",
+			f"{rag_guidance if contexts else ''}",
+			f"{'【参考故事】' if contexts else '【参考资料】'}\n{ctx if ctx else '无特定资料，请根据主题自由创作。'}\n\n",
+			"═══════════════════════════════════════\n",
+			"🚀 **现在开始创作！拿出你最好的状态！**\n",
+			"═══════════════════════════════════════\n\n",
+			"🚨 **最后提醒（必须严格遵守！）**：\n",
+		])
+		
+		# 根据是否有明确开头，添加不同的提醒
+		if explicit_opening:
+			parts.append(
+				f"1. **最高优先级：故事的第一句话必须是：{explicit_opening}（用户明确要求，必须严格遵守！）**\n"
+				"2. 这是你的亲身经历！写的时候要问：如果这件事真的发生在我身上，我会怎么跟朋友说？\n"
+				"3. 写每一句话前都要问：这句话我会说给朋友听吗？如果不会，改！\n"
+				"4. 写完后检查：是否像真实的人在回忆和讲述自己的经历，而不是在创作故事？"
+			)
+		else:
+			parts.append(
+				"1. **开头必须符合故事的时代背景！**如果故事发生在70年代/80年代/乡村/古代等，绝对不能用手机相关开头！\n"
+				"2. **开头绝对不能千篇一律！**每次都要用不同的开头方式，让每个故事的开头都独特自然！\n"
+				"3. 如果现代城市故事，可以用手机开头，但要看最近用过吗？如果用过，换一个！\n"
+				"4. 这是你的亲身经历！写的时候要问：如果这件事真的发生在我身上，我会怎么跟朋友说？\n"
+				"5. 写每一句话前都要问：这句话我会说给朋友听吗？如果不会，改！\n"
+				"6. 写完后检查：是否像真实的人在回忆和讲述自己的经历，而不是在创作故事？"
+			)
+		
+		# 组合完整的prompt
+		return "".join(parts)
 
 
 	

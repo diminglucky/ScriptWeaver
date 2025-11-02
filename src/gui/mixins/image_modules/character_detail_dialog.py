@@ -239,10 +239,20 @@ class CharacterDetailDialog(tk.Toplevel):
         canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
         
-        # 鼠标滚轮支持
+        # 鼠标滚轮支持（只在canvas上绑定，避免窗口关闭后出错）
         def _on_mousewheel(event):
-            canvas.yview_scroll(int(-1*(event.delta/120)), "units")
-        canvas.bind_all("<MouseWheel>", _on_mousewheel)
+            try:
+                # 检查canvas是否还存在
+                if canvas.winfo_exists():
+                    canvas.yview_scroll(int(-1*(event.delta/120)), "units")
+            except:
+                pass
+        
+        # 只在canvas区域绑定，不使用bind_all
+        canvas.bind("<MouseWheel>", _on_mousewheel)
+        # 鼠标进入canvas时激活滚动
+        canvas.bind("<Enter>", lambda e: canvas.focus_set())
+        canvas.bind("<Leave>", lambda e: self.focus_set())
         
     def _create_outfit_tab(self):
         """创建服装造型标签页"""
@@ -410,17 +420,62 @@ class CharacterDetailDialog(tk.Toplevel):
     
     def _on_smart_fill(self):
         """智能填写 - 根据故事内容自动分析人物特征"""
+        print(f"\n{'='*60}")
+        print(f"🤖 智能填写功能被触发 - 人物：{self.character_name}")
+        print(f"{'='*60}")
+        
         # 获取故事内容
         story_content = ""
         
-        # 尝试从父窗口获取故事内容
-        if hasattr(self.parent, 'output'):
-            story_content = self.parent.output.get("1.0", tk.END).strip()
-        elif hasattr(self.parent, 'story_text'):
-            story_content = self.parent.story_text.get("1.0", tk.END).strip()
+        # 方法1：尝试从项目文件加载
+        print("📂 尝试方法1：从项目文件加载")
+        if hasattr(self.parent, 'current_project') and self.parent.current_project:
+            try:
+                story_file = self.parent.current_project.project_dir / "story.txt"
+                if story_file.exists():
+                    story_content = story_file.read_text(encoding='utf-8').strip()
+                    print(f"✅ 从项目文件加载故事内容: {len(story_content)} 字符")
+            except Exception as e:
+                print(f"⚠️ 从项目文件加载失败: {e}")
+        else:
+            if not hasattr(self.parent, 'current_project'):
+                print("⚠️ parent 没有 current_project 属性")
+            elif not self.parent.current_project:
+                print("⚠️ current_project 为 None")
+        
+        # 方法2：尝试从故事生成器的输出框获取
+        print("📂 尝试方法2：从故事输出框获取")
+        if not story_content and hasattr(self.parent, 'output'):
+            try:
+                story_content = self.parent.output.get("1.0", tk.END).strip()
+                print(f"✅ 从故事输出框获取内容: {len(story_content)} 字符")
+            except Exception as e:
+                print(f"⚠️ 从输出框获取失败: {e}")
+        else:
+            print("⚠️ parent 没有 output 属性")
+        
+        # 方法3：尝试从其他可能的文本框获取
+        print("📂 尝试方法3：从story_text获取")
+        if not story_content and hasattr(self.parent, 'story_text'):
+            try:
+                story_content = self.parent.story_text.get("1.0", tk.END).strip()
+                print(f"✅ 从story_text获取内容: {len(story_content)} 字符")
+            except Exception as e:
+                print(f"⚠️ 从story_text获取失败: {e}")
+        else:
+            print("⚠️ parent 没有 story_text 属性")
+        
+        print(f"\n📊 最终获取的故事内容长度: {len(story_content)} 字符")
         
         if not story_content or len(story_content) < 50:
-            messagebox.showwarning("提示", "未找到故事内容，请先在故事生成页面创建故事")
+            print(f"❌ 故事内容不足，无法继续")
+            print(f"   - 内容长度: {len(story_content)}")
+            print(f"   - 需要至少: 50 字符")
+            messagebox.showwarning("提示", 
+                "未找到故事内容！\n\n"
+                "请确保：\n"
+                "1. 已在故事生成页面创建故事\n"
+                "2. 故事已保存到项目中")
             return
         
         # 显示进度窗口
@@ -459,10 +514,15 @@ class CharacterDetailDialog(tk.Toplevel):
                     f"已智能填写 {self.character_name} 的基本信息！\n\n请检查并调整生成的内容。"))
                 
             except Exception as e:
+                error_msg = str(e)
                 self.after(0, lambda: progress_bar.stop())
                 self.after(0, lambda: progress_window.destroy())
-                self.after(0, lambda: messagebox.showerror("错误", 
-                    f"分析失败：{str(e)}\n\n请确保已在故事生成页面配置API"))
+                self.after(0, lambda msg=error_msg: messagebox.showerror("错误", 
+                    f"分析失败：{msg}\n\n"
+                    f"请检查：\n"
+                    f"1. 是否在【配置设置】页面配置了 DeepSeek API\n"
+                    f"2. API Key 是否有效\n"
+                    f"3. 网络连接是否正常"))
                 import traceback
                 traceback.print_exc()
         
@@ -474,14 +534,25 @@ class CharacterDetailDialog(tk.Toplevel):
         """使用AI分析故事中的人物特征"""
         # 检查是否有API配置
         if not hasattr(self.parent, 'api_key') or not self.parent.api_key.get():
-            raise Exception("请先在故事生成页面配置API")
+            raise Exception("请先在【配置设置】页面配置 DeepSeek API")
+        
+        print(f"🔍 开始分析人物【{character_name}】特征...")
+        print(f"📝 故事内容长度: {len(content)} 字符")
         
         from src.clients.deepseek_client import DeepSeekClient
         
+        # 获取API配置
+        api_key = self.parent.api_key.get()
+        base_url = self.parent.base_url.get() if hasattr(self.parent, 'base_url') and self.parent.base_url.get() else "https://api.deepseek.com/v1"
+        model = self.parent.model.get() if hasattr(self.parent, 'model') and self.parent.model.get() else "deepseek-chat"
+        
+        print(f"🔗 使用模型: {model}")
+        print(f"🔗 API地址: {base_url}")
+        
         client = DeepSeekClient(
-            api_key=self.parent.api_key.get(),
-            base_url=self.parent.base_url.get(),
-            model=self.parent.model.get()
+            api_key=api_key,
+            base_url=base_url,
+            model=model
         )
         
         # 构建分析提示词
@@ -563,10 +634,14 @@ class CharacterDetailDialog(tk.Toplevel):
 }}
 """
         
+        print(f"📤 正在调用AI分析...")
         response = client.chat([
-            {"role": "system", "content": "你是专业的文学分析助手，擅长从文本中提取人物特征。"},
+            {"role": "system", "content": "你是专业的文学分析助手，擅长从文本中提取人物特征。你必须严格按照JSON格式输出。"},
             {"role": "user", "content": prompt}
         ], temperature=0.3)
+        
+        print(f"📥 AI响应长度: {len(response)} 字符")
+        print(f"📥 AI响应内容预览: {response[:200]}...")
         
         # 解析JSON响应
         import json
@@ -575,8 +650,13 @@ class CharacterDetailDialog(tk.Toplevel):
         # 提取JSON部分
         json_match = re.search(r'\{[\s\S]*\}', response)
         if json_match:
-            character_data = json.loads(json_match.group())
+            json_str = json_match.group()
+            print(f"✅ 找到JSON数据，长度: {len(json_str)} 字符")
+            character_data = json.loads(json_str)
+            print(f"✅ 成功解析JSON，包含 {len(character_data)} 个字段")
+            print(f"📊 解析的字段: {list(character_data.keys())}")
         else:
+            print(f"⚠️ 未找到JSON格式的响应")
             # 如果没有找到JSON，创建默认结构
             character_data = {}
         
@@ -585,77 +665,119 @@ class CharacterDetailDialog(tk.Toplevel):
     def _apply_analyzed_info(self, character_info: Dict):
         """将分析的信息应用到UI"""
         if not character_info:
+            print("⚠️ 没有人物信息可应用")
             return
+        
+        print(f"🎨 开始应用人物信息，包含 {len(character_info)} 个字段")
+        applied_count = 0
         
         # 基本信息
         if character_info.get("age"):
             self.age_var.set(character_info["age"])
+            print(f"✅ 年龄: {character_info['age']}")
+            applied_count += 1
         
         if character_info.get("gender"):
             self.gender_var.set(character_info["gender"])
+            print(f"✅ 性别: {character_info['gender']}")
+            applied_count += 1
         
         if character_info.get("occupation"):
             self.occupation_var.set(character_info["occupation"])
+            print(f"✅ 职业: {character_info['occupation']}")
+            applied_count += 1
         
         if character_info.get("personality"):
             self.personality_text.delete("1.0", tk.END)
             self.personality_text.insert("1.0", character_info["personality"])
+            print(f"✅ 性格: {character_info['personality'][:50]}...")
+            applied_count += 1
         
         # 外观特征
         if character_info.get("face_shape"):
             self.face_shape_var.set(character_info["face_shape"])
+            print(f"✅ 脸型: {character_info['face_shape']}")
+            applied_count += 1
         
         if character_info.get("skin_tone"):
             self.skin_tone_var.set(character_info["skin_tone"])
+            print(f"✅ 肤色: {character_info['skin_tone']}")
+            applied_count += 1
         
         if character_info.get("eyes"):
             self.eyes_var.set(character_info["eyes"])
+            print(f"✅ 眼睛: {character_info['eyes']}")
+            applied_count += 1
         
         if character_info.get("eyebrows"):
             self.eyebrows_var.set(character_info["eyebrows"])
+            applied_count += 1
         
         if character_info.get("nose"):
             self.nose_var.set(character_info["nose"])
+            applied_count += 1
         
         if character_info.get("mouth"):
             self.mouth_var.set(character_info["mouth"])
+            applied_count += 1
         
         # 发型
         if character_info.get("hair_color"):
             self.hair_color_var.set(character_info["hair_color"])
+            print(f"✅ 发色: {character_info['hair_color']}")
+            applied_count += 1
         
         if character_info.get("hair_length"):
             self.hair_length_var.set(character_info["hair_length"])
+            print(f"✅ 发长: {character_info['hair_length']}")
+            applied_count += 1
         
         if character_info.get("hair_style"):
             self.hair_style_var.set(character_info["hair_style"])
+            print(f"✅ 发型: {character_info['hair_style']}")
+            applied_count += 1
         
         if character_info.get("height"):
             self.height_var.set(character_info["height"])
+            print(f"✅ 身高: {character_info['height']}")
+            applied_count += 1
         
         if character_info.get("body_type"):
             self.body_type_var.set(character_info["body_type"])
+            print(f"✅ 体型: {character_info['body_type']}")
+            applied_count += 1
         
         # 服装
         if character_info.get("default_outfit"):
             self.outfit_style_var.set(character_info["default_outfit"])
+            print(f"✅ 默认服装: {character_info['default_outfit']}")
+            applied_count += 1
         
         if character_info.get("outfit_description"):
             self.outfit_desc_text.delete("1.0", tk.END)
             self.outfit_desc_text.insert("1.0", character_info["outfit_description"])
+            print(f"✅ 服装描述: {character_info['outfit_description'][:50]}...")
+            applied_count += 1
         
         if character_info.get("accessories"):
             self.accessories_text.delete("1.0", tk.END)
             self.accessories_text.insert("1.0", character_info["accessories"])
+            print(f"✅ 配饰: {character_info['accessories'][:50]}...")
+            applied_count += 1
         
         # 其他特征
         if character_info.get("typical_expression"):
             self.default_expression_var.set(character_info["typical_expression"])
+            print(f"✅ 典型表情: {character_info['typical_expression']}")
+            applied_count += 1
         
         if character_info.get("mannerisms"):
             self.actions_text.delete("1.0", tk.END)
             self.actions_text.insert("1.0", character_info["mannerisms"])
+            print(f"✅ 行为习惯: {character_info['mannerisms'][:50]}...")
+            applied_count += 1
         
-        print(f"✅ 已应用智能分析结果到UI")
+        print(f"✅ 已应用智能分析结果到UI，共填充 {applied_count} 个字段")
+        print(f"📋 填充的字段: {[k for k in character_info.keys() if character_info.get(k)]}")
 
 

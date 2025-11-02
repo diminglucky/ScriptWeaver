@@ -141,6 +141,7 @@ class UltraModernApp(tk.Tk, ProjectMixin, StoryMixin, ImageMixin, KbMixin, Confi
         self.style = tk.StringVar(value="情感起伏/反转/细节描写/有画面感/口语化")
         self.target_chars = tk.IntVar(value=1800)
         self.model_only = tk.BooleanVar(value=True)
+        self.use_project_stories = tk.BooleanVar(value=False)  # 是否使用项目故事作为知识库
         
         # 故事内容
         self.current_outline: str | None = None

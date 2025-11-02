@@ -9,25 +9,27 @@ import threading
 try:
     # 尝试相对导入（作为包使用时）
     from .models import Shot, Character, DirectorProject
-    from .services import (
+    from src.services.director import (
         PromptBuilderService,
         ImageGeneratorService,
         ShotManagerService,
         CharacterService
     )
-    from .config import ConfigManager, APIConfig
-    from .utils import ExceptionHandler, safe_method
+    from src.core.config_manager import ConfigManager, APIConfig, DirectorConfig
+    from src.core.exception_handler import ExceptionHandler, safe_method
+    from src.core.logging_config import get_logger
 except ImportError:
     # 绝对导入（独立运行时）
-    from models import Shot, Character, DirectorProject
-    from services import (
+    from src.gui.mixins.director_modules.models import Shot, Character, DirectorProject
+    from src.services.director import (
         PromptBuilderService,
         ImageGeneratorService,
         ShotManagerService,
         CharacterService
     )
-    from config import ConfigManager, APIConfig
-    from utils import ExceptionHandler, safe_method
+    from src.core.config_manager import ConfigManager, APIConfig, DirectorConfig
+    from src.core.exception_handler import ExceptionHandler, safe_method
+    from src.core.logging_config import get_logger
 
 
 class DirectorController:
@@ -54,8 +56,8 @@ class DirectorController:
         # 当前项目
         self.current_project: Optional[DirectorProject] = None
         
-        # 异常处理
-        self.logger = ExceptionHandler.get_logger(__name__)
+        # 异常处理和日志
+        self.logger = get_logger(__name__)
     
     # === 项目管理 ===
     

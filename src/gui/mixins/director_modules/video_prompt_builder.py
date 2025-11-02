@@ -17,6 +17,9 @@ class VideoPromptBuilderMixin:
         # 构建即梦AI格式的提示词
         prompts = []
         for shot in self.current_shots:
+            # 跳过非字典元素
+            if not isinstance(shot, dict):
+                continue
             prompt = self._build_jimeng_prompt_for_shot(shot)
             prompts.append(prompt)
         

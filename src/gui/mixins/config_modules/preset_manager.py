@@ -98,11 +98,13 @@ class PresetManagerMixin:
 	
 	def _save_custom_preset(self) -> None:
 		"""保存当前配置为自定义预设"""
-		from tkinter import simpledialog
-		preset_name = simpledialog.askstring(
+		from ...helpers.dialogs import show_input_dialog
+		preset_name = show_input_dialog(
+			self,
 			"保存自定义预设",
-			"请输入预设名称（例如：我的DeepSeek、公司API等）：",
-			parent=self
+			"请输入预设名称：\n\n（例如：我的DeepSeek、公司API等）",
+			width=450,
+			height=200
 		)
 		
 		if not preset_name:
@@ -215,11 +217,13 @@ class PresetManagerMixin:
 	
 	def _save_custom_image_preset(self) -> None:
 		"""保存当前图片API配置为自定义预设"""
-		from tkinter import simpledialog
-		preset_name = simpledialog.askstring(
+		from ...helpers.dialogs import show_input_dialog
+		preset_name = show_input_dialog(
+			self,
 			"保存自定义图片API预设",
-			"请输入预设名称（例如：我的DALL-E、公司图片API等）：",
-			parent=self
+			"请输入预设名称：\n\n（例如：我的DALL-E、公司图片API等）",
+			width=450,
+			height=200
 		)
 		
 		if not preset_name:

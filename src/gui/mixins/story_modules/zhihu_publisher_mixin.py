@@ -78,7 +78,7 @@ class ZhihuPublisherMixin:
         # 说明（自适应剩余空间）
         ttk.Label(
             publish_frame,
-            text="💡 首次使用需在浏览器登录，登录状态会保存",
+            text="💡 点击发布后可在预览窗口选择输入模式（流式/粘贴）",
             font=("Microsoft YaHei", 8),
             foreground="#666666"
         ).pack(side="left", fill="x", expand=False)
@@ -137,46 +137,49 @@ class ZhihuPublisherMixin:
                 summary = story_text[:800]
                 
                 # 系统提示词 - 设定AI角色
-                system_prompt = """你是知乎创作者，擅长写简洁、直接的标题。
-你的标题简短、明了，一句话说清楚故事主题。
-你相信好的标题应该简单、清晰，不啰嗦。"""
+                system_prompt = """你是知乎创作者，擅长写简洁、精准的标题。
+你的标题简单但能直通故事要点或精髓，一句话抓住故事的核心。
+你相信好的标题应该简单、精准，一句话说清楚故事最核心的点。"""
                 
                 # 用户提示词 - 简洁明了
-                user_prompt = f"""为以下故事生成一个简短、清晰的标题。
+                user_prompt = f"""为以下故事生成一个简短、精准的标题。
 
-要求：
-1. **简短** - 10-15字以内
-2. **直接** - 一句话说清楚故事主题
-3. **不啰嗦** - 不要复杂的修辞和长句
-4. **真实** - 不夸张、不煽情
+核心要求：
+1. **简单但直通要点** - 10-15字以内，但要抓住故事的核心/精髓
+2. **直通故事要点** - 不要流于表面，要体现故事最核心的点或精髓
+3. **精准** - 一句话说清楚故事主题，不要啰嗦
+4. **真实** - 不夸张、不煽情，贴合故事内容
 
-✅ 推荐风格（简短直接）：
-"我的校园往事"
-"毕业三年的变化"
+✅ 好的标题示例（简单但直通要点）：
+"一支520烟，毁了我三年"
+"我妈给我打电话，说我爸不见了"
+"我在平安夜对他说：让我追你"
+"毕业三年，我变了"
 "那个同学后来怎样了"
-"关于一段职场经历"
-"说说我的求职路"
-"记录这几年的成长"
+"我差点毁掉整个大学"
 
-❌ 避免风格（太长太啰嗦）：
-"从班级角落的受气包到职场精英的完整蜕变之路"  ← 太长
-"那个被全校孤立的女生，毕业十年后回母校时的故事"  ← 太啰嗦
-"震惊！逆袭打脸复仇的爽文情节"  ← 太夸张
+✅ 要点分析：
+- "一支520烟" - 简单，但直通故事核心（烟是故事的起点和关键）
+- "我爸不见了" - 直入主题，直接抓住故事要点
+- "让我追你" - 简单直接，抓住故事的核心冲突
+- "我变了" - 简单，但直通故事精髓（变化是核心）
 
-参考示例（10-15字）：
-• "毕业后的一些改变"
-• "和当年同学的重逢"
-• "我的求职经历"
-• "那段校园时光"
-• "关于亲情的故事"
-• "说说这几年"
-• "一段往事"
-• "后来的我们"
+❌ 不好的标题（流于表面或太啰嗦）：
+"从班级角落的受气包到职场精英的完整蜕变之路"  ← 太长太啰嗦
+"那个被全校孤立的女生，毕业十年后回母校时的故事"  ← 太啰嗦，没有直通要点
+"震惊！逆袭打脸复仇的爽文情节"  ← 太夸张，不是真实故事
+"我的校园往事"  ← 太泛泛，没有抓住故事要点
+"关于一段职场经历"  ← 太表面，没有直通精髓
+
+💡 **标题生成思路**：
+1. 找出故事最核心的点是什么？（是某个决定？某个转折？某个真相？）
+2. 这个核心点用最简单的话怎么说？
+3. 确保标题直通这个故事的精髓，而不是泛泛的描述
 
 故事内容：
 {summary}
 
-请生成一个10-15字的简短标题："""
+请生成一个10-15字的标题，要求简单但能直通故事要点或精髓："""
                 
                 messages = [
                     {"role": "system", "content": system_prompt},
@@ -327,17 +330,27 @@ class ZhihuPublisherMixin:
         )
         content_text.pack(fill="both", expand=True)
         content_text.insert("1.0", content)
-        # 不设置为只读，允许编辑
         
-        # 编辑提示
-        edit_hint = ttk.Frame(content_frame)
-        edit_hint.pack(fill="x", pady=(5, 0))
+        # 输入模式选择区域
+        mode_frame = ttk.Frame(scrollable_main)
+        mode_frame.pack(fill="x", padx=20, pady=10)
         
-        ttk.Label(
-            edit_hint,
-            text="✏️ 提示：内容可以直接编辑，删除不需要的部分后再发布",
-            font=("Microsoft YaHei", 8),
-            foreground="#0066cc"
+        # 输入模式变量
+        input_mode_var = tk.StringVar(value="stream")
+        
+        # 两个单选按钮并排
+        ttk.Radiobutton(
+            mode_frame,
+            text="⚡ 快速粘贴（推荐）",
+            variable=input_mode_var,
+            value="paste"
+        ).pack(side="left", padx=(0, 20))
+        
+        ttk.Radiobutton(
+            mode_frame,
+            text="✍️ 流式输出",
+            variable=input_mode_var,
+            value="stream"
         ).pack(side="left")
         
         # 按钮区域
@@ -362,6 +375,7 @@ class ZhihuPublisherMixin:
             # 更新标题和内容（通过一个临时变量传递）
             self.zhihu_title_var.set(edited_title)
             self._zhihu_edited_content = edited_content  # 保存编辑后的内容
+            self._zhihu_input_mode = input_mode_var.get()  # 保存选择的输入模式
             
             publish_confirmed[0] = True
             main_canvas.unbind_all("<MouseWheel>")  # 解绑滚轮事件
@@ -395,10 +409,15 @@ class ZhihuPublisherMixin:
         if not publish_confirmed[0]:
             return
         
-        # 获取编辑后的内容
+        # 获取编辑后的内容和输入模式
         if hasattr(self, '_zhihu_edited_content'):
             content = self._zhihu_edited_content
             delattr(self, '_zhihu_edited_content')  # 清理临时属性
+        
+        # 获取输入模式
+        input_mode = getattr(self, '_zhihu_input_mode', 'paste')
+        if hasattr(self, '_zhihu_input_mode'):
+            delattr(self, '_zhihu_input_mode')  # 清理临时属性
         
         # 检查是否安装了playwright
         try:
@@ -428,6 +447,7 @@ class ZhihuPublisherMixin:
                 from src.services.zhihu_publisher import publish_to_zhihu_sync
                 
                 headless = self.zhihu_headless_var.get()
+                # input_mode 已经在外部作用域中定义好了
                 
                 # 进度回调
                 def progress_callback(message: str):
@@ -439,6 +459,7 @@ class ZhihuPublisherMixin:
                     title=title,
                     content=content,
                     headless=headless,
+                    input_mode=input_mode,  # 传递输入模式（从预览窗口获取）
                     progress_callback=progress_callback
                 )
                 

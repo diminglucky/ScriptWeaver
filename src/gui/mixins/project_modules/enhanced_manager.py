@@ -69,9 +69,11 @@ class EnhancedProjectManager:
                         "target_chars": self.target_chars.get() if hasattr(self, 'target_chars') else 1800
                     }
             
-            # 2. 保存章节信息
+            # 2. 保存章节信息和目录
             if hasattr(self, 'parsed_sections') and self.parsed_sections:
                 project_data["data"]["sections"] = self.parsed_sections
+            if hasattr(self, 'current_outline') and self.current_outline:
+                project_data["data"]["current_outline"] = self.current_outline
             
             # 3. 保存导演页面数据
             director_data = {}
@@ -282,9 +284,14 @@ class EnhancedProjectManager:
                 print("[DEBUG] 调用 _load_director_data_from_project")
                 self._load_director_data_from_project()
             
-            # 3. 加载章节信息
+            # 3. 加载章节信息和目录
             if "sections" in data and hasattr(self, 'parsed_sections'):
                 self.parsed_sections = data["sections"]
+            if "current_outline" in data and hasattr(self, 'current_outline'):
+                self.current_outline = data["current_outline"]
+                # 如果有章节选择器，更新它
+                if hasattr(self, '_update_section_selector'):
+                    self._update_section_selector()
             
             # 3. 加载导演数据
             if "director" in data:
