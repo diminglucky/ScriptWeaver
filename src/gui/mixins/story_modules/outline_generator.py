@@ -10,6 +10,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 from src.clients.deepseek_client import DeepSeekClient
+from src.clients.client_factory import create_chat_client
 # 延迟导入：只在使用时才导入，避免启动时加载 sentence_transformers (3.8秒)
 # from src.kb.ingest import KnowledgeBaseIngestor, IngestConfig
 # from src.kb.search import KnowledgeBaseSearcher, SearchConfig
@@ -75,7 +76,8 @@ class OutlineGeneratorMixin:
 				# 使用选中的API配置
 				if hasattr(self, 'update_header_status'):
 					self.update_header_status("AI生成目录中...", "📝")
-				client = DeepSeekClient(
+				client = create_chat_client(
+					api_name=selected_api,
 					api_key=api_key,
 					base_url=_sanitize(api_config.get("base_url", "")),
 					model=_sanitize(api_config.get("model", "")),
@@ -220,7 +222,8 @@ class OutlineGeneratorMixin:
 				# 更新顶部状态栏
 				if hasattr(self, 'update_header_status'):
 					self.update_header_status("AI生成目录中...", "📝")
-				client = DeepSeekClient(
+				client = create_chat_client(
+					api_name=selected_api,
 					api_key=api_key,
 					base_url=_sanitize(api_config.get("base_url", "")),
 					model=_sanitize(api_config.get("model", "")),
@@ -437,7 +440,8 @@ class OutlineGeneratorMixin:
 				if hasattr(self, 'update_header_status'):
 					self.after(0, lambda msg=header_msg: self.update_header_status(msg, "✍️"))
 				
-				client = DeepSeekClient(
+				client = create_chat_client(
+					api_name=selected_api,
 					api_key=api_key,
 					base_url=_sanitize(api_config.get("base_url", "")),
 					model=_sanitize(api_config.get("model", "")),
@@ -543,7 +547,8 @@ class OutlineGeneratorMixin:
 				if hasattr(self, 'update_header_status'):
 					self.after(0, lambda msg=header_msg: self.update_header_status(msg, "✍️"))
 				
-				client = DeepSeekClient(
+				client = create_chat_client(
+					api_name=selected_api,
 					api_key=api_key,
 					base_url=_sanitize(api_config.get("base_url", "")),
 					model=_sanitize(api_config.get("model", "")),
@@ -844,7 +849,8 @@ class OutlineGeneratorMixin:
 					contexts = [c for c, _s, _m in results]
 					
 					# 使用选中的API
-					client = DeepSeekClient(
+					client = create_chat_client(
+						api_name=selected_api,
 						api_key=api_key,
 						base_url=_sanitize(api_config.get("base_url", "")),
 						model=_sanitize(api_config.get("model", "")),
@@ -891,7 +897,8 @@ class OutlineGeneratorMixin:
 				selected_api = self.section_gen_api.get() if hasattr(self, 'section_gen_api') else "DeepSeek"
 				api_config = self.api_presets[selected_api]
 				
-				client = DeepSeekClient(
+				client = create_chat_client(
+					api_name=selected_api,
 					api_key=_sanitize(api_config.get("key", "")),
 					base_url=_sanitize(api_config.get("base_url", "")),
 					model=_sanitize(api_config.get("model", "")),

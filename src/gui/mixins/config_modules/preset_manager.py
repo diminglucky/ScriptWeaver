@@ -15,17 +15,17 @@ class PresetManagerMixin:
 		if preset_name in self.api_presets:
 			preset = self.api_presets[preset_name]
 			
-			# 填充Base URL（如果预设有配置或已保存）
-			if preset.get("base_url"):
-				self.base_url.set(preset["base_url"])
+			# 填充Base URL（使用预设中的值，如果为空则显示为空）
+			base_url_value = preset.get("base_url", "")
+			self.base_url.set(base_url_value)
 			
-			# 填充Model（如果预设有配置或已保存）
-			if preset.get("model"):
-				self.model.set(preset["model"])
+			# 填充Model（使用预设中的值）
+			model_value = preset.get("model", "")
+			self.model.set(model_value)
 			
-			# 填充API Key（如果已保存）
-			if preset.get("key"):
-				self.api_key.set(preset["key"])
+			# 填充API Key（如果已保存则填充，否则显示为空）
+			api_key_value = preset.get("key", "")
+			self.api_key.set(api_key_value)
 			
 			if hasattr(self, 'status'):
 				self.status.set(f"已选择 {preset_name} API预设")
@@ -42,6 +42,15 @@ class PresetManagerMixin:
 			if hasattr(self, 'img_api_type'):
 				self.img_api_type.set(provider)
 				print(f"🔧 已设置图片API类型为: {provider} (预设: {preset_name})")
+			
+			# 显示/隐藏SD专用配置区域
+			if hasattr(self, 'grp_sd_params'):
+				if provider == "sd":
+					# 显示SD配置区域（插入到"辅助功能API配置"之前）
+					self.grp_sd_params.pack(fill="x", padx=15, pady=8)
+					print("✅ 已显示 Stable Diffusion 专用配置")
+				else:
+					self.grp_sd_params.pack_forget()
 			
 			# 填充Base URL（如果预设有配置或已保存）
 			if preset.get("base_url"):

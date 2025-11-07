@@ -331,16 +331,20 @@ class EnhancedProjectManager:
                 img_data = data["image_generation"]
                 
                 # 加载人物列表（优先从characters_info.json加载）
+                # 注意：优先从characters_info.json加载，因为这是最完整的数据源
                 if hasattr(self, '_load_project_characters'):
                     # 使用专门的方法加载人物信息（从characters_info.json）
+                    # 这个方法会清空列表然后重新加载，所以只调用一次
                     self._load_project_characters()
                 elif "characters" in img_data and hasattr(self, 'character_list'):
-                    # 回退到project.json中的人物数据
-                    self.character_list = img_data["characters"]
-                    if hasattr(self, '_update_character_listbox'):
-                        self._update_character_listbox()
-                    elif hasattr(self, '_update_character_display'):
-                        self._update_character_display()
+                    # 回退到project.json中的人物数据（如果characters_info.json不存在）
+                    # 只在character_list为空时才加载，避免覆盖已有的数据
+                    if not self.character_list:
+                        self.character_list = img_data["characters"]
+                        if hasattr(self, '_update_character_listbox'):
+                            self._update_character_listbox()
+                        elif hasattr(self, '_update_character_display'):
+                            self._update_character_display()
                 
                 # 加载分镜描述
                 if "shot_descriptions" in img_data and hasattr(self, 'img_txt_shots'):
@@ -454,12 +458,15 @@ class EnhancedProjectManager:
             self.shots_list.config(state="disabled")
     
     def _update_character_display(self):
-        """更新人物显示（只显示名字）"""
-        if hasattr(self, 'char_listbox') and hasattr(self, 'character_list'):
-            self.char_listbox.delete(0, tk.END)
-            for char in self.character_list:
-                # 只显示人物名字，不显示描述
-                self.char_listbox.insert(tk.END, char['name'])
+        """更新人物显示（下拉框）"""
+        if hasattr(self, 'char_combobox') and hasattr(self, 'character_list'):
+            # 收集所有人物名字
+            names = [char['name'] for char in self.character_list]
+            # 更新Combobox的值列表
+            self.char_combobox['values'] = names
+            # 如果有人物且当前没有选中，默认选中第一个
+            if names and self.char_combobox.current() < 0:
+                self.char_combobox.current(0)
     
     def enable_auto_save(self, interval_minutes: int = 5):
         """启用自动保存"""

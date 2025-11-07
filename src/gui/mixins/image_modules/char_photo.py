@@ -51,12 +51,11 @@ class CharacterPhotoMixin:
 	
 	def _on_view_character_gallery(self) -> None:
 		"""查看人物图片库"""
-		selection = self.char_listbox.curselection()
-		if not selection:
-			messagebox.showwarning("提示", "请先从列表中选择一个人物！")
+		# 获取选中的人物索引（兼容Combobox）
+		index = self.char_combobox.current()
+		if index < 0:
+			messagebox.showwarning("提示", "请先从下拉框中选择一个人物！")
 			return
-		
-		index = selection[0]
 		character = self.character_list[index]
 		character_name = character["name"]
 		
@@ -74,11 +73,28 @@ class CharacterPhotoMixin:
 		
 		# 查找该人物的所有图片
 		import re
+		# 清理人物名称，用于文件名匹配（与保存时保持一致）
 		clean_name = re.sub(r'[^\w\s\u4e00-\u9fff-]', '', character_name)
+		clean_name = clean_name.strip()
+		
+		# 查找所有匹配的图片文件（文件名以人物名开头）
 		char_images = list(char_dir.glob(f"{clean_name}*.png"))
 		
+		# 如果没找到，尝试更宽松的匹配（可能文件名中包含其他字符）
 		if not char_images:
-			messagebox.showinfo("提示", f"还没有生成\"{character_name}\"的照片")
+			# 尝试查找包含人物名的所有png文件
+			all_images = list(char_dir.glob("*.png"))
+			char_images = [img for img in all_images if clean_name in img.stem]
+		
+		# 记录日志
+		logger.info(f"查找人物\"{character_name}\"的照片：")
+		logger.info(f"  清理后的人物名：{clean_name}")
+		logger.info(f"  找到 {len(char_images)} 张照片")
+		if char_images:
+			logger.info(f"  照片列表：{[img.name for img in char_images[:5]]}")
+		
+		if not char_images:
+			messagebox.showinfo("提示", f"还没有生成\"{character_name}\"的照片\n\n已查找目录：{char_dir}\n匹配模式：{clean_name}*.png")
 			return
 		
 		# 创建图片库窗口
@@ -113,7 +129,12 @@ class CharacterPhotoMixin:
 		
 		def refresh_gallery():
 			"""刷新图片库显示"""
+			# 使用相同的匹配逻辑
 			updated_images = list(char_dir.glob(f"{clean_name}*.png"))
+			if not updated_images:
+				# 尝试更宽松的匹配
+				all_images = list(char_dir.glob("*.png"))
+				updated_images = [img for img in all_images if clean_name in img.stem]
 			
 			for widget in title_frame.winfo_children():
 				if isinstance(widget, ttk.Label) and "共" in widget.cget("text"):
@@ -166,14 +187,36 @@ class CharacterPhotoMixin:
 					
 					# 删除按钮
 					def delete_image():
-						if messagebox.askyesno("确认", f"确定要删除图片\n{img_path.name}吗？"):
+						if messagebox.askyesno("确认", f"确定要删除图片\n{img_path.name}吗？", parent=gallery_window):
 							try:
 								img_path.unlink()
 								logger.info(f"已删除图片: {img_path}")
+								
+								# 确保图片库窗口保持在最上层
+								gallery_window.lift()
+								gallery_window.focus_force()
+								gallery_window.attributes('-topmost', True)
+								
 								refresh_gallery()
+								
+								# 移除topmost属性，恢复正常窗口行为
+								gallery_window.attributes('-topmost', False)
+								gallery_window.lift()
+								gallery_window.focus_force()
 							except Exception as e:
 								logger.error(f"删除图片失败: {e}")
-								messagebox.showerror("错误", f"删除失败: {e}")
+								
+								# 确保窗口在最上层
+								gallery_window.lift()
+								gallery_window.focus_force()
+								gallery_window.attributes('-topmost', True)
+								
+								messagebox.showerror("错误", f"删除失败: {e}", parent=gallery_window)
+								
+								# 移除topmost属性
+								gallery_window.attributes('-topmost', False)
+								gallery_window.lift()
+								gallery_window.focus_force()
 					
 					ttk.Button(card, text="🗑️ 删除", command=delete_image, width=10).pack(pady=5)
 					
@@ -199,11 +242,11 @@ class CharacterPhotoMixin:
 			messagebox.showwarning("提示", "没有可保存的照片")
 			return
 		
-		selection = self.char_listbox.curselection()
-		if not selection:
+		# 获取选中的人物索引（兼容Combobox）
+		index = self.char_combobox.current()
+		if index < 0:
 			return
 		
-		index = selection[0]
 		character = self.character_list[index]
 		character_name = character["name"]
 		

@@ -26,13 +26,12 @@ class CharacterPhotoHandler:
         Args:
             mixin_instance: CharacterPhotoMixin实例
         """
-        selection = mixin_instance.char_listbox.curselection()
+        # 获取选中的人物索引（兼容Combobox）
+        index = mixin_instance.char_combobox.current()
         
-        if not selection:
-            messagebox.showwarning("提示", "请先从列表中选择一个人物！")
+        if index < 0:
+            messagebox.showwarning("提示", "请先从下拉框中选择一个人物！")
             return
-        
-        index = selection[0]
         
         # 边界检查
         if index < 0 or index >= len(mixin_instance.character_list):
@@ -46,11 +45,34 @@ class CharacterPhotoHandler:
             messagebox.showerror("错误", "人物信息不完整")
             return
         
+        # 获取人物描述（优先从character字典获取，因为文本框是DISABLED状态）
         description = character.get("description", "")
         
+        # 如果字典中没有描述，尝试从UI获取（虽然文本框是DISABLED，但可能有遗留数据）
         if not description:
-            messagebox.showwarning("提示", "请先生成人物特征描述！")
+            ui_description = mixin_instance.char_txt_desc.get("1.0", END).strip()
+            if ui_description and not ui_description.startswith("尚未生成特征描述"):
+                description = ui_description
+        
+        # 重要：更新character字典中的描述，确保使用最新的描述
+        character["description"] = description
+        
+        # 记录日志，确保使用正确的人物描述
+        logger.info(f"准备生成人物照片：{character_name}")
+        logger.info(f"人物描述长度：{len(description)} 字符")
+        if description:
+            logger.info(f"人物描述预览：{description[:100]}...")
+        
+        if not description or len(description.strip()) < 10:
+            messagebox.showwarning("提示", f"请先生成\"{character_name}\"的人物特征描述！\n\n描述太短或为空，无法生成照片。")
             return
+        
+        # 验证当前选中的人物是否仍然是生成开始时的人物
+        # 防止在生成过程中用户切换了人物
+        current_index = mixin_instance.char_combobox.current()
+        if current_index != index:
+            logger.warning(f"人物选择已更改，当前索引：{current_index}，原索引：{index}")
+            # 不中断生成，但记录警告
         
         # 检查当前项目
         if not mixin_instance.current_project:
@@ -88,6 +110,19 @@ class CharacterPhotoHandler:
                         
                         logger.info(f"[{current_index}/{total_count}] 正在生成：{angle_name}视图 + {expr_name}表情")
                         
+                        # 锁定当前人物的描述，防止在生成过程中人物切换导致的问题
+                        # 使用生成开始时获取的描述，而不是每次从UI获取
+                        # 因为UI可能在生成过程中被用户改变
+                        current_description = character.get("description", "")
+                        
+                        # 验证描述有效性
+                        if not current_description or len(current_description.strip()) < 10:
+                            logger.error(f"[{current_index}/{total_count}] 人物\"{character_name}\"的描述无效（长度：{len(current_description)}）")
+                            continue  # 跳过这张图片，继续下一张
+                        
+                        logger.info(f"[{current_index}/{total_count}] 人物：{character_name}，描述长度：{len(current_description)}")
+                        logger.debug(f"人物描述：{current_description[:200]}...")
+                        
                         # 更新状态
                         mixin_instance.after(0, lambda i=current_index, a=angle_name, e=expr_name: mixin_instance.status.set(
                             f"🎨 [{i}/{total_count}] 正在生成\"{character_name}\"的{a}照片（{e}）..."
@@ -96,7 +131,7 @@ class CharacterPhotoHandler:
                         # 生成照片
                         img = CharacterPhotoGenerator.generate_photo(
                             mixin_instance,
-                            character,
+                            character,  # 确保包含最新的描述
                             angle,
                             angle_name,
                             expr,

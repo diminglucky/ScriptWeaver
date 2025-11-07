@@ -418,11 +418,255 @@ class CharacterDetailDialog(tk.Toplevel):
         self.wait_window()
         return self.result
     
+    def _try_parse_paragraph_format(self, description: str) -> bool:
+        """尝试从段落格式的描述中提取关键信息"""
+        try:
+            print("🔍 从段落中提取关键信息...")
+            filled_count = 0
+            desc_lower = description.lower()
+            
+            # 提取年龄
+            import re
+            age_patterns = [
+                r'约?(\d+)岁',
+                r'(\d+)多岁',
+                r'(\d+)岁左右',
+            ]
+            for pattern in age_patterns:
+                match = re.search(pattern, description)
+                if match:
+                    age = match.group(1)
+                    self.age_var.set(age)
+                    print(f"✅ 年龄: {age}")
+                    filled_count += 1
+                    break
+            
+            # 提取性别
+            if '女性' in description or '女人' in description or '女子' in description or '她' in description:
+                self.gender_var.set('女')
+                print(f"✅ 性别: 女")
+                filled_count += 1
+            elif '男性' in description or '男人' in description or '男子' in description or '他' in description:
+                self.gender_var.set('男')
+                print(f"✅ 性别: 男")
+                filled_count += 1
+            
+            # 提取脸型
+            face_shapes = ['鹅蛋脸', '瓜子脸', '圆脸', '方脸', '长脸', '菱形脸']
+            for shape in face_shapes:
+                if shape in description:
+                    self.face_shape_var.set(shape)
+                    print(f"✅ 脸型: {shape}")
+                    filled_count += 1
+                    break
+            
+            # 提取肤色
+            skin_tones = ['白皙', '黝黑', '古铜', '健康', '苍白', '红润']
+            for tone in skin_tones:
+                if tone in description and '肤' in description:
+                    self.skin_tone_var.set(tone)
+                    print(f"✅ 肤色: {tone}")
+                    filled_count += 1
+                    break
+            
+            # 提取眼睛特征
+            eye_features = ['大眼睛', '小眼睛', '细长眼睛', '丹凤眼', '杏眼', '圆眼']
+            for feature in eye_features:
+                if feature in description:
+                    self.eyes_var.set(feature)
+                    print(f"✅ 眼睛: {feature}")
+                    filled_count += 1
+                    break
+            
+            # 提取发色
+            hair_colors = ['黑发', '黑色', '棕发', '棕色', '金发', '白发', '银发', '栗色']
+            for color in hair_colors:
+                if color in description and ('发' in description or '头发' in description):
+                    self.hair_color_var.set(color.replace('发', ''))
+                    print(f"✅ 发色: {color}")
+                    filled_count += 1
+                    break
+            
+            # 提取发长
+            hair_lengths = ['长发', '短发', '中长发', '及肩', '齐肩', '披肩', '及腰']
+            for length in hair_lengths:
+                if length in description:
+                    self.hair_length_var.set(length)
+                    print(f"✅ 发长: {length}")
+                    filled_count += 1
+                    break
+            
+            # 提取体型
+            body_types = ['苗条', '瘦弱', '纤细', '丰满', '健壮', '魁梧', '高大', '矮小']
+            for body in body_types:
+                if body in description:
+                    self.body_type_var.set(body)
+                    print(f"✅ 体型: {body}")
+                    filled_count += 1
+                    break
+            
+            # 提取身高
+            height_match = re.search(r'(\d+)厘米|(\d+)cm', description)
+            if height_match:
+                height = height_match.group(1) or height_match.group(2)
+                self.height_var.set(f"{height}cm")
+                print(f"✅ 身高: {height}cm")
+                filled_count += 1
+            
+            # 提取服装关键词
+            outfits = ['T恤', 't恤', '衬衫', '连衣裙', '牛仔裤', '西装', '卫衣', '针织衫', '外套', '休闲裤']
+            found_outfits = []
+            for outfit in outfits:
+                if outfit in description:
+                    found_outfits.append(outfit)
+            if found_outfits:
+                outfit_desc = '、'.join(found_outfits[:3])  # 最多3个
+                self.outfit_desc_text.delete("1.0", tk.END)
+                self.outfit_desc_text.insert("1.0", outfit_desc)
+                print(f"✅ 服装: {outfit_desc}")
+                filled_count += 1
+            
+            print(f"✅ 从段落中提取了 {filled_count} 个字段")
+            return filled_count > 0
+            
+        except Exception as e:
+            print(f"❌ 段落解析失败: {e}")
+            import traceback
+            traceback.print_exc()
+            return False
+    
+    def _try_parse_list_format(self, description: str) -> bool:
+        """尝试解析列表格式的描述并填充字段
+        
+        期望格式：
+        性别：男
+        年龄：10岁
+        发型：短发，深棕色
+        体型：瘦弱
+        服装：蓝白卫衣，牛仔裤
+        特征：圆脸，大眼睛
+        """
+        try:
+            print("🔍 解析列表格式描述...")
+            lines = description.strip().split('\n')
+            parsed_data = {}
+            
+            for line in lines:
+                line = line.strip()
+                if '：' in line:
+                    key, value = line.split('：', 1)
+                    key = key.strip()
+                    value = value.strip()
+                    parsed_data[key] = value
+                    print(f"  {key}: {value}")
+            
+            if not parsed_data:
+                print("❌ 未解析到任何键值对")
+                return False
+            
+            # 映射并填充字段
+            filled_count = 0
+            
+            # 性别
+            if '性别' in parsed_data:
+                gender = parsed_data['性别']
+                self.gender_var.set(gender)
+                print(f"✅ 性别: {gender}")
+                filled_count += 1
+            
+            # 年龄
+            if '年龄' in parsed_data:
+                age = parsed_data['年龄'].replace('岁', '').replace('约', '').strip()
+                self.age_var.set(age)
+                print(f"✅ 年龄: {age}")
+                filled_count += 1
+            
+            # 发型（拆分为发长和发色）
+            if '发型' in parsed_data:
+                hair = parsed_data['发型']
+                # 尝试拆分 "短发，深棕色"
+                if '，' in hair or ',' in hair:
+                    parts = hair.replace(',', '，').split('，')
+                    if len(parts) >= 1:
+                        self.hair_length_var.set(parts[0].strip())
+                        print(f"✅ 发长: {parts[0].strip()}")
+                        filled_count += 1
+                    if len(parts) >= 2:
+                        self.hair_color_var.set(parts[1].strip())
+                        print(f"✅ 发色: {parts[1].strip()}")
+                        filled_count += 1
+                else:
+                    self.hair_style_var.set(hair)
+                    print(f"✅ 发型: {hair}")
+                    filled_count += 1
+            
+            # 体型
+            if '体型' in parsed_data:
+                body = parsed_data['体型']
+                self.body_type_var.set(body)
+                print(f"✅ 体型: {body}")
+                filled_count += 1
+            
+            # 服装
+            if '服装' in parsed_data:
+                outfit = parsed_data['服装']
+                self.outfit_style_var.set(outfit)
+                self.outfit_desc_text.delete("1.0", tk.END)
+                self.outfit_desc_text.insert("1.0", outfit)
+                print(f"✅ 服装: {outfit}")
+                filled_count += 1
+            
+            # 特征（映射到脸型、眼睛等）
+            if '特征' in parsed_data:
+                features = parsed_data['特征']
+                # 尝试拆分多个特征
+                feature_list = features.replace('，', ',').split(',')
+                for feature in feature_list:
+                    feature = feature.strip()
+                    if '脸' in feature:
+                        self.face_shape_var.set(feature)
+                        print(f"✅ 脸型: {feature}")
+                        filled_count += 1
+                    elif '眼' in feature:
+                        self.eyes_var.set(feature)
+                        print(f"✅ 眼睛: {feature}")
+                        filled_count += 1
+            
+            print(f"✅ 成功从列表格式填充 {filled_count} 个字段")
+            return filled_count > 0
+            
+        except Exception as e:
+            print(f"❌ 解析列表格式失败: {e}")
+            import traceback
+            traceback.print_exc()
+            return False
+    
     def _on_smart_fill(self):
-        """智能填写 - 根据故事内容自动分析人物特征"""
+        """智能填写 - 优先从人物描述解析，否则从故事分析"""
         print(f"\n{'='*60}")
         print(f"🤖 智能填写功能被触发 - 人物：{self.character_name}")
         print(f"{'='*60}")
+        
+        # 先检查是否有人物描述（列表格式）
+        description_text = self.description_text.get("1.0", tk.END).strip()
+        print(f"📋 当前人物描述长度: {len(description_text)} 字符")
+        
+        if description_text and len(description_text) > 20:
+            # 尝试解析描述
+            print("📝 检测到人物描述，尝试直接解析...")
+            
+            # 先尝试列表格式
+            if self._try_parse_list_format(description_text):
+                messagebox.showinfo("成功", f"已从列表格式描述中填写 {self.character_name} 的信息！")
+                return
+            
+            # 再尝试段落格式（使用简单规则提取）
+            print("📝 尝试从段落格式提取...")
+            if self._try_parse_paragraph_format(description_text):
+                messagebox.showinfo("成功", f"已从人物描述中提取并填写 {self.character_name} 的信息！")
+                return
+            
+            print("⚠️ 描述格式无法识别，继续尝试从故事分析...")
         
         # 获取故事内容
         story_content = ""
@@ -682,16 +926,23 @@ class CharacterDetailDialog(tk.Toplevel):
             print(f"✅ 性别: {character_info['gender']}")
             applied_count += 1
         
+        # occupation 和 personality 字段检查是否存在
         if character_info.get("occupation"):
-            self.occupation_var.set(character_info["occupation"])
-            print(f"✅ 职业: {character_info['occupation']}")
-            applied_count += 1
+            if hasattr(self, 'occupation_var'):
+                self.occupation_var.set(character_info["occupation"])
+                print(f"✅ 职业: {character_info['occupation']}")
+                applied_count += 1
+            else:
+                print(f"ℹ️ 职业: {character_info['occupation']} (当前UI无此字段)")
         
         if character_info.get("personality"):
-            self.personality_text.delete("1.0", tk.END)
-            self.personality_text.insert("1.0", character_info["personality"])
-            print(f"✅ 性格: {character_info['personality'][:50]}...")
-            applied_count += 1
+            if hasattr(self, 'personality_text'):
+                self.personality_text.delete("1.0", tk.END)
+                self.personality_text.insert("1.0", character_info["personality"])
+                print(f"✅ 性格: {character_info['personality'][:50]}...")
+                applied_count += 1
+            else:
+                print(f"ℹ️ 性格: {character_info['personality'][:50]}... (当前UI无此字段)")
         
         # 外观特征
         if character_info.get("face_shape"):

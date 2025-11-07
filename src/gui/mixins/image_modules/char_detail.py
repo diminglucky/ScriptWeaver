@@ -12,12 +12,11 @@ class CharacterDetailMixin:
     
     def _on_edit_character_detail(self) -> None:
         """编辑选中人物的详细信息"""
-        selection = self.char_listbox.curselection()
-        if not selection:
-            messagebox.showwarning("提示", "请先从列表中选择一个人物！")
+        # 获取选中的人物索引（兼容Combobox）
+        index = self.char_combobox.current()
+        if index < 0:
+            messagebox.showwarning("提示", "请先从下拉框中选择一个人物！")
             return
-        
-        index = selection[0]
         character = self.character_list[index]
         character_name = character["name"]
         

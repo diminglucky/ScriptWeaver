@@ -207,6 +207,92 @@ class ImageUISetupTabMixin:
 		tk.Label(hint_frame3, text="横版: ", fg=Theme.TEXT_SECONDARY, font=("", 9), bg=Theme.BG_SECONDARY).pack(side=LEFT)
 		tk.Label(hint_frame3, text="1792x1024, 640x360, 1280x720, 1920x1080", fg="#FFCC80", font=("", 9), bg=Theme.BG_SECONDARY).pack(side=LEFT)
 		
+		# ========= Stable Diffusion 专用配置（仅在选择SD时显示）=========
+		self.grp_sd_params = ttk.LabelFrame(scrollable_frame, text="⚙️ Stable Diffusion 专用配置")
+		self.grp_sd_params.pack(fill="x", padx=15, pady=8)
+		self.grp_sd_params.columnconfigure(1, weight=1)
+		
+		# 采样器（Sampler）
+		tk.Label(self.grp_sd_params, text="采样器 (Sampler):").grid(row=0, column=0, sticky="e", padx=6, pady=4)
+		self.sd_sampler = tk.StringVar(value="Euler a")
+		self.combo_sd_sampler = ttk.Combobox(self.grp_sd_params, textvariable=self.sd_sampler,
+											  values=[
+												  "Euler a", "Euler", "LMS", "Heun", "DPM2", "DPM2 a",
+												  "DPM++ 2S a", "DPM++ 2M", "DPM++ SDE", "DPM++ 2M SDE",
+												  "DPM++ 2M Karras", "DPM++ SDE Karras", "DPM fast",
+												  "LMS Karras", "DPM2 Karras", "DPM2 a Karras",
+												  "DDIM", "PLMS"
+											  ],
+											  width=20, state="readonly")
+		self.combo_sd_sampler.grid(row=0, column=1, sticky="w", padx=6, pady=4)
+		tk.Label(self.grp_sd_params, text="影响生成速度和质量，推荐：Euler a / DPM++ 2M Karras",
+				 fg=Theme.TEXT_SECONDARY, font=("", 9)).grid(row=0, column=2, columnspan=2, sticky="w", padx=6)
+		
+		# 采样步数（Steps）
+		tk.Label(self.grp_sd_params, text="采样步数 (Steps):").grid(row=1, column=0, sticky="e", padx=6, pady=4)
+		self.sd_steps = tk.IntVar(value=25)
+		self.scale_sd_steps = tk.Scale(self.grp_sd_params, variable=self.sd_steps, from_=10, to=150,
+									   orient="horizontal", length=200, showvalue=True)
+		self.scale_sd_steps.grid(row=1, column=1, sticky="w", padx=6, pady=4)
+		tk.Label(self.grp_sd_params, text="步数越高质量越好但速度越慢，推荐：20-30",
+				 fg=Theme.TEXT_SECONDARY, font=("", 9)).grid(row=1, column=2, columnspan=2, sticky="w", padx=6)
+		
+		# CFG Scale
+		tk.Label(self.grp_sd_params, text="CFG Scale:").grid(row=2, column=0, sticky="e", padx=6, pady=4)
+		self.sd_cfg_scale = tk.DoubleVar(value=8.0)
+		self.scale_sd_cfg = tk.Scale(self.grp_sd_params, variable=self.sd_cfg_scale, from_=1.0, to=30.0,
+									 orient="horizontal", length=200, showvalue=True, resolution=0.5)
+		self.scale_sd_cfg.grid(row=2, column=1, sticky="w", padx=6, pady=4)
+		tk.Label(self.grp_sd_params, text="提示词遵循程度，越高越遵循提示词，推荐：7-12",
+				 fg=Theme.TEXT_SECONDARY, font=("", 9)).grid(row=2, column=2, columnspan=2, sticky="w", padx=6)
+		
+		# 随机种子（Seed）
+		tk.Label(self.grp_sd_params, text="随机种子 (Seed):").grid(row=3, column=0, sticky="e", padx=6, pady=4)
+		self.sd_seed = tk.IntVar(value=-1)
+		self.entry_sd_seed = tk.Entry(self.grp_sd_params, textvariable=self.sd_seed, width=15)
+		self.entry_sd_seed.grid(row=3, column=1, sticky="w", padx=6, pady=4)
+		tk.Label(self.grp_sd_params, text="-1 为随机，固定值可复现相同图片",
+				 fg=Theme.TEXT_SECONDARY, font=("", 9)).grid(row=3, column=2, columnspan=2, sticky="w", padx=6)
+		
+		# 批次大小（Batch Size）- 强制固定为1，不可修改
+		tk.Label(self.grp_sd_params, text="批次大小:").grid(row=4, column=0, sticky="e", padx=6, pady=4)
+		self.sd_batch_size = tk.IntVar(value=1)
+		tk.Label(self.grp_sd_params, text="1 (固定)", 
+				 font=("", 10, "bold"), fg="#4CAF50").grid(row=4, column=1, sticky="w", padx=6, pady=4)
+		tk.Label(self.grp_sd_params, text="为确保单人肖像生成，批次大小已固定为1",
+				 fg=Theme.TEXT_SECONDARY, font=("", 9)).grid(row=4, column=2, columnspan=2, sticky="w", padx=6)
+		
+		# 降噪强度（Denoising Strength，仅img2img）
+		tk.Label(self.grp_sd_params, text="降噪强度 (img2img):").grid(row=5, column=0, sticky="e", padx=6, pady=4)
+		self.sd_denoising = tk.DoubleVar(value=0.4)
+		self.scale_sd_denoising = tk.Scale(self.grp_sd_params, variable=self.sd_denoising, from_=0.0, to=1.0,
+										   orient="horizontal", length=200, showvalue=True, resolution=0.05)
+		self.scale_sd_denoising.grid(row=5, column=1, sticky="w", padx=6, pady=4)
+		tk.Label(self.grp_sd_params, text="图生图时的变化程度，越高变化越大，推荐：0.3-0.5",
+				 fg=Theme.TEXT_SECONDARY, font=("", 9)).grid(row=5, column=2, columnspan=2, sticky="w", padx=6)
+		
+		# VAE 选择
+		tk.Label(self.grp_sd_params, text="VAE:").grid(row=6, column=0, sticky="e", padx=6, pady=4)
+		self.sd_vae = tk.StringVar(value="Automatic")
+		self.combo_sd_vae = ttk.Combobox(self.grp_sd_params, textvariable=self.sd_vae,
+										 values=["Automatic", "None"],  # 会在加载模型时更新
+										 width=25, state="readonly")
+		self.combo_sd_vae.grid(row=6, column=1, sticky="w", padx=6, pady=4)
+		tk.Button(self.grp_sd_params, text="刷新VAE列表", command=self._load_sd_vaes,
+				  font=("", 9), bg="#607D8B", fg="white", relief=tk.FLAT, padx=8, pady=3).grid(row=6, column=2, padx=6, sticky="w")
+		
+		# CLIP Skip
+		tk.Label(self.grp_sd_params, text="CLIP Skip:").grid(row=7, column=0, sticky="e", padx=6, pady=4)
+		self.sd_clip_skip = tk.IntVar(value=1)
+		self.scale_sd_clip = tk.Scale(self.grp_sd_params, variable=self.sd_clip_skip, from_=1, to=12,
+									  orient="horizontal", length=200, showvalue=True)
+		self.scale_sd_clip.grid(row=7, column=1, sticky="w", padx=6, pady=4)
+		tk.Label(self.grp_sd_params, text="CLIP层跳过，通常保持1或2",
+				 fg=Theme.TEXT_SECONDARY, font=("", 9)).grid(row=7, column=2, columnspan=2, sticky="w", padx=6)
+		
+		# 默认隐藏SD配置区域（当选择非SD API时）
+		self.grp_sd_params.pack_forget()
+		
 		# 辅助功能API配置（分镜头生成和图片描述生成）
 		grp_assist_api = ttk.LabelFrame(scrollable_frame, text="🤖 辅助功能 API 配置（使用聊天模型）")
 		grp_assist_api.pack(fill="x", padx=15, pady=8)

@@ -14,6 +14,7 @@ from .char_sheet import CharacterSheetMixin
 from .char_utils import CharacterUtilsMixin
 from .prompt_ops import PromptOperationsMixin  # ✅ 保留：故事页面需要风格选择功能
 from .file_ops import FileOperationsMixin
+from .sd_config import SDConfigMixin  # ⚙️ SD专用配置功能
 # from .preview_ops import PreviewOperationsMixin  # ❌ 删除：预览功能简化
 # from .video_ops import VideoPromptMixin  # ❌ 删除：视频提示词在导演页面
 
@@ -33,6 +34,7 @@ class ImageMixin(
     CharacterUtilsMixin,
     PromptOperationsMixin,  # ✅ 保留：故事页面风格选择
     FileOperationsMixin,
+    SDConfigMixin,  # ⚙️ SD专用配置
     # PreviewOperationsMixin,  # ❌ 删除
     # VideoPromptMixin,  # ❌ 删除
 ):

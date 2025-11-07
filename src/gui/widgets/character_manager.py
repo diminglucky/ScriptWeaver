@@ -187,9 +187,19 @@ class CharacterPhotoGallery(tk.Toplevel):
             self._show_empty_message()
             return
         
-        # 查找该人物的所有照片
-        pattern = f"{self.character_name}*.png"
+        # 清理人物名称，用于文件名匹配（与保存时保持一致）
+        import re
+        clean_name = re.sub(r'[^\w\s\u4e00-\u9fff-]', '', self.character_name)
+        clean_name = clean_name.strip()
+        
+        # 查找该人物的所有照片（文件名以清理后的人物名开头）
+        pattern = f"{clean_name}*.png"
         found_photos = list(self.photos_dir.glob(pattern))
+        
+        # 如果没找到，尝试更宽松的匹配（可能文件名中包含其他字符）
+        if not found_photos:
+            all_images = list(self.photos_dir.glob("*.png"))
+            found_photos = [img for img in all_images if clean_name in img.stem]
         
         if not found_photos:
             self._show_empty_message()
@@ -390,7 +400,8 @@ class CharacterPhotoGallery(tk.Toplevel):
         result = messagebox.askyesno(
             "确认删除",
             f"确定要删除照片吗？\n\n{photo_path.name}\n\n此操作不可恢复！",
-            icon="warning"
+            icon="warning",
+            parent=self  # 确保对话框属于图片库窗口
         )
         
         if result:
@@ -398,14 +409,37 @@ class CharacterPhotoGallery(tk.Toplevel):
                 photo_path.unlink()
                 card_widget.destroy()
                 self.photos.remove(photo_path)
-                messagebox.showinfo("成功", "照片已删除")
+                
+                # 先提升窗口到最上层，再显示消息
+                self.lift()
+                self.focus_force()
+                self.attributes('-topmost', True)
+                
+                messagebox.showinfo("成功", "照片已删除", parent=self)
+                
+                # 移除topmost属性，恢复正常窗口行为
+                self.attributes('-topmost', False)
+                
+                # 再次确保窗口获得焦点
+                self.lift()
+                self.focus_force()
                 
                 # 如果没有照片了，显示空消息
                 if not self.photos:
                     self._load_photos()
                     
             except Exception as e:
-                messagebox.showerror("错误", f"删除失败：{str(e)}")
+                # 确保窗口在最上层
+                self.lift()
+                self.focus_force()
+                self.attributes('-topmost', True)
+                
+                messagebox.showerror("错误", f"删除失败：{str(e)}", parent=self)
+                
+                # 移除topmost属性
+                self.attributes('-topmost', False)
+                self.lift()
+                self.focus_force()
 
 
 class ImageViewer(tk.Toplevel):

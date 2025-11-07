@@ -205,3 +205,104 @@ Traceback (most recent call last):
     f"分镜{s.get('shot_number', i + 1)}"
            ^^^^^
 AttributeError: 'str' object has no attribute 'get'
+2025-11-02 15:47:23 | ERROR    | src.gui.mixins.image_modules.handlers.character_photo_preview | show_fullsize:118 | 显示完整尺寸图片失败: name 'Path' is not defined
+Traceback (most recent call last):
+  File "D:\code\play\Zhihu_short_stories\src\gui\mixins\image_modules\handlers\character_photo_preview.py", line 90, in show_fullsize
+    fullsize_window.title(f"完整尺寸预览 - {Path(img_path).name}")
+                                            ^^^^
+NameError: name 'Path' is not defined
+2025-11-02 15:47:24 | ERROR    | src.gui.mixins.image_modules.handlers.character_photo_preview | show_fullsize:118 | 显示完整尺寸图片失败: name 'Path' is not defined
+Traceback (most recent call last):
+  File "D:\code\play\Zhihu_short_stories\src\gui\mixins\image_modules\handlers\character_photo_preview.py", line 90, in show_fullsize
+    fullsize_window.title(f"完整尺寸预览 - {Path(img_path).name}")
+                                            ^^^^
+NameError: name 'Path' is not defined
+2025-11-02 15:47:26 | ERROR    | src.gui.mixins.image_modules.handlers.character_photo_preview | show_fullsize:118 | 显示完整尺寸图片失败: name 'Path' is not defined
+Traceback (most recent call last):
+  File "D:\code\play\Zhihu_short_stories\src\gui\mixins\image_modules\handlers\character_photo_preview.py", line 90, in show_fullsize
+    fullsize_window.title(f"完整尺寸预览 - {Path(img_path).name}")
+                                            ^^^^
+NameError: name 'Path' is not defined
+2025-11-02 15:48:22 | ERROR    | src.gui.mixins.image_modules.handlers.character_photo_preview | show_fullsize:118 | 显示完整尺寸图片失败: name 'Path' is not defined
+Traceback (most recent call last):
+  File "D:\code\play\Zhihu_short_stories\src\gui\mixins\image_modules\handlers\character_photo_preview.py", line 90, in show_fullsize
+    fullsize_window.title(f"完整尺寸预览 - {Path(img_path).name}")
+                                            ^^^^
+NameError: name 'Path' is not defined
+2025-11-02 15:53:32 | ERROR    | src.gui.mixins.image_modules.handlers.character_photo_preview | show_fullsize:118 | 显示完整尺寸图片失败: name 'Path' is not defined
+Traceback (most recent call last):
+  File "D:\code\play\Zhihu_short_stories\src\gui\mixins\image_modules\handlers\character_photo_preview.py", line 90, in show_fullsize
+    fullsize_window.title(f"完整尺寸预览 - {Path(img_path).name}")
+                                            ^^^^
+NameError: name 'Path' is not defined
+2025-11-02 16:06:04 | ERROR    | src.core.exception_handler | handle_exception:66 | 程序启动失败: SyntaxError: expected 'except' or 'finally' block (char_extract.py, line 84)
+Traceback (most recent call last):
+  File "D:\code\play\Zhihu_short_stories\run_modern_app.py", line 32, in main
+    from src.gui.modern_app import ModernApp
+  File "D:\code\play\Zhihu_short_stories\src\gui\__init__.py", line 3, in <module>
+    from .modern_app import ModernApp
+  File "D:\code\play\Zhihu_short_stories\src\gui\modern_app.py", line 12, in <module>
+    from .mixins.story_modules import StoryMixin
+  File "D:\code\play\Zhihu_short_stories\src\gui\mixins\__init__.py", line 5, in <module>
+    from .image_modules import ImageMixin
+  File "D:\code\play\Zhihu_short_stories\src\gui\mixins\image_modules\__init__.py", line 9, in <module>
+    from .char_extract import CharacterExtractMixin
+  File "D:\code\play\Zhihu_short_stories\src\gui\mixins\image_modules\char_extract.py", line 84
+    			import json
+    			^^^^^^
+SyntaxError: expected 'except' or 'finally' block
+2025-11-02 16:06:04 | ERROR    | __main__ | main:72 | 程序启动失败
+发生错误: expected 'except' or 'finally' block (char_extract.py, line 84)
+Traceback (most recent call last):
+  File "D:\code\play\Zhihu_short_stories\run_modern_app.py", line 32, in main
+    from src.gui.modern_app import ModernApp
+  File "D:\code\play\Zhihu_short_stories\src\gui\__init__.py", line 3, in <module>
+    from .modern_app import ModernApp
+  File "D:\code\play\Zhihu_short_stories\src\gui\modern_app.py", line 12, in <module>
+    from .mixins.story_modules import StoryMixin
+  File "D:\code\play\Zhihu_short_stories\src\gui\mixins\__init__.py", line 5, in <module>
+    from .image_modules import ImageMixin
+  File "D:\code\play\Zhihu_short_stories\src\gui\mixins\image_modules\__init__.py", line 9, in <module>
+    from .char_extract import CharacterExtractMixin
+  File "D:\code\play\Zhihu_short_stories\src\gui\mixins\image_modules\char_extract.py", line 84
+    			import json
+    			^^^^^^
+SyntaxError: expected 'except' or 'finally' block
+2025-11-02 16:25:57 | ERROR    | src.gui.mixins.image_modules.handlers.character_photo_preview | show_fullsize:107 | 图片文件不存在: projects\完整测试_20251026_184212_20251026_184212\projects\完整测试_20251026_184212_20251026_184212\characters\小远.png
+2025-11-02 16:26:49 | ERROR    | src.gui.mixins.image_modules.handlers.character_photo_preview | show_fullsize:107 | 图片文件不存在: projects\完整测试_20251026_184212_20251026_184212\projects\完整测试_20251026_184212_20251026_184212\characters\小远.png
+2025-11-02 16:28:01 | ERROR    | src.gui.mixins.image_modules.handlers.character_photo_preview | show_fullsize:107 | 图片文件不存在: projects\完整测试_20251026_184212_20251026_184212\projects\完整测试_20251026_184212_20251026_184212\characters\小远.png
+2025-11-02 16:28:25 | ERROR    | src.gui.mixins.image_modules.handlers.character_photo_preview | show_fullsize:107 | 图片文件不存在: projects\完整测试_20251026_184212_20251026_184212\projects\完整测试_20251026_184212_20251026_184212\characters\沈苒.png
+2025-11-02 16:31:55 | ERROR    | src.gui.mixins.image_modules.handlers.character_photo_preview | show_fullsize:107 | 图片文件不存在: projects\完整测试_20251026_184212_20251026_184212\projects\完整测试_20251026_184212_20251026_184212\characters\沈苒.png
+2025-11-03 09:35:33 | ERROR    | src.core.exception_handler | handle_exception:66 | 程序启动失败: SyntaxError: invalid syntax. Perhaps you forgot a comma? (ui_character.py, line 170)
+Traceback (most recent call last):
+  File "D:\code\play\Zhihu_short_stories\run_modern_app.py", line 32, in main
+    from src.gui.modern_app import ModernApp
+  File "D:\code\play\Zhihu_short_stories\src\gui\__init__.py", line 3, in <module>
+    from .modern_app import ModernApp
+  File "D:\code\play\Zhihu_short_stories\src\gui\modern_app.py", line 12, in <module>
+    from .mixins.story_modules import StoryMixin
+  File "D:\code\play\Zhihu_short_stories\src\gui\mixins\__init__.py", line 5, in <module>
+    from .image_modules import ImageMixin
+  File "D:\code\play\Zhihu_short_stories\src\gui\mixins\image_modules\__init__.py", line 5, in <module>
+    from .ui_character import ImageUICharacterTabMixin
+  File "D:\code\play\Zhihu_short_stories\src\gui\mixins\image_modules\ui_character.py", line 170
+    		grp_params = ttk.LabelFrame(right, text="🎨 第一步：基础设置", padd ing=(12, 8))
+    		                                                      ^^^^^^^^
+SyntaxError: invalid syntax. Perhaps you forgot a comma?
+2025-11-03 09:35:33 | ERROR    | __main__ | main:72 | 程序启动失败
+发生错误: invalid syntax. Perhaps you forgot a comma? (ui_character.py, line 170)
+Traceback (most recent call last):
+  File "D:\code\play\Zhihu_short_stories\run_modern_app.py", line 32, in main
+    from src.gui.modern_app import ModernApp
+  File "D:\code\play\Zhihu_short_stories\src\gui\__init__.py", line 3, in <module>
+    from .modern_app import ModernApp
+  File "D:\code\play\Zhihu_short_stories\src\gui\modern_app.py", line 12, in <module>
+    from .mixins.story_modules import StoryMixin
+  File "D:\code\play\Zhihu_short_stories\src\gui\mixins\__init__.py", line 5, in <module>
+    from .image_modules import ImageMixin
+  File "D:\code\play\Zhihu_short_stories\src\gui\mixins\image_modules\__init__.py", line 5, in <module>
+    from .ui_character import ImageUICharacterTabMixin
+  File "D:\code\play\Zhihu_short_stories\src\gui\mixins\image_modules\ui_character.py", line 170
+    		grp_params = ttk.LabelFrame(right, text="🎨 第一步：基础设置", padd ing=(12, 8))
+    		                                                      ^^^^^^^^
+SyntaxError: invalid syntax. Perhaps you forgot a comma?

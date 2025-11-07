@@ -129,10 +129,10 @@ class UltraModernApp(tk.Tk, ProjectMixin, StoryMixin, ImageMixin, KbMixin, Confi
         self.data_dir = tk.StringVar(value=str(Path("data/raw").resolve()))
         self.index_dir = tk.StringVar(value=str(Path("index").resolve()))
         
-        # API配置
-        self.api_key = tk.StringVar(value=os.getenv("DEEPSEEK_API_KEY", ""))
-        self.base_url = tk.StringVar(value=os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com/v1"))
-        self.model = tk.StringVar(value=os.getenv("DEEPSEEK_MODEL", "deepseek-chat"))
+        # API配置（初始化为空，等待用户选择预设后填充）
+        self.api_key = tk.StringVar(value="")
+        self.base_url = tk.StringVar(value="")
+        self.model = tk.StringVar(value="")
         
         # 生成参数
         self.top_k = tk.IntVar(value=6)

@@ -21,16 +21,16 @@ class CharacterSheetMixin:
 	
 	def _on_generate_character_sheet(self) -> None:
 		"""生成角色设定表"""
-		selection = self.char_listbox.curselection()
-		if not selection:
-			messagebox.showwarning("提示", "请先选择一个人物！")
+		# 获取选中的人物索引（兼容Combobox）
+		index = self.char_combobox.current()
+		if index < 0:
+			messagebox.showwarning("提示", "请先从下拉框中选择一个人物！")
 			return
 		
 		if not self.current_project:
 			messagebox.showwarning("提示", "请先创建或打开一个项目！")
 			return
 		
-		index = selection[0]
 		character = self.character_list[index]
 		character_name = character["name"]
 		character_description = character.get("description", "")

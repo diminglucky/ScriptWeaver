@@ -145,6 +145,7 @@ class StableDiffusionClient:
         cfg_scale: float = 7.0,
         sampler_name: str = "Euler a",
         seed: int = -1,
+        batch_size: int = 1,
         return_info: bool = False,
         **kwargs
     ) -> Optional[list[Image.Image]]:
@@ -185,6 +186,7 @@ class StableDiffusionClient:
             "cfg_scale": cfg_scale,
             "sampler_name": sampler_name,
             "seed": seed,
+            "batch_size": batch_size,
             **kwargs
         }
         

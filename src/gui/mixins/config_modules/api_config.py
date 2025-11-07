@@ -12,6 +12,48 @@ from src.utils.text import sanitize as _sanitize, try_image_api as _try_image
 class APIConfigMixin:
 	"""Config api_config 功能"""
 	
+	def _get_configured_api_presets(self) -> list:
+		"""
+		获取所有已配置API Key的预设列表
+		
+		Returns:
+			已配置API Key的预设名称列表
+		"""
+		if not hasattr(self, 'api_presets'):
+			return []
+		
+		configured = []
+		for preset_name, preset_config in self.api_presets.items():
+			# 检查是否有API Key（已配置）
+			api_key = preset_config.get("key", "").strip()
+			if api_key:
+				configured.append(preset_name)
+		
+		# 如果没有已配置的，至少返回所有预设（让用户可以选择）
+		if not configured:
+			return list(self.api_presets.keys())
+		
+		return configured
+	
+	def _update_story_api_dropdowns(self) -> None:
+		"""更新故事生成API下拉框的选项"""
+		if hasattr(self, 'api_presets'):
+			configured_apis = self._get_configured_api_presets()
+			
+			# 更新目录生成API下拉框
+			if hasattr(self, 'combo_outline_gen_api'):
+				self.combo_outline_gen_api['values'] = configured_apis
+			
+			# 更新故事生成API下拉框
+			if hasattr(self, 'combo_story_gen_api'):
+				self.combo_story_gen_api['values'] = configured_apis
+			
+			# 更新辅助功能API下拉框
+			if hasattr(self, 'combo_shot_gen_api'):
+				self.combo_shot_gen_api['values'] = configured_apis
+			if hasattr(self, 'combo_desc_gen_api'):
+				self.combo_desc_gen_api['values'] = configured_apis
+	
 	def save_api_config(self) -> None:
 		"""保存故事API配置，每个预设保存各自的API Key"""
 		try:
@@ -49,6 +91,9 @@ class APIConfigMixin:
 			
 			load_dotenv(override=True)
 			messagebox.showinfo("成功", f"已保存 {current_preset} 的配置到: {env_path}")
+			
+			# 保存后更新故事生成API下拉框
+			self._update_story_api_dropdowns()
 		except Exception as e:
 			messagebox.showerror("错误", str(e))
 
@@ -56,12 +101,11 @@ class APIConfigMixin:
 	def load_api_config(self) -> None:
 		try:
 			load_dotenv(override=True)
-			self.api_key.set(os.getenv("DEEPSEEK_API_KEY", ""))
-			self.base_url.set(os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com/v1"))
-			self.model.set(os.getenv("DEEPSEEK_MODEL", "deepseek-chat"))
 			preset = os.getenv("API_PRESET", "DeepSeek")
 			if preset in self.api_presets:
 				self.api_preset.set(preset)
+				# 触发预设选择事件，自动填充该预设的配置
+				self._on_api_preset_selected(None)
 			messagebox.showinfo("成功", "已从 .env 加载配置")
 		except Exception as e:
 			messagebox.showerror("错误", str(e))
@@ -86,14 +130,19 @@ class APIConfigMixin:
 				key = os.getenv(f"STORY_{safe_preset_name}_KEY")
 				if key:
 					self.api_presets[preset_name]["key"] = key
+				# 如果环境变量中没有 key，保持预设的默认值（通常是空字符串）
 				
 				base_url = os.getenv(f"STORY_{safe_preset_name}_BASE_URL")
-				if base_url:
+				# 只有当环境变量中有值且不为空时才覆盖预设的默认值
+				if base_url is not None and base_url.strip():
 					self.api_presets[preset_name]["base_url"] = base_url
+				# 如果环境变量为空或不存在，保持预设的默认值
 				
 				model = os.getenv(f"STORY_{safe_preset_name}_MODEL")
-				if model:
+				# 只有当环境变量中有值且不为空时才覆盖预设的默认值
+				if model is not None and model.strip():
 					self.api_presets[preset_name]["model"] = model
+				# 如果环境变量为空或不存在，保持预设的默认值
 			
 			# 加载上次使用的预设
 			preset = os.getenv("API_PRESET", "DeepSeek")
@@ -118,14 +167,14 @@ class APIConfigMixin:
 			
 			if preset in self.api_presets:
 				self.api_preset.set(preset)
-				# 自动填充该预设的配置
-				preset_config = self.api_presets[preset]
-				self.api_key.set(preset_config.get("key", ""))
-				self.base_url.set(preset_config.get("base_url", ""))
-				self.model.set(preset_config.get("model", ""))
+				# 触发预设选择事件，自动填充该预设的配置
+				self._on_api_preset_selected(None)
 			
 			if hasattr(self, 'status'):
 				self.status.set(f"已自动加载配置: {preset}")
+			
+			# 加载配置后更新故事生成API下拉框
+			self._update_story_api_dropdowns()
 		except Exception as e:
 			print(f"加载配置失败: {e}")
 			pass  # 静默失败，使用默认值
@@ -224,11 +273,11 @@ class APIConfigMixin:
 		except Exception as e:
 			print(f"加载图片API配置时出错: {e}")
 			
-			# 更新辅助功能API下拉框的选项（从story api_presets）
+			# 更新辅助功能API下拉框的选项（只显示已配置API Key的预设）
 			if hasattr(self, 'api_presets') and hasattr(self, 'combo_shot_gen_api'):
-				api_list = list(self.api_presets.keys())
-				self.combo_shot_gen_api['values'] = api_list
-				self.combo_desc_gen_api['values'] = api_list
+				configured_apis = self._get_configured_api_presets()
+				self.combo_shot_gen_api['values'] = configured_apis
+				self.combo_desc_gen_api['values'] = configured_apis
 			
 			# 加载故事创作功能API配置
 			outline_api = os.getenv("STORY_OUTLINE_GEN_API", "DeepSeek")
@@ -239,11 +288,12 @@ class APIConfigMixin:
 			if hasattr(self, 'story_gen_api'):
 				self.story_gen_api.set(story_api)
 			
-			# 更新故事创作功能API下拉框的选项
+			# 更新故事创作功能API下拉框的选项（只显示已配置API Key的预设）
 			if hasattr(self, 'api_presets') and hasattr(self, 'combo_outline_gen_api'):
-				api_list = list(self.api_presets.keys())
-				self.combo_outline_gen_api['values'] = api_list
-				self.combo_story_gen_api['values'] = api_list
+				# 获取所有已配置API Key的预设
+				configured_apis = self._get_configured_api_presets()
+				self.combo_outline_gen_api['values'] = configured_apis
+				self.combo_story_gen_api['values'] = configured_apis
 			
 			print(f"已自动加载图片API配置: {last_preset or 'OpenAI (DALL-E)'}")
 		except Exception as e:

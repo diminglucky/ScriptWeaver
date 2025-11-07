@@ -209,11 +209,7 @@ class ProjectMixin(EnhancedProjectManager):
 					characters_dir.mkdir(parents=True, exist_ok=True)
 					logger.info(f"自动创建人物照片文件夹：{characters_dir}")
 			
-			# 加载项目的人物照片
-			if hasattr(self, '_load_project_characters'):
-				self._load_project_characters()
-			
-			# 使用增强的加载功能
+			# 使用增强的加载功能（会加载人物数据）
 			enhanced_load_success = False
 			try:
 				enhanced_load_success = self.load_complete_project()
@@ -221,6 +217,14 @@ class ProjectMixin(EnhancedProjectManager):
 					logger.info("使用增强加载功能成功加载项目")
 			except Exception as e:
 				logger.warning(f"增强加载失败，使用传统方式: {e}")
+			
+			# 如果增强加载没有加载人物，再单独加载
+			# 注意：load_complete_project中已经会调用_load_project_characters，所以这里不需要重复调用
+			# 但如果load_complete_project失败或没有执行人物加载，这里作为后备
+			if not enhanced_load_success or (hasattr(self, 'character_list') and len(self.character_list) == 0):
+				if hasattr(self, '_load_project_characters'):
+					logger.info("后备：单独加载人物数据")
+					self._load_project_characters()
 			
 			# 如果增强加载失败，使用传统方式
 			if not enhanced_load_success:

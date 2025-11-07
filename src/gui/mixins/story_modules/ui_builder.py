@@ -216,6 +216,11 @@ class StoryUIBuilderMixin:
 				"model": "deepseek-chat",
 				"key": ""
 			},
+			"Gemini": {
+				"base_url": "",
+				"model": "gemini-pro",
+				"key": ""
+			},
 			"OpenAI": {
 				"base_url": "https://api.openai.com/v1",
 				"model": "gpt-4",

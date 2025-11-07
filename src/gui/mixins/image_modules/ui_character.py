@@ -75,7 +75,7 @@ class ImageUICharacterTabMixin:
 		
 		# 左侧：人物列表和操作
 		grp_characters = ttk.LabelFrame(left, text="👥 故事人物列表", padding=(8, 5))
-		grp_characters.pack(fill=BOTH, expand=True, padx=0, pady=(0, 8))
+		grp_characters.pack(fill=BOTH, expand=False, padx=0, pady=(0, 0))
 		
 		# 提示信息
 		tip_frame_main = tk.Frame(grp_characters, bg=Theme.BG_SECONDARY)
@@ -86,75 +86,79 @@ class ImageUICharacterTabMixin:
 				 font=("", 9), fg="#888888", bg=Theme.BG_SECONDARY).pack(side=LEFT)
 		
 		info_frame = tk.Frame(grp_characters, bg="#1e3a5f", relief=tk.SOLID, borderwidth=1)
-		info_frame.pack(fill="x", padx=6, pady=(0, 8))
+		info_frame.pack(fill="x", padx=6, pady=(0, 2))
 		tk.Label(info_frame, text="💾 ", font=("", 9), fg="#4CAF50", bg="#1e3a5f").pack(side=LEFT, padx=(6, 0))
 		tk.Label(info_frame, text="照片自动保存到 ", font=("", 9), fg="white", bg="#1e3a5f").pack(side=LEFT)
 		tk.Label(info_frame, text="当前项目/characters/", font=("", 9, "bold"), fg="#4CAF50", bg="#1e3a5f").pack(side=LEFT)
 		tk.Label(info_frame, text=" 文件夹", font=("", 9), fg="white", bg="#1e3a5f").pack(side=LEFT, padx=(0, 6))
 		
-		# 按钮区域（一行显示所有按钮）
-		btn_frame = ttk.Frame(grp_characters)
-		btn_frame.pack(fill="x", padx=6, pady=(0, 8))
+		# 一行：选择人物 + 提取按钮
+		control_frame = ttk.Frame(grp_characters)
+		control_frame.pack(fill="x", padx=6, pady=(0, 0))
 		
-		# 提取故事人物按钮
-		self.char_btn_extract = ttk.Button(btn_frame, text="🔍 提取故事人物", 
-										   command=self._on_extract_characters, width=15, style="Accent.TButton")
+		# 选择人物（最左边）
+		ttk.Label(control_frame, text="选择人物:", font=("", 10)).pack(side=LEFT, padx=(0, 6))
+		
+		self.char_combobox = ttk.Combobox(control_frame, font=("", 10), 
+										  state="readonly", width=18)
+		self.char_combobox.pack(side=LEFT, padx=(0, 10))
+		
+		# 提取故事人物按钮（增加宽度以完整显示文字）
+		self.char_btn_extract = ttk.Button(control_frame, text="🔍 提取故事人物", 
+										   command=self._on_extract_characters, width=16, style="Accent.TButton")
 		self.char_btn_extract.pack(side=LEFT, padx=(0, 6))
 		
-		# 重新提取按钮
-		self.char_btn_refresh = ttk.Button(btn_frame, text="🔄 重新提取", 
+		# 重新提取按钮（增加宽度以完整显示文字）
+		self.char_btn_refresh = ttk.Button(control_frame, text="🔄 重新提取", 
 										   command=self._on_extract_characters, width=12, state=DISABLED, style="TButton")
-		self.char_btn_refresh.pack(side=LEFT, padx=(0, 6))
-		
-		# 编辑人物详情按钮
-		self.char_btn_edit_detail = ttk.Button(btn_frame, text="✏️ 编辑人物详情", 
-											   command=self._on_edit_character_detail, width=15, 
-											   state=DISABLED, style="TButton")
-		self.char_btn_edit_detail.pack(side=LEFT, padx=(0, 6))
-		
-		# 提示文本
-		ttk.Label(btn_frame, text="完善外观、服装等信息", font=("", 8), foreground="#888").pack(side=LEFT, padx=(5, 0))
-		
-		# 人物列表框（使用Listbox）
-		list_frame = ttk.Frame(grp_characters)
-		list_frame.pack(fill=BOTH, expand=True, padx=6, pady=(0, 6))
-		
-		# 添加滚动条
-		scrollbar = ttk.Scrollbar(list_frame, orient="vertical")
-		self.char_listbox = tk.Listbox(list_frame, font=("", 10), 
-									   yscrollcommand=scrollbar.set,
-									   relief=tk.SOLID, borderwidth=1,
-									   height=8)
-		scrollbar.config(command=self.char_listbox.yview)
-		
-		self.char_listbox.pack(side=LEFT, fill=BOTH, expand=True)
-		scrollbar.pack(side=RIGHT, fill="y")
+		self.char_btn_refresh.pack(side=LEFT)
 		
 		# 绑定选择事件
-		self.char_listbox.bind("<<ListboxSelect>>", self._on_character_selected)
+		self.char_combobox.bind("<<ComboboxSelected>>", self._on_character_selected)
 		
-		# 人物特征描述区域
-		grp_desc = ttk.LabelFrame(left, text="📝 人物特征描述", padding=(8, 5))
-		grp_desc.pack(fill=BOTH, expand=True, padx=0, pady=0)
+		# 人物信息Notebook（分页显示，紧凑布局）
+		grp_info = ttk.LabelFrame(left, text="👤 人物信息", padding=(5, 1))
+		grp_info.pack(fill=BOTH, expand=True, padx=0, pady=(0, 0))
+		
+		# 创建Notebook（去除多余的内边距，紧凑布局）
+		self.char_info_notebook = ttk.Notebook(grp_info)
+		self.char_info_notebook.pack(fill=BOTH, expand=True, padx=2, pady=2)
+		
+		# 配置Notebook样式，减少标签页之间的空白
+		style = ttk.Style()
+		style.configure("TNotebook.Tab", padding=[12, 6])  # 减少水平padding
+		
+		# ===== Tab 1: 特征描述 =====
+		desc_tab = ttk.Frame(self.char_info_notebook)
+		self.char_info_notebook.add(desc_tab, text="📝 特征描述")
 		
 		# 特征描述文本框
-		self.char_txt_desc = tk.Text(grp_desc, height=10, font=("", 10), 
+		self.char_txt_desc = tk.Text(desc_tab, font=("", 10), 
 									 wrap=tk.WORD, relief=tk.SOLID, borderwidth=1)
-		self.char_txt_desc.pack(fill=BOTH, expand=True, padx=6, pady=(6, 8))
-		self.char_txt_desc.insert("1.0", "第二步：从列表中选择一个人物，然后点击下方按钮生成该人物的特征描述...")
+		self.char_txt_desc.pack(fill=BOTH, expand=True, padx=3, pady=3)
+		self.char_txt_desc.insert("1.0", "第二步：从下拉框选择人物，点击下方'生成特征描述'...")
 		self.char_txt_desc.config(state=DISABLED)
 		
-		# 特征描述按钮
-		desc_btn_frame = ttk.Frame(grp_desc)
-		desc_btn_frame.pack(fill="x", padx=6, pady=(0, 6))
+		# 按钮区域
+		desc_btn_frame = ttk.Frame(desc_tab)
+		desc_btn_frame.pack(fill="x", padx=3, pady=(0, 3))
+		
+		# 生成特征描述按钮
 		self.char_btn_gen_desc = ttk.Button(desc_btn_frame, text="✨ 生成特征描述", 
 											command=self._on_generate_character_description,
-											width=15, state=DISABLED, style="Accent.TButton")
+											width=18, state=DISABLED, style="Accent.TButton")
 		self.char_btn_gen_desc.pack(side=LEFT, padx=(0, 3))
+		
+		# 复制按钮
 		self.char_btn_copy_desc = ttk.Button(desc_btn_frame, text="📋 复制", 
 											 command=self._on_copy_character_description,
-											 width=10, state=DISABLED, style="TButton")
+											 width=8, state=DISABLED, style="TButton")
 		self.char_btn_copy_desc.pack(side=LEFT, padx=(0, 3))
+		
+		# ===== Tab 2: 详细编辑 =====
+		self.char_edit_tab = ttk.Frame(self.char_info_notebook)
+		self.char_info_notebook.add(self.char_edit_tab, text="✏️ 详细编辑")
+		self._build_character_detail_panel()
 		
 		# 右侧：生成参数和预览
 		# 添加顶部提示
@@ -454,6 +458,367 @@ class ImageUICharacterTabMixin:
 		self._char_scroll_canvas.bind("<MouseWheel>", self._char_scroll_mousewheel_func)
 		self._char_scroll_canvas.bind("<Button-4>", self._char_scroll_mousewheel_func)
 		self._char_scroll_canvas.bind("<Button-5>", self._char_scroll_mousewheel_func)
+	
+	def _build_character_detail_panel(self):
+		"""构建嵌入式人物详细编辑面板（替代弹框）"""
+		# 顶部工具栏（紧凑布局）
+		toolbar = ttk.Frame(self.char_edit_tab)
+		toolbar.pack(fill="x", padx=5, pady=4)
+		
+		ttk.Button(toolbar, text="🤖 智能填写", 
+				   command=self._on_smart_fill_embedded,
+				   width=14, style="Accent.TButton").pack(side=LEFT, padx=(0, 5))
+		ttk.Button(toolbar, text="💾 保存修改", 
+				   command=self._on_save_character_detail_embedded,
+				   width=14, style="TButton").pack(side=LEFT)
+		ttk.Label(toolbar, text="从特征描述自动填充 →", 
+				 font=("", 8), foreground="#888").pack(side=LEFT, padx=(8, 0))
+		
+		# 创建子Notebook（多个编辑页面）
+		self.char_detail_notebook = ttk.Notebook(self.char_edit_tab)
+		self.char_detail_notebook.pack(fill=BOTH, expand=True, padx=3, pady=3)
+		
+		# === 页面1: 基本信息 ===
+		basic_tab = ttk.Frame(self.char_detail_notebook)
+		self.char_detail_notebook.add(basic_tab, text="📋 基本信息")
+		self._build_basic_info_tab(basic_tab)
+		
+		# === 页面2: 外观特征 ===
+		appearance_tab = ttk.Frame(self.char_detail_notebook)
+		self.char_detail_notebook.add(appearance_tab, text="👱 外观特征")
+		self._build_appearance_tab(appearance_tab)
+		
+		# === 页面3: 发型体型 ===
+		body_tab = ttk.Frame(self.char_detail_notebook)
+		self.char_detail_notebook.add(body_tab, text="💇 发型体型")
+		self._build_body_tab(body_tab)
+		
+		# === 页面4: 服装风格 ===
+		outfit_tab = ttk.Frame(self.char_detail_notebook)
+		self.char_detail_notebook.add(outfit_tab, text="👔 服装风格")
+		self._build_outfit_tab(outfit_tab)
+	
+	def _build_basic_info_tab(self, parent):
+		"""构建基本信息页面"""
+		frame = ttk.Frame(parent, padding=10)
+		frame.pack(fill=BOTH, expand=True)
+		
+		# 年龄
+		row = ttk.Frame(frame)
+		row.pack(fill="x", pady=5)
+		ttk.Label(row, text="年龄：", width=12).pack(side=LEFT)
+		self.char_age_var = tk.StringVar()
+		ttk.Entry(row, textvariable=self.char_age_var, width=25).pack(side=LEFT, padx=5)
+		
+		# 性别
+		row = ttk.Frame(frame)
+		row.pack(fill="x", pady=5)
+		ttk.Label(row, text="性别：", width=12).pack(side=LEFT)
+		self.char_gender_var = tk.StringVar()
+		gender_frame = ttk.Frame(row)
+		gender_frame.pack(side=LEFT, padx=5)
+		ttk.Radiobutton(gender_frame, text="男", variable=self.char_gender_var, value="男").pack(side=LEFT, padx=10)
+		ttk.Radiobutton(gender_frame, text="女", variable=self.char_gender_var, value="女").pack(side=LEFT, padx=10)
+	
+	def _build_appearance_tab(self, parent):
+		"""构建外观特征页面"""
+		frame = ttk.Frame(parent, padding=10)
+		frame.pack(fill=BOTH, expand=True)
+		
+		# 脸型
+		row = ttk.Frame(frame)
+		row.pack(fill="x", pady=5)
+		ttk.Label(row, text="脸型：", width=12).pack(side=LEFT)
+		self.char_face_shape_var = tk.StringVar()
+		ttk.Combobox(row, textvariable=self.char_face_shape_var, width=23,
+					values=["瓜子脸", "圆脸", "方脸", "长脸", "鹅蛋脸"]).pack(side=LEFT, padx=5)
+		
+		# 肤色
+		row = ttk.Frame(frame)
+		row.pack(fill="x", pady=5)
+		ttk.Label(row, text="肤色：", width=12).pack(side=LEFT)
+		self.char_skin_tone_var = tk.StringVar()
+		ttk.Combobox(row, textvariable=self.char_skin_tone_var, width=23,
+					values=["白皙", "偏白", "自然", "小麦色", "偏黑"]).pack(side=LEFT, padx=5)
+		
+		# 眼睛
+		row = ttk.Frame(frame)
+		row.pack(fill="x", pady=5)
+		ttk.Label(row, text="眼睛：", width=12).pack(side=LEFT)
+		self.char_eyes_var = tk.StringVar()
+		ttk.Entry(row, textvariable=self.char_eyes_var, width=25).pack(side=LEFT, padx=5)
+		ttk.Label(row, text="如:大眼睛", font=("", 8), foreground="#888").pack(side=LEFT, padx=5)
+	
+	def _build_body_tab(self, parent):
+		"""构建发型体型页面"""
+		frame = ttk.Frame(parent, padding=10)
+		frame.pack(fill=BOTH, expand=True)
+		
+		# 发型
+		row = ttk.Frame(frame)
+		row.pack(fill="x", pady=5)
+		ttk.Label(row, text="发型：", width=12).pack(side=LEFT)
+		self.char_hairstyle_var = tk.StringVar()
+		ttk.Combobox(row, textvariable=self.char_hairstyle_var, width=23,
+					values=["长发", "短发", "中长发", "马尾", "丸子头"]).pack(side=LEFT, padx=5)
+		
+		# 发色
+		row = ttk.Frame(frame)
+		row.pack(fill="x", pady=5)
+		ttk.Label(row, text="发色：", width=12).pack(side=LEFT)
+		self.char_hair_color_var = tk.StringVar()
+		ttk.Combobox(row, textvariable=self.char_hair_color_var, width=23,
+					values=["黑色", "棕色", "金色", "银色", "红色"]).pack(side=LEFT, padx=5)
+		
+		# 身高
+		row = ttk.Frame(frame)
+		row.pack(fill="x", pady=5)
+		ttk.Label(row, text="身高：", width=12).pack(side=LEFT)
+		self.char_height_var = tk.StringVar()
+		ttk.Entry(row, textvariable=self.char_height_var, width=25).pack(side=LEFT, padx=5)
+		ttk.Label(row, text="如:170cm", font=("", 8), foreground="#888").pack(side=LEFT, padx=5)
+		
+		# 体型
+		row = ttk.Frame(frame)
+		row.pack(fill="x", pady=5)
+		ttk.Label(row, text="体型：", width=12).pack(side=LEFT)
+		self.char_body_type_var = tk.StringVar()
+		ttk.Combobox(row, textvariable=self.char_body_type_var, width=23,
+					values=["瘦弱", "苗条", "匀称", "健壮", "丰满", "肥胖"]).pack(side=LEFT, padx=5)
+	
+	def _build_outfit_tab(self, parent):
+		"""构建服装风格页面"""
+		frame = ttk.Frame(parent, padding=10)
+		frame.pack(fill=BOTH, expand=True)
+		
+		# 服装风格
+		row = ttk.Frame(frame)
+		row.pack(fill="x", pady=5)
+		ttk.Label(row, text="风格：", width=12).pack(side=LEFT)
+		self.char_outfit_style_var = tk.StringVar()
+		ttk.Entry(row, textvariable=self.char_outfit_style_var, width=25).pack(side=LEFT, padx=5)
+		ttk.Label(row, text="如:休闲", font=("", 8), foreground="#888").pack(side=LEFT, padx=5)
+		
+		# 服装描述
+		desc_frame = ttk.Frame(frame)
+		desc_frame.pack(fill="both", expand=True, pady=5)
+		ttk.Label(desc_frame, text="描述：", width=12).pack(side=LEFT, anchor="n")
+		self.char_outfit_desc_text = tk.Text(desc_frame, height=6, wrap=tk.WORD, relief=tk.SOLID, borderwidth=1)
+		self.char_outfit_desc_text.pack(side=LEFT, padx=5, fill="both", expand=True)
+	
+	def _on_smart_fill_embedded(self):
+		"""嵌入式智能填写功能 - 从特征描述解析人物信息"""
+		from tkinter import messagebox
+		import re
+		
+		# 获取当前选中的人物索引
+		index = self.char_combobox.current()
+		if index < 0:
+			messagebox.showwarning("提示", "请先选择一个人物！")
+			return
+		
+		character = self.character_list[index]
+		character_name = character["name"]
+		
+		# 获取特征描述
+		description_text = self.char_txt_desc.get("1.0", tk.END).strip()
+		
+		if not description_text or len(description_text) < 20:
+			messagebox.showwarning("提示", 
+				f"请先为 {character_name} 生成特征描述！\n\n"
+				"点击上方'提取故事人物'提取人物后，\n"
+				"再点击'生成特征描述'生成人物特征。")
+			return
+		
+		print(f"\n{'='*60}")
+		print(f"🤖 智能填写功能 - 人物：{character_name}")
+		print(f"📋 特征描述长度: {len(description_text)} 字符")
+		print(f"{'='*60}")
+		
+		# 解析列表格式描述（如：性别：男\n年龄：25岁）
+		filled_count = 0
+		
+		try:
+			lines = description_text.split('\n')
+			for line in lines:
+				line = line.strip()
+				if not line or ':' not in line and '：' not in line:
+					continue
+				
+				# 分割键值对
+				if '：' in line:
+					key, value = line.split('：', 1)
+				else:
+					key, value = line.split(':', 1)
+				
+				key = key.strip()
+				value = value.strip()
+				
+				# 年龄
+				if '年龄' in key and hasattr(self, 'char_age_var'):
+					self.char_age_var.set(value)
+					print(f"✅ 年龄: {value}")
+					filled_count += 1
+				
+				# 性别
+				elif '性别' in key and hasattr(self, 'char_gender_var'):
+					if '男' in value:
+						self.char_gender_var.set('男')
+					elif '女' in value:
+						self.char_gender_var.set('女')
+					print(f"✅ 性别: {value}")
+					filled_count += 1
+				
+				# 脸型
+				elif '脸型' in key and hasattr(self, 'char_face_shape_var'):
+					self.char_face_shape_var.set(value)
+					print(f"✅ 脸型: {value}")
+					filled_count += 1
+				
+				# 肤色
+				elif '肤色' in key and hasattr(self, 'char_skin_tone_var'):
+					self.char_skin_tone_var.set(value)
+					print(f"✅ 肤色: {value}")
+					filled_count += 1
+				
+				# 眼睛
+				elif '眼' in key and hasattr(self, 'char_eyes_var'):
+					self.char_eyes_var.set(value)
+					print(f"✅ 眼睛: {value}")
+					filled_count += 1
+				
+				# 发型
+				elif '发型' in key and hasattr(self, 'char_hairstyle_var'):
+					self.char_hairstyle_var.set(value)
+					print(f"✅ 发型: {value}")
+					filled_count += 1
+				
+				# 发色
+				elif '发色' in key and hasattr(self, 'char_hair_color_var'):
+					self.char_hair_color_var.set(value)
+					print(f"✅ 发色: {value}")
+					filled_count += 1
+				
+				# 身高
+				elif '身高' in key and hasattr(self, 'char_height_var'):
+					self.char_height_var.set(value)
+					print(f"✅ 身高: {value}")
+					filled_count += 1
+				
+				# 体型
+				elif '体型' in key and hasattr(self, 'char_body_type_var'):
+					self.char_body_type_var.set(value)
+					print(f"✅ 体型: {value}")
+					filled_count += 1
+				
+				# 服装
+				elif '服装' in key or '风格' in key:
+					if hasattr(self, 'char_outfit_style_var'):
+						self.char_outfit_style_var.set(value)
+						print(f"✅ 服装: {value}")
+						filled_count += 1
+					if hasattr(self, 'char_outfit_desc_text'):
+						self.char_outfit_desc_text.delete("1.0", tk.END)
+						self.char_outfit_desc_text.insert("1.0", value)
+			
+			print(f"\n✅ 成功填充 {filled_count} 个字段")
+			
+			if filled_count > 0:
+				messagebox.showinfo("成功", 
+					f"已从特征描述中自动填写 {character_name} 的信息！\n\n"
+					f"填充了 {filled_count} 个字段")
+			else:
+				messagebox.showwarning("提示", 
+					"未能从特征描述中提取信息。\n\n"
+					"请确保特征描述格式正确，例如：\n"
+					"性别：男\n"
+					"年龄：25岁\n"
+					"发型：短发，黑色")
+		
+		except Exception as e:
+			print(f"❌ 解析失败: {e}")
+			import traceback
+			traceback.print_exc()
+			messagebox.showerror("错误", f"智能填写失败：{str(e)}")
+	
+	def _on_save_character_detail_embedded(self):
+		"""保存嵌入式详细编辑的数据"""
+		from tkinter import messagebox
+		
+		# 获取当前选中的人物索引
+		index = self.char_combobox.current()
+		if index < 0:
+			messagebox.showwarning("提示", "请先选择一个人物！")
+			return
+		
+		character = self.character_list[index]
+		character_name = character["name"]
+		
+		# 收集数据
+		char_data = {
+			"name": character_name,
+			"age": self.char_age_var.get() if hasattr(self, 'char_age_var') else "",
+			"gender": self.char_gender_var.get() if hasattr(self, 'char_gender_var') else "",
+			"appearance": {
+				"face": {
+					"shape": self.char_face_shape_var.get() if hasattr(self, 'char_face_shape_var') else "",
+					"skin_tone": self.char_skin_tone_var.get() if hasattr(self, 'char_skin_tone_var') else "",
+					"eyes": self.char_eyes_var.get() if hasattr(self, 'char_eyes_var') else "",
+				},
+				"hair": {
+					"style": self.char_hairstyle_var.get() if hasattr(self, 'char_hairstyle_var') else "",
+					"color": self.char_hair_color_var.get() if hasattr(self, 'char_hair_color_var') else "",
+				},
+				"body": {
+					"height": self.char_height_var.get() if hasattr(self, 'char_height_var') else "",
+					"build": self.char_body_type_var.get() if hasattr(self, 'char_body_type_var') else "",
+				}
+			},
+			"outfit": {
+				"style": self.char_outfit_style_var.get() if hasattr(self, 'char_outfit_style_var') else "",
+				"description": self.char_outfit_desc_text.get("1.0", tk.END).strip() if hasattr(self, 'char_outfit_desc_text') else "",
+			}
+		}
+		
+		# 保存到项目文件
+		if not self.current_project:
+			messagebox.showwarning("提示", "请先创建或打开一个项目！")
+			return
+		
+		try:
+			import json
+			from pathlib import Path
+			
+			# 确保characters目录存在
+			char_dir = self.current_project.project_dir / "characters"
+			char_dir.mkdir(parents=True, exist_ok=True)
+			
+			char_data_file = char_dir / "characters_info.json"
+			
+			# 读取现有数据
+			all_char_data = {}
+			if char_data_file.exists():
+				try:
+					with open(char_data_file, 'r', encoding='utf-8') as f:
+						all_char_data = json.load(f)
+				except:
+					pass
+			
+			# 更新当前人物的数据
+			all_char_data[character_name] = char_data
+			
+			# 保存到文件
+			with open(char_data_file, 'w', encoding='utf-8') as f:
+				json.dump(all_char_data, f, ensure_ascii=False, indent=2)
+			
+			print(f"✅ 已保存 {character_name} 的详细信息")
+			messagebox.showinfo("成功", f"已保存 {character_name} 的详细信息！")
+			
+		except Exception as e:
+			print(f"❌ 保存失败: {e}")
+			import traceback
+			traceback.print_exc()
+			messagebox.showerror("错误", f"保存失败：{str(e)}")
 	
 	
 	

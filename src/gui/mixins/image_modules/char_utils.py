@@ -102,86 +102,195 @@ class CharacterUtilsMixin:
 	
 	def _load_project_characters(self) -> None:
 		"""加载当前项目的所有人物信息（包括没有照片的人物）"""
+		import json
+		from pathlib import Path
+		from src.core.logging_config import get_logger
+		
+		logger = get_logger(__name__)
+		
+		# 记录加载开始
+		logger.info("=== 开始加载项目人物数据 ===")
+		
 		# 清空之前的人物列表
+		old_count = len(self.character_list) if hasattr(self, 'character_list') else 0
 		self.character_list.clear()
+		logger.info(f"已清空人物列表（之前有 {old_count} 个人物）")
 		
 		if not self.current_project:
-			print("⚠️ 没有当前项目，无法加载人物信息")
+			logger.warning("⚠️ 没有当前项目，无法加载人物信息")
 			self._update_reference_character_list()
 			return
 		
 		try:
-			import json
-			from pathlib import Path
-			
 			# 获取项目的 characters 文件夹
 			characters_dir = self.current_project.project_dir / "characters"
+			logger.info(f"项目路径：{self.current_project.project_dir}")
+			logger.info(f"人物文件夹路径：{characters_dir}")
 			
 			if not characters_dir.exists():
-				print(f"📁 项目尚无人物文件夹：{characters_dir}")
+				logger.warning(f"📁 项目尚无人物文件夹：{characters_dir}")
 				self._update_reference_character_list()
 				return
 			
 			# 读取人物描述信息（这是主要数据源）
 			characters_info_path = characters_dir / "characters_info.json"
-			characters_info = {}
+			characters_info_raw = {}
+			
+			logger.info(f"检查人物信息文件：{characters_info_path}")
+			logger.info(f"文件是否存在：{characters_info_path.exists()}")
+			
 			if characters_info_path.exists():
 				try:
 					with open(characters_info_path, 'r', encoding='utf-8') as f:
-						characters_info = json.load(f)
-					print(f"📖 已加载人物描述文件：{characters_info_path}")
+						characters_info_raw = json.load(f)
+					logger.info(f"📖 已加载人物描述文件：{characters_info_path}")
+					logger.info(f"JSON内容类型：{type(characters_info_raw)}")
+					logger.info(f"JSON内容长度：{len(characters_info_raw) if isinstance(characters_info_raw, dict) else 'N/A'}")
+					logger.debug(f"JSON内容预览：{str(characters_info_raw)[:200]}...")
 				except Exception as e:
-					print(f"⚠️ 读取人物描述文件失败：{str(e)}")
+					logger.error(f"⚠️ 读取人物描述文件失败：{str(e)}", exc_info=True)
+			else:
+				logger.warning(f"人物信息文件不存在：{characters_info_path}")
 			
-			if not characters_info:
-				print(f"📋 项目中暂无保存的人物信息")
+			if not characters_info_raw:
+				logger.warning(f"📋 项目中暂无保存的人物信息")
 				self._update_reference_character_list()
 				return
 			
+			# 处理不同的JSON格式
+			# 格式1: {"name1": {"description": "...", "photo_path": "..."}, "name2": {...}}
+			# 格式2: {"characters": {"name1": {...}, "name2": {...}}}
+			characters_info = {}
+			if "characters" in characters_info_raw and isinstance(characters_info_raw["characters"], dict):
+				# 格式2：嵌套格式
+				characters_info = characters_info_raw["characters"]
+				logger.info("📋 检测到嵌套格式JSON，已提取characters字段")
+			else:
+				# 格式1：扁平格式
+				characters_info = characters_info_raw
+				logger.info("📋 使用扁平格式JSON")
+			
+			logger.info(f"处理后的characters_info包含 {len(characters_info)} 个键")
+			logger.debug(f"键列表：{list(characters_info.keys())}")
+			
 			# 从JSON加载所有人物（包括没有照片的）
 			loaded_count = 0
+			skipped_count = 0
+			
 			for character_name, char_data in characters_info.items():
+				# 跳过无效的键（如"characters"本身）
+				if character_name == "characters":
+					logger.warning(f"跳过无效键：'characters'")
+					skipped_count += 1
+					continue
+				
+				if not isinstance(char_data, dict):
+					logger.warning(f"跳过无效数据：{character_name} (类型: {type(char_data)})")
+					skipped_count += 1
+					continue
+				
+				# 处理不同的数据格式
+				if isinstance(char_data, str):
+					# 如果char_data是字符串，说明格式不对，跳过
+					logger.warning(f"跳过字符串格式数据：{character_name}")
+					skipped_count += 1
+					continue
+				
 				description = char_data.get("description", "")
 				photo_path = char_data.get("photo_path", "")
 				
-				# 验证照片路径是否有效
+				logger.debug(f"加载人物：{character_name}，描述长度：{len(description)}，照片路径（原始）：{photo_path}")
+				
+				# 处理照片路径：如果是相对路径，转换为绝对路径；如果是绝对路径，验证是否存在
 				if photo_path:
-					photo_file = Path(photo_path)
-					if not photo_file.exists():
-						print(f"⚠️ 照片文件不存在：{photo_path}")
+					photo_path_obj = Path(photo_path)
+					
+					# 判断是绝对路径还是相对路径
+					if photo_path_obj.is_absolute():
+						# 绝对路径：检查是否已经包含项目目录（避免重复拼接）
+						photo_path_str = str(photo_path_obj).replace("\\", "/")
+						project_dir_str = str(self.current_project.project_dir).replace("\\", "/")
+						
+						# 如果路径已经以项目目录开头，直接使用
+						if photo_path_str.startswith(project_dir_str):
+							# 已经是正确的绝对路径，直接使用
+							logger.debug(f"绝对路径已包含项目目录，直接使用：{photo_path_obj}")
+						else:
+							# 绝对路径不在项目目录下，记录警告但保留
+							logger.warning(f"照片路径不在项目目录下：{photo_path_obj}")
+					else:
+						# 相对路径：转换为绝对路径（相对于项目目录）
+						# 检查路径是否已经包含项目目录路径（避免重复拼接）
+						photo_path_str = str(photo_path_obj).replace("\\", "/")
+						project_dir_str = str(self.current_project.project_dir).replace("\\", "/")
+						
+						# 如果路径已经以项目目录开头，直接使用
+						if photo_path_str.startswith(project_dir_str):
+							photo_path_obj = Path(photo_path_str)
+							logger.debug(f"路径已包含项目目录，直接使用：{photo_path_obj}")
+						else:
+							# 检查路径是否以"characters"开头（标准相对路径）
+							if photo_path_str.startswith("characters/"):
+								absolute_path = self.current_project.project_dir / photo_path_obj
+							else:
+								# 否则假设是相对于项目目录的路径
+								absolute_path = self.current_project.project_dir / photo_path_obj
+							photo_path_obj = absolute_path
+							logger.debug(f"相对路径转换为绝对路径：{photo_path} -> {photo_path_obj}")
+					
+					# 验证照片文件是否存在
+					if photo_path_obj.exists():
+						# 保存为相对路径（相对于项目目录）
+						try:
+							relative_path = photo_path_obj.relative_to(self.current_project.project_dir)
+							photo_path = str(relative_path).replace("\\", "/")
+							logger.debug(f"照片路径（相对）：{photo_path}")
+						except ValueError:
+							# 如果无法转换为相对路径，保持绝对路径但记录警告
+							logger.warning(f"照片路径不在项目目录下，使用绝对路径：{photo_path_obj}")
+							photo_path = str(photo_path_obj).replace("\\", "/")
+					else:
+						logger.warning(f"⚠️ 照片文件不存在：{photo_path_obj}")
 						photo_path = ""  # 重置为空
 				
 				self.character_list.append({
 					"name": character_name,
 					"description": description,
-					"photo_path": str(photo_path) if photo_path else ""
+					"photo_path": photo_path  # 保存相对路径
 				})
 				loaded_count += 1
 			
 			# 统计有照片的人物数量
 			photo_count = sum(1 for char in self.character_list if char.get("photo_path"))
 			
-			print(f"✅ 已加载 {loaded_count} 个人物（其中 {photo_count} 个有照片）")
+			logger.info(f"✅ 已加载 {loaded_count} 个人物（其中 {photo_count} 个有照片），跳过 {skipped_count} 个无效项")
 			
 			# 显示人物列表
 			character_names = [char['name'] for char in self.character_list]
-			print(f"✅ 已加载项目人物：{character_names}")
+			logger.info(f"✅ 已加载项目人物：{character_names}")
 			
 			# 显示人物描述预览
 			for char in self.character_list:
 				desc_preview = char["description"][:80] + "..." if len(char["description"]) > 80 else char["description"]
 				if desc_preview:
-					print(f"   📝 {char['name']}: {desc_preview}")
+					logger.debug(f"   📝 {char['name']}: {desc_preview}")
 				else:
-					print(f"   📝 {char['name']}: （尚无描述）")
+					logger.debug(f"   📝 {char['name']}: （尚无描述）")
 			
 			# 更新列表框显示
-			self._update_character_listbox()
+			if hasattr(self, '_update_character_listbox'):
+				self._update_character_listbox()
+				logger.info(f"已更新人物列表框，当前显示 {len(self.character_list)} 个人物")
+			else:
+				logger.warning("_update_character_listbox 方法不存在")
 			
 			# 更新参考人物列表
 			self._update_reference_character_list()
 			
+			logger.info("=== 人物数据加载完成 ===")
+			
 		except Exception as e:
+			logger.error(f"❌ 加载项目人物信息失败：{str(e)}", exc_info=True)
 			print(f"❌ 加载项目人物信息失败：{str(e)}")
 			import traceback
 			traceback.print_exc()
@@ -208,13 +317,28 @@ class CharacterUtilsMixin:
 		for char in self.character_list:
 			photo_path = char.get("photo_path")
 			if photo_path:
-				# 验证照片文件是否存在
+				# 验证照片文件是否存在（处理相对路径）
 				from pathlib import Path
-				if Path(photo_path).exists():
+				photo_path_obj = Path(photo_path)
+				
+				# 如果是相对路径，转换为绝对路径（相对于项目目录）
+				if not photo_path_obj.is_absolute() and self.current_project:
+					# 检查路径是否已经包含项目目录路径（避免重复拼接）
+					photo_path_str = str(photo_path_obj).replace("\\", "/")
+					project_dir_str = str(self.current_project.project_dir).replace("\\", "/")
+					
+					# 如果路径已经以项目目录开头，直接使用
+					if photo_path_str.startswith(project_dir_str):
+						photo_path_obj = Path(photo_path_str)
+					else:
+						# 否则拼接项目目录
+						photo_path_obj = self.current_project.project_dir / photo_path_obj
+				
+				if photo_path_obj.exists():
 					character_names.append(char["name"])
 					self.ref_character_listbox.insert(END, f"✅ {char['name']}")
 				else:
-					print(f"⚠️ 人物照片不存在：{photo_path}")
+					logger.warning(f"⚠️ 人物照片不存在：{photo_path_obj}")
 		
 		# 获取项目名称
 		if self.current_project:
@@ -241,14 +365,32 @@ class CharacterUtilsMixin:
 			characters_dir = self.current_project.project_dir / "characters"
 			characters_dir.mkdir(parents=True, exist_ok=True)
 			
-			# 构建保存数据
+			# 构建保存数据（确保photo_path是相对路径）
 			characters_info = {}
 			for char in self.character_list:
 				char_name = char.get("name", "")
 				if char_name:
+					photo_path = char.get("photo_path", "")
+					# 如果photo_path是绝对路径，转换为相对路径
+					if photo_path:
+						try:
+							photo_path_obj = Path(photo_path)
+							if photo_path_obj.is_absolute():
+								# 尝试转换为相对路径
+								try:
+									relative_path = photo_path_obj.relative_to(self.current_project.project_dir)
+									photo_path = str(relative_path).replace("\\", "/")
+									logger.debug(f"转换绝对路径为相对路径: {photo_path_obj} -> {photo_path}")
+								except ValueError:
+									# 如果无法转换为相对路径（不在项目目录下），保持原样但记录警告
+									logger.warning(f"照片路径不在项目目录下: {photo_path_obj}")
+									photo_path = str(photo_path_obj).replace("\\", "/")
+						except Exception as e:
+							logger.warning(f"处理照片路径时出错: {e}")
+					
 					characters_info[char_name] = {
 						"description": char.get("description", ""),
-						"photo_path": char.get("photo_path", "")
+						"photo_path": photo_path
 					}
 			
 			# 保存到文件
@@ -270,16 +412,16 @@ class CharacterUtilsMixin:
 	
 	def _on_view_character_gallery(self) -> None:
 		"""打开人物照片画廊"""
-		selection = self.char_listbox.curselection()
-		if not selection:
-			messagebox.showwarning("提示", "请先选择一个人物！")
+		# 获取选中的人物索引（兼容Combobox）
+		index = self.char_combobox.current()
+		if index < 0:
+			messagebox.showwarning("提示", "请先从下拉框中选择一个人物！")
 			return
 		
 		if not self.current_project:
 			messagebox.showwarning("提示", "请先创建或打开一个项目！")
 			return
 		
-		index = selection[0]
 		character = self.character_list[index]
 		character_name = character["name"]
 		

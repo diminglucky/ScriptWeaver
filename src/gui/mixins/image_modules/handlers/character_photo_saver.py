@@ -61,15 +61,19 @@ class CharacterPhotoSaver:
                 logger.error(f"文件保存失败：{save_path}")
                 return ""
             
-            # 更新人物列表中的照片路径
+            # 更新人物列表中的照片路径（使用相对路径）
             if hasattr(mixin_instance, 'character_list') and index < len(mixin_instance.character_list):
-                mixin_instance.character_list[index]["photo_path"] = str(save_path)
+                # 转换为相对于项目目录的路径
+                relative_path = save_path.relative_to(mixin_instance.current_project.project_dir)
+                mixin_instance.character_list[index]["photo_path"] = str(relative_path).replace("\\", "/")
             
             # 保存人物描述到JSON文件
             CharacterPhotoSaver._save_character_info(mixin_instance, characters_dir)
             
-            logger.info(f"照片已保存: {save_path}")
-            return str(save_path)
+            # 返回相对路径（相对于项目目录）
+            relative_path = save_path.relative_to(mixin_instance.current_project.project_dir)
+            logger.info(f"照片已保存: {save_path} (相对路径: {relative_path})")
+            return str(relative_path).replace("\\", "/")
             
         except Exception as e:
             logger.error(f"保存照片失败: {e}", exc_info=True)
@@ -117,8 +121,10 @@ class CharacterPhotoSaver:
             # 保存人物描述到JSON文件
             CharacterPhotoSaver._save_character_info(mixin_instance, characters_dir)
             
-            logger.info(f"照片已保存: {save_path}")
-            return str(save_path)
+            # 返回相对路径（相对于项目目录）
+            relative_path = save_path.relative_to(mixin_instance.current_project.project_dir)
+            logger.info(f"照片已保存: {save_path} (相对路径: {relative_path})")
+            return str(relative_path).replace("\\", "/")
             
         except Exception as e:
             logger.error(f"保存照片失败: {e}", exc_info=True)
@@ -133,26 +139,37 @@ class CharacterPhotoSaver:
             
             characters_info_path = characters_dir / "characters_info.json"
             
-            # 读取现有的描述信息（如果存在）
+            # 更新人物信息（使用扁平格式，直接以人物名称为key）
+            # 确保photo_path是相对路径
             characters_info = {}
-            if characters_info_path.exists():
-                try:
-                    with open(characters_info_path, 'r', encoding='utf-8') as f:
-                        characters_info = json.load(f)
-                except Exception:
-                    pass
-            
-            # 更新人物信息
-            characters_info['characters'] = {}
             for char in mixin_instance.character_list:
                 char_name = char.get("name", "")
                 if char_name:
-                    characters_info['characters'][char_name] = {
+                    photo_path = char.get("photo_path", "")
+                    # 如果photo_path是绝对路径，转换为相对路径
+                    if photo_path:
+                        try:
+                            photo_path_obj = Path(photo_path)
+                            if photo_path_obj.is_absolute():
+                                # 尝试转换为相对路径
+                                project_dir = mixin_instance.current_project.project_dir
+                                try:
+                                    relative_path = photo_path_obj.relative_to(project_dir)
+                                    photo_path = str(relative_path).replace("\\", "/")
+                                    logger.debug(f"转换绝对路径为相对路径: {photo_path_obj} -> {photo_path}")
+                                except ValueError:
+                                    # 如果无法转换为相对路径（不在项目目录下），保持原样但记录警告
+                                    logger.warning(f"照片路径不在项目目录下: {photo_path_obj}")
+                                    photo_path = str(photo_path_obj).replace("\\", "/")
+                        except Exception as e:
+                            logger.warning(f"处理照片路径时出错: {e}")
+                    
+                    characters_info[char_name] = {
                         "description": char.get("description", ""),
-                        "photo_path": char.get("photo_path", "")
+                        "photo_path": photo_path
                     }
             
-            # 保存到文件
+            # 保存到文件（扁平格式，便于加载）
             with open(characters_info_path, 'w', encoding='utf-8') as f:
                 json.dump(characters_info, f, ensure_ascii=False, indent=2)
             

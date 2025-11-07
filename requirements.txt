@@ -11,6 +11,7 @@ typer[all]>=0.12.3,<1.0.0         # CLI框架
 # LLM Client
 # --------------------------------------------------
 openai>=1.44.0,<2.0.0             # OpenAI兼容客户端（DeepSeek/通用LLM）
+google-generativeai>=0.3.0,<1.0.0 # Google Gemini API客户端
 
 # RAG Stack (知识库检索增强)
 # --------------------------------------------------

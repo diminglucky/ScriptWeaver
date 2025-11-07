@@ -149,9 +149,21 @@ class StoryConfigMixin:
 				
 				if ok:
 					self.base_url.set(b)
+					# 测试成功后，更新当前预设的配置并更新下拉框
+					current_preset = self.api_preset.get() if hasattr(self, 'api_preset') else ""
+					if current_preset and hasattr(self, 'api_presets') and current_preset in self.api_presets:
+						self.api_presets[current_preset]["key"] = key
+						self.api_presets[current_preset]["base_url"] = b
+						self.api_presets[current_preset]["model"] = model
+					
 					log_widget.insert(END, f"\n🎉 测试成功！已自动更新Base URL为: {b}\n")
 					messagebox.showinfo("测试成功", f"故事生成 API 可用\n{b}")
 					self.status.set("故事API可用")
+					
+					# 更新故事生成API下拉框
+					if hasattr(self, '_update_story_api_dropdowns'):
+						self._update_story_api_dropdowns()
+					
 					return
 			
 			# all failed
