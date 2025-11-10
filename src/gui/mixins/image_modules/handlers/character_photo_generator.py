@@ -311,9 +311,9 @@ class CharacterPhotoGenerator:
                     denoising_strength=0.4,
                     width=1024,
                     height=1024,
-                    steps=25,
-                    cfg_scale=8.5,  # 适度提高CFG scale以更好遵循提示词
-                    sampler_name="Euler a",
+                    steps=30,  # 提升步数，增加细节
+                    cfg_scale=7.0,  # 降低CFG，避免过度强调导致3D效果
+                    sampler_name="DPM++ 2M Karras",  # 更好的采样器
                     batch_size=1  # 明确设置为1，确保只生成一张图片
                 )
             else:
@@ -327,9 +327,9 @@ class CharacterPhotoGenerator:
                     negative_prompt=negative_prompt,
                     width=1024,
                     height=1024,
-                    steps=25,  # 增加步数以提高质量
-                    cfg_scale=8.0,  # 适度提高CFG scale以更好遵循提示词
-                    sampler_name="Euler a",
+                    steps=35,  # 提升步数，增加细节和质量
+                    cfg_scale=6.5,  # 降低CFG，避免过度强调导致3D效果和过度饱和
+                    sampler_name="DPM++ 2M Karras",  # 更好的采样器，适合真实感
                     seed=seed,
                     batch_size=1  # 明确设置为1，确保只生成一张图片
                 )

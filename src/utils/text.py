@@ -73,6 +73,41 @@ def sanitize(s: str) -> str:
 
 def try_chat_api(key: str, base_url: str, model: str) -> tuple[bool, str]:
 	"""测试聊天API是否可用"""
+	# 检查是否是 Gemini API（通过模型名称判断）
+	# 确保model是字符串且包含gemini
+	is_gemini = bool(model and isinstance(model, str) and "gemini" in model.lower())
+	
+	if is_gemini:
+		try:
+			from src.clients.gemini_client import GeminiClient
+			# Gemini 不需要 base_url，使用空字符串
+			client = GeminiClient(api_key=key, base_url="", model=model, timeout_seconds=30)
+			# 发送一个简单的测试消息
+			response = client.chat(
+				messages=[{"role": "user", "content": "ping"}],
+				max_tokens=5
+			)
+			if response:
+				return True, "Gemini API 连接成功"
+			else:
+				return False, "Gemini API 返回空响应"
+		except Exception as e:
+			error_msg = str(e)
+			# 提供更友好的错误信息
+			if "connect" in error_msg.lower() or "timeout" in error_msg.lower():
+				return False, f"连接失败: {error_msg}（可能需要配置代理）"
+			elif "api_key" in error_msg.lower() or "401" in error_msg or "403" in error_msg:
+				return False, f"API密钥无效: {error_msg}"
+			elif "model" in error_msg.lower() or "404" in error_msg:
+				return False, f"模型不存在: {error_msg}（请检查模型名称，如 gemini-1.5-flash）"
+			else:
+				return False, f"Gemini API 错误: {error_msg}"
+	
+	# 其他 API 使用 OpenAI 兼容接口
+	# 注意：Gemini API 不应该走到这里
+	if is_gemini:
+		return False, f"错误：检测到 Gemini 模型 '{model}' 但使用了错误的测试方法"
+	
 	try:
 		from openai import OpenAI
 		client = OpenAI(api_key=key, base_url=base_url, timeout=200)

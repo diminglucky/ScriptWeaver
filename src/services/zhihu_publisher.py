@@ -48,6 +48,7 @@ class ZhihuPublisher:
         title: str,
         content: str,
         input_mode: str = "paste",
+        custom_question: str = "",
         progress_callback: Optional[Callable[[str], None]] = None
     ) -> tuple[bool, str]:
         """
@@ -57,6 +58,7 @@ class ZhihuPublisher:
             title: 文章标题
             content: 文章内容
             input_mode: 输入模式 ("paste"=快速粘贴, "stream"=流式输出)
+            custom_question: 用户自定义问题标题（留空则自动选择第一个）
             progress_callback: 进度回调函数
             
         Returns:
@@ -70,7 +72,7 @@ class ZhihuPublisher:
             self.article_publisher = ArticlePublisher(self.browser_manager.page)
         
         return await self.article_publisher.publish_article(
-            title, content, input_mode, progress_callback
+            title, content, input_mode, custom_question, progress_callback
         )
     
     async def close(self):
@@ -84,6 +86,7 @@ def publish_to_zhihu_sync(
     content: str,
     headless: bool = False,
     input_mode: str = "paste",
+    custom_question: str = "",
     progress_callback: Optional[Callable[[str], None]] = None
 ) -> tuple[bool, str]:
     """
@@ -94,6 +97,7 @@ def publish_to_zhihu_sync(
         content: 文章内容
         headless: 是否使用无头模式
         input_mode: 输入模式 ("paste"=快速粘贴, "stream"=流式输出)
+        custom_question: 用户自定义问题标题（留空则自动选择第一个）
         progress_callback: 进度回调函数
         
     Returns:
@@ -106,7 +110,7 @@ def publish_to_zhihu_sync(
             if not await publisher.initialize():
                 return False, "初始化浏览器失败"
             
-            return await publisher.publish_article(title, content, input_mode, progress_callback)
+            return await publisher.publish_article(title, content, input_mode, custom_question, progress_callback)
             
         finally:
             # 确保资源被清理

@@ -14,23 +14,51 @@ def add_image_preview_methods(cls):
     
     def _refresh_preview_shot_combo(self):
         """刷新预览页面的分镜下拉框"""
+        print("[DEBUG] ========== _refresh_preview_shot_combo 被调用 ==========")
+        
         if not hasattr(self, 'preview_shot_combo'):
+            print("[ERROR] 未找到 preview_shot_combo")
             return
         
         options = ["全部分镜"]
         
         if hasattr(self, 'current_shots') and self.current_shots:
+            print(f"[DEBUG] 当前有 {len(self.current_shots)} 个分镜")
             for shot in self.current_shots:
                 shot_num = shot.get('shot_number', 0)
                 shot_type = shot.get('shot_type', '')
                 options.append(f"分镜{shot_num} - {shot_type}")
+        else:
+            print("[WARNING] current_shots 为空或不存在")
         
-        self.preview_shot_combo['values'] = options
+        print(f"[DEBUG] 生成的选项: {options}")
         
-        # 保持当前选择或默认选择第一个
-        current = self.preview_shot_var.get()
-        if current not in options:
-            self.preview_shot_var.set("全部分镜")
+        # 保存当前状态
+        try:
+            original_state = self.preview_shot_combo['state']
+            
+            # 临时改变状态来触发刷新
+            self.preview_shot_combo.configure(state='normal')
+            self.preview_shot_combo.configure(values=tuple(options))
+            self.preview_shot_combo.configure(state=original_state)
+            
+            print(f"✅ 已设置预览下拉框 values: {self.preview_shot_combo['values']}")
+            
+            # 保持当前选择或默认选择第一个
+            current = self.preview_shot_var.get()
+            if current not in options:
+                self.preview_shot_var.set("全部分镜")
+                self.preview_shot_combo.current(0)
+            
+            # 强制刷新UI
+            self.preview_shot_combo.update()
+            self.preview_shot_combo.update_idletasks()
+            
+            print(f"✅ 预览下拉框刷新完成，共 {len(options)-1} 个分镜")
+        except Exception as e:
+            print(f"[ERROR] 刷新预览下拉框失败: {e}")
+            import traceback
+            traceback.print_exc()
     
     def _on_preview_shot_selected(self, event=None):
         """当选择分镜时，显示对应的图片"""
@@ -38,11 +66,14 @@ def add_image_preview_methods(cls):
     
     def _refresh_preview_images(self):
         """刷新预览图片"""
+        print("[DEBUG] ========== _refresh_preview_images 被调用 ==========")
+        
         # 清空当前显示
         for widget in self.director_images_scrollable.winfo_children():
             widget.destroy()
         
         if not hasattr(self, 'current_project') or not self.current_project:
+            print("[ERROR] 没有当前项目")
             ttk.Label(
                 self.director_images_scrollable, 
                 text="请先加载项目",
@@ -59,7 +90,11 @@ def add_image_preview_methods(cls):
         else:
             project_path = Path(str(self.current_project))
         
+        print(f"[DEBUG] 项目路径: {project_path}")
+        
         shots_dir = project_path / "director" / "shots"
+        print(f"[DEBUG] 图片目录: {shots_dir}")
+        print(f"[DEBUG] 目录是否存在: {shots_dir.exists()}")
         
         if not shots_dir.exists():
             ttk.Label(
@@ -73,8 +108,12 @@ def add_image_preview_methods(cls):
         
         # 获取所有图片
         all_images = sorted([f for f in os.listdir(shots_dir) if f.endswith(('.png', '.jpg', '.jpeg'))])
+        print(f"[DEBUG] 找到的图片数量: {len(all_images)}")
+        if all_images:
+            print(f"[DEBUG] 前5个图片: {all_images[:5]}")
         
         if not all_images:
+            print("[WARNING] 目录为空")
             ttk.Label(
                 self.director_images_scrollable, 
                 text="目录为空\n\n请先生成分镜图片",
@@ -86,18 +125,28 @@ def add_image_preview_methods(cls):
         
         # 根据选择过滤图片
         selected = self.preview_shot_var.get()
+        print(f"[DEBUG] 选择的分镜: {selected}")
         
         if selected == "全部分镜":
             images_to_show = all_images
             self.preview_info_label.config(text=f"共 {len(images_to_show)} 张图片")
         else:
             # 提取分镜编号
-            shot_num = int(selected.split("分镜")[1].split(" ")[0])
-            # 过滤该分镜的图片 (格式: shot_001_v1.png)
-            images_to_show = [img for img in all_images if img.startswith(f"shot_{shot_num:03d}_")]
-            self.preview_info_label.config(text=f"{selected}: {len(images_to_show)} 张图片")
+            try:
+                shot_num = int(selected.split("分镜")[1].split(" ")[0])
+                print(f"[DEBUG] 提取的分镜编号: {shot_num}")
+                # 过滤该分镜的图片 (格式: shot_001_v1.png)
+                prefix = f"shot_{shot_num:03d}_"
+                print(f"[DEBUG] 搜索前缀: {prefix}")
+                images_to_show = [img for img in all_images if img.startswith(prefix)]
+                print(f"[DEBUG] 筛选后的图片数量: {len(images_to_show)}")
+                self.preview_info_label.config(text=f"{selected}: {len(images_to_show)} 张图片")
+            except Exception as e:
+                print(f"[ERROR] 解析分镜编号失败: {e}")
+                images_to_show = []
         
         if not images_to_show:
+            print(f"[WARNING] {selected} 没有图片")
             ttk.Label(
                 self.director_images_scrollable, 
                 text=f"{selected} 还没有生成图片",
@@ -106,6 +155,7 @@ def add_image_preview_methods(cls):
             ).pack(pady=50)
             return
         
+        print(f"[DEBUG] 准备显示 {len(images_to_show)} 张图片")
         # 显示图片网格
         self._display_images_grid(shots_dir, images_to_show)
     

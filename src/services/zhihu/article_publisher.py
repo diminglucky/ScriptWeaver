@@ -30,6 +30,7 @@ class ArticlePublisher:
         title: str,
         content: str,
         input_mode: str = "paste",
+        custom_question: str = "",
         progress_callback: Optional[Callable[[str], None]] = None
     ) -> tuple[bool, str]:
         """
@@ -39,6 +40,7 @@ class ArticlePublisher:
             title: 文章标题
             content: 文章内容
             input_mode: 输入模式 ("paste"=快速粘贴, "stream"=流式输出)
+            custom_question: 用户自定义问题标题（留空则自动选择第一个）
             progress_callback: 进度回调函数
             
         Returns:
@@ -81,7 +83,7 @@ class ArticlePublisher:
                 return False, "输入标题或内容失败"
             
             # 4. 设置发布选项
-            await self._configure_publish_options(title, content, progress_callback)
+            await self._configure_publish_options(title, content, custom_question, progress_callback)
             
             # 5. 点击发布
             if progress_callback:
@@ -423,21 +425,22 @@ class ArticlePublisher:
         self,
         title: str,
         content: str,
+        custom_question: str,
         progress_callback: Optional[Callable[[str], None]]
     ) -> None:
         """配置发布选项（投稿、声明、话题）"""
         await asyncio.sleep(2)  # 等待页面加载完成
         
         # 设置投稿至问题
-        await self._set_question_submission(progress_callback)
+        await self._set_question_submission(custom_question, progress_callback)
         
         # 设置创作声明
         await self._set_creation_declaration(progress_callback)
         
-        # 添加话题
-        await self._add_topics(title, content, progress_callback)
+        # 添加话题（自动提取）
+        await self._add_topics(title, content, "", progress_callback)
     
-    async def _set_question_submission(self, progress_callback: Optional[Callable[[str], None]]) -> None:
+    async def _set_question_submission(self, custom_question: str, progress_callback: Optional[Callable[[str], None]]) -> None:
         """设置投稿至问题"""
         if progress_callback:
             progress_callback("正在选择投稿问题...")
@@ -477,6 +480,45 @@ class ArticlePublisher:
                             modal = None
                     except Exception:
                         continue
+                
+                # 如果用户输入了问题标题，尝试搜索
+                if custom_question:
+                    logger.info(f"用户指定了问题标题: {custom_question}，尝试搜索")
+                    try:
+                        # 查找搜索框（多种选择器）
+                        search_input = None
+                        search_selectors = [
+                            'input[placeholder*="关键词"]',
+                            'input[placeholder*="搜索"]',
+                            'input[placeholder*="问题"]',
+                            'input[type="text"]',
+                            'input.Input',
+                        ]
+                        
+                        for selector in search_selectors:
+                            if modal:
+                                search_input = await modal.query_selector(selector)
+                            if not search_input:
+                                search_input = await self.page.query_selector(selector)
+                            if search_input:
+                                logger.info(f"找到搜索框 (selector: {selector})")
+                                break
+                        
+                        if search_input:
+                            logger.info("输入问题标题到搜索框")
+                            await search_input.click()
+                            await asyncio.sleep(0.5)
+                            await search_input.fill('')  # 先清空
+                            await asyncio.sleep(0.3)
+                            await search_input.type(custom_question, delay=50)
+                            await asyncio.sleep(1)
+                            await self.page.keyboard.press('Enter')
+                            await asyncio.sleep(2.5)
+                            logger.info(f"已搜索问题: {custom_question}")
+                        else:
+                            logger.warning("未找到搜索框，将选择第一个问题")
+                    except Exception as e:
+                        logger.warning(f"搜索问题失败: {e}，将选择第一个问题")
                 
                 # 查找并点击第一个"选择"按钮
                 select_button = None
@@ -597,6 +639,7 @@ class ArticlePublisher:
         self,
         title: str,
         content: str,
+        custom_topic: str,
         progress_callback: Optional[Callable[[str], None]]
     ) -> None:
         """提取并添加话题词"""
@@ -607,8 +650,14 @@ class ArticlePublisher:
             logger.info("正在提取话题词...")
             await asyncio.sleep(1)
             
-            # 使用TopicExtractor提取话题
-            topics = TopicExtractor.extract_topics_from_content(title, content)
+            # 如果用户指定了话题，使用用户的话题；否则自动提取
+            if custom_topic:
+                topics = [custom_topic]
+                logger.info(f"使用用户指定的话题: {custom_topic}")
+            else:
+                # 使用TopicExtractor提取话题
+                topics = TopicExtractor.extract_topics_from_content(title, content)
+                logger.info(f"自动提取话题: {topics}")
             
             if topics:
                 logger.info(f"提取到话题词: {', '.join(topics)}")

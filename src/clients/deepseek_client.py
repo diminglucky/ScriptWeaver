@@ -60,20 +60,42 @@ class DeepSeekClient:
 		frequency_penalty: Optional[float] = None,
 	):
 		try:
-			stream = self.client.chat.completions.create(
-				model=model or self.model,
-				messages=messages,
-				temperature=temperature,
-				max_tokens=max_tokens,
-				top_p=top_p,
-				presence_penalty=presence_penalty,
-				frequency_penalty=frequency_penalty,
-				stream=True,
-			)
+			# ★★★ 构建请求参数，只包含非None的参数 ★★★
+			params = {
+				"model": model or self.model,
+				"messages": messages,
+				"temperature": temperature,
+				"stream": True,
+			}
+			
+			# 只添加非None的可选参数
+			if max_tokens is not None:
+				params["max_tokens"] = max_tokens
+			if top_p is not None:
+				params["top_p"] = top_p
+			if presence_penalty is not None:
+				params["presence_penalty"] = presence_penalty
+			if frequency_penalty is not None:
+				params["frequency_penalty"] = frequency_penalty
+			
+			print(f"[DEBUG] DeepSeek流式请求参数: model={params['model']}, temperature={params['temperature']}, max_tokens={params.get('max_tokens', 'None')}")
+			
+			stream = self.client.chat.completions.create(**params)
+			
 			for chunk in stream:
 				if chunk.choices and chunk.choices[0].delta and chunk.choices[0].delta.content:
 					yield chunk.choices[0].delta.content
-		except Exception:
+		except Exception as e:
+			# ★★★ 打印详细错误信息，便于调试 ★★★
+			print(f"❌ DeepSeek流式调用失败: {type(e).__name__}: {e}")
+			
+			# 尝试提取更详细的错误信息
+			if hasattr(e, 'response'):
+				print(f"   响应状态码: {getattr(e.response, 'status_code', 'N/A')}")
+				print(f"   响应内容: {getattr(e.response, 'text', 'N/A')[:500]}")
+			
+			import traceback
+			traceback.print_exc()
 			# 流失败直接返回空生成，避免阻塞UI
 			yield from []
 

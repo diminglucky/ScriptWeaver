@@ -707,8 +707,23 @@ class DirectorMixin(
 
             # 保存分镜JSON
             shots_file = director_dir / "shots.json"
+            
+            # 将 Shot 对象转换为字典以便 JSON 序列化
+            shots_list = []
+            for shot in self.current_shots:
+                # 检查是否是 Shot 对象（有 to_dict 方法）
+                if hasattr(shot, 'to_dict'):
+                    shots_list.append(shot.to_dict())
+                elif isinstance(shot, dict):
+                    # 已经是字典，直接使用
+                    shots_list.append(shot)
+                else:
+                    # 其他类型，跳过
+                    print(f"警告：无法序列化的分镜对象类型: {type(shot)}")
+                    continue
+            
             with open(shots_file, 'w', encoding='utf-8') as f:
-                json.dump({"shots": self.current_shots},
+                json.dump({"shots": shots_list},
                           f, ensure_ascii=False, indent=2)
 
             print(f"[OK] 分镜已保存到: {shots_file}，共 {len(self.current_shots)} 个")
@@ -2324,6 +2339,18 @@ class DirectorMixin(
             
             # 转换为Shot对象（如果有分镜信息）
             if current_shot:
+                # 处理camera参数
+                from .models.shot import ShotCamera
+                camera_data = current_shot.get('camera', {})
+                if isinstance(camera_data, dict):
+                    camera = ShotCamera(
+                        movement=camera_data.get('movement', ''),
+                        angle=camera_data.get('angle', current_shot.get('camera_angle', '')),
+                        lens=camera_data.get('lens', '')
+                    )
+                else:
+                    camera = ShotCamera()
+                
                 shot = Shot(
                     shot_number=shot_num,
                     characters=current_shot.get('characters', []),
@@ -2332,10 +2359,18 @@ class DirectorMixin(
                     emotion=current_shot.get('emotion', ''),
                     shot_type=current_shot.get('shot_type', ''),
                     visual_description=current_shot.get('visual_description', description),
-                    dialogue=current_shot.get('dialogue', ''),
-                    camera_angle=current_shot.get('camera_angle', ''),
                     duration=current_shot.get('duration', ''),
-                    transition=current_shot.get('transition', '')
+                    transition=current_shot.get('transition', ''),
+                    camera=camera,
+                    scene_description=current_shot.get('scene_description', ''),
+                    jimeng_prompt=current_shot.get('jimeng_prompt', ''),
+                    lighting=current_shot.get('lighting', ''),
+                    atmosphere=current_shot.get('atmosphere', ''),
+                    character_details=current_shot.get('character_details', {}),
+                    props=current_shot.get('props', []),
+                    continuity=current_shot.get('continuity', ''),
+                    scene_id=current_shot.get('scene_id', ''),
+                    time=current_shot.get('time', '')
                 )
             else:
                 # 创建基本Shot对象

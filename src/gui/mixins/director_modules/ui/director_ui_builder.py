@@ -82,6 +82,22 @@ class DirectorUIBuilder:
         step2_frame = ttk.LabelFrame(parent, text="【步骤2】生成分镜", padding=10)
         step2_frame.pack(fill="x", pady=5)
         
+        # ★★★ 章节选择器 ★★★
+        chapter_frame = ttk.Frame(step2_frame)
+        chapter_frame.pack(fill="x", pady=5)
+        
+        ttk.Label(chapter_frame, text="生成范围:").pack(side="left", padx=5)
+        
+        mixin_instance.shot_generation_range_var = tk.StringVar(value="全部章节")
+        mixin_instance.shot_generation_range_combo = ttk.Combobox(
+            chapter_frame,
+            textvariable=mixin_instance.shot_generation_range_var,
+            state="readonly",
+            width=15
+        )
+        mixin_instance.shot_generation_range_combo.pack(side="left", padx=5)
+        mixin_instance.shot_generation_range_combo['values'] = ["全部章节", "前3段", "前5段", "前10段"]
+        
         ttk.Button(
             step2_frame,
             text="🎬 生成分镜",
@@ -90,9 +106,10 @@ class DirectorUIBuilder:
         
         ttk.Label(
             step2_frame,
-            text="将剧本转换为详细分镜列表",
+            text="将剧本转换为详细分镜列表\n💡 可选择部分章节快速测试",
             font=("", 9),
-            foreground="gray"
+            foreground="gray",
+            justify="left"
         ).pack(pady=2)
     
     @staticmethod
@@ -112,10 +129,52 @@ class DirectorUIBuilder:
             selector_frame,
             textvariable=mixin_instance.shot_select_var,
             state="readonly",
-            width=15
+            width=15,  # 增加宽度以显示完整选项
+            height=15  # 设置下拉列表高度
         )
         mixin_instance.shot_select_combo.pack(side="left", padx=5)
         mixin_instance.shot_select_combo['values'] = ["全部分镜"]
+        mixin_instance.shot_select_combo.current(0)  # 确保初始选中
+        
+        # 添加刷新按钮
+        ttk.Button(
+            selector_frame,
+            text="🔄",
+            width=3,
+            command=lambda: DirectorUIBuilder._debug_and_refresh_shots(mixin_instance)
+        ).pack(side="left", padx=2)
+        
+        # 绑定选择事件，自动推荐图片数量
+        mixin_instance.shot_select_combo.bind(
+            "<<ComboboxSelected>>",
+            lambda e: DirectorUIBuilder._on_shot_selected_for_recommendation(mixin_instance)
+        )
+        
+        # 每个分镜生成图片数量
+        num_frame = ttk.Frame(step3_frame)
+        num_frame.pack(fill="x", pady=5)
+        
+        ttk.Label(num_frame, text="每个分镜:").pack(side="left", padx=5)
+        
+        mixin_instance.images_per_shot_var = tk.IntVar(value=1)
+        ttk.Spinbox(
+            num_frame,
+            from_=1,
+            to=5,
+            width=5,
+            textvariable=mixin_instance.images_per_shot_var
+        ).pack(side="left", padx=5)
+        
+        ttk.Label(num_frame, text="张图片").pack(side="left")
+        
+        # 推荐提示标签
+        mixin_instance.image_count_recommendation_label = ttk.Label(
+            num_frame,
+            text="💡",
+            foreground="gray",
+            font=("", 9)
+        )
+        mixin_instance.image_count_recommendation_label.pack(side="left", padx=5)
         
         # 生成按钮
         ttk.Button(
@@ -132,7 +191,7 @@ class DirectorUIBuilder:
         
         ttk.Label(
             step3_frame,
-            text="为分镜生成图片",
+            text="为分镜生成图片（可生成1-5个变体）",
             font=("", 9),
             foreground="gray"
         ).pack(pady=2)
@@ -292,18 +351,27 @@ class DirectorUIBuilder:
             selector_frame,
             textvariable=mixin_instance.preview_shot_var,
             state="readonly",
-            width=20
+            width=25,  # 增加宽度以显示完整选项
+            height=15  # 设置下拉列表高度
         )
         mixin_instance.preview_shot_combo.pack(side="left", padx=5)
+        mixin_instance.preview_shot_combo['values'] = ["全部分镜"]
+        mixin_instance.preview_shot_combo.current(0)
         mixin_instance.preview_shot_combo.bind(
             "<<ComboboxSelected>>",
             mixin_instance._on_preview_shot_selected
         )
 
+        def refresh_preview_all():
+            """刷新预览页面的所有内容（下拉框+图片）"""
+            if hasattr(mixin_instance, '_refresh_preview_shot_combo'):
+                mixin_instance._refresh_preview_shot_combo()
+            mixin_instance._refresh_preview_images()
+        
         ttk.Button(
             selector_frame,
             text="🔄 刷新",
-            command=mixin_instance._refresh_preview_images
+            command=refresh_preview_all
         ).pack(side="left", padx=5)
 
         mixin_instance.preview_info_label = ttk.Label(
@@ -484,4 +552,188 @@ class DirectorUIBuilder:
             text="📁 打开输出目录",
             command=mixin_instance._on_open_output_folder
         ).pack(fill="x", pady=2)
+    
+    @staticmethod
+    def _on_shot_selected_for_recommendation(mixin_instance):
+        """当选择分镜时，根据分镜类型推荐图片数量"""
+        selection = mixin_instance.shot_select_var.get()
+        
+        # 如果选择的是"全部分镜"
+        if selection == "全部分镜":
+            if hasattr(mixin_instance, 'current_shots') and mixin_instance.current_shots:
+                total_shots = len(mixin_instance.current_shots)
+                # 全部分镜时推荐较少的数量（因为要生成很多）
+                if total_shots <= 3:
+                    recommended = 3  # 分镜少，可以多生成几张
+                elif total_shots <= 6:
+                    recommended = 2
+                else:
+                    recommended = 1  # 分镜多，推荐只生成1张
+            else:
+                recommended = 1
+        else:
+            # 单个分镜，根据分镜类型推荐
+            try:
+                shot_num = int(selection.replace("分镜", ""))
+                if hasattr(mixin_instance, 'current_shots') and mixin_instance.current_shots:
+                    if shot_num <= len(mixin_instance.current_shots):
+                        shot = mixin_instance.current_shots[shot_num - 1]
+                        recommended = DirectorUIBuilder._recommend_image_count_for_shot(shot)
+                    else:
+                        recommended = 2
+                else:
+                    recommended = 2
+            except (ValueError, IndexError):
+                recommended = 2
+        
+        # 设置推荐值并更新提示
+        if hasattr(mixin_instance, 'images_per_shot_var'):
+            mixin_instance.images_per_shot_var.set(recommended)
+            print(f"[推荐] {selection} → 推荐生成 {recommended} 张图片")
+            
+            # 更新提示标签
+            if hasattr(mixin_instance, 'image_count_recommendation_label'):
+                reason = DirectorUIBuilder._get_recommendation_reason(
+                    selection, 
+                    mixin_instance.current_shots if hasattr(mixin_instance, 'current_shots') else None
+                )
+                mixin_instance.image_count_recommendation_label.config(
+                    text=f"💡 推荐 {recommended} 张 ({reason})"
+                )
+    
+    @staticmethod
+    def _recommend_image_count_for_shot(shot: dict) -> int:
+        """根据分镜特征推荐图片生成数量
+        
+        推荐规则：
+        - 特写/近景：3-4张（需要多个角度和表情）
+        - 中景：2-3张（需要一些变化）
+        - 全景/远景：1-2张（环境为主，变化不大）
+        - 动作镜头：3-4张（捕捉不同动作瞬间）
+        - 静态镜头：1-2张（变化较少）
+        """
+        recommended = 2  # 默认推荐2张
+        
+        shot_type = shot.get('shot_type', '').lower()
+        action = shot.get('action', '').lower()
+        
+        # 根据镜头类型推荐
+        if any(keyword in shot_type for keyword in ['特写', 'close', 'cu', 'ecu', '近景']):
+            # 特写/近景：推荐3-4张
+            recommended = 3
+        elif any(keyword in shot_type for keyword in ['中景', 'medium', 'ms', 'mcu']):
+            # 中景：推荐2-3张
+            recommended = 2
+        elif any(keyword in shot_type for keyword in ['全景', '远景', 'wide', 'long', 'ls', 'ws']):
+            # 全景/远景：推荐1-2张
+            recommended = 2
+        
+        # 根据动作类型调整
+        action_keywords = ['跑', '跳', '打', '追', '飞', '舞', '战', '飘']
+        if any(keyword in action for keyword in action_keywords):
+            # 动作镜头：增加1张
+            recommended = min(recommended + 1, 4)
+        
+        # 根据人物数量调整
+        characters = shot.get('characters', [])
+        if len(characters) >= 3:
+            # 多人场景：增加1张（需要不同构图）
+            recommended = min(recommended + 1, 4)
+        
+        return recommended
+    
+    @staticmethod
+    def _get_recommendation_reason(selection: str, current_shots: list) -> str:
+        """获取推荐理由"""
+        if selection == "全部分镜":
+            if current_shots:
+                total = len(current_shots)
+                if total <= 3:
+                    return "分镜少"
+                elif total <= 6:
+                    return "适中"
+                else:
+                    return "分镜多，节省时间"
+            return "默认"
+        
+        # 单个分镜
+        try:
+            shot_num = int(selection.replace("分镜", ""))
+            if current_shots and shot_num <= len(current_shots):
+                shot = current_shots[shot_num - 1]
+                shot_type = shot.get('shot_type', '').lower()
+                
+                if any(k in shot_type for k in ['特写', 'close', 'cu']):
+                    return "特写镜头"
+                elif any(k in shot_type for k in ['全景', 'wide', 'long']):
+                    return "全景镜头"
+                elif any(k in shot_type for k in ['中景', 'medium']):
+                    return "中景镜头"
+        except:
+            pass
+        
+        return "标准"
+    
+    @staticmethod
+    def _debug_and_refresh_shots(mixin_instance):
+        """调试并刷新分镜列表"""
+        from tkinter import messagebox
+        
+        print("\n" + "="*80)
+        print("🔍 分镜下拉框调试信息")
+        print("="*80)
+        
+        # 检查项目
+        has_project = hasattr(mixin_instance, 'current_project') and mixin_instance.current_project
+        print(f"1. 是否有当前项目: {has_project}")
+        if has_project:
+            if hasattr(mixin_instance.current_project, 'project_dir'):
+                print(f"   项目路径: {mixin_instance.current_project.project_dir}")
+            elif isinstance(mixin_instance.current_project, dict):
+                print(f"   项目路径: {mixin_instance.current_project.get('path', 'N/A')}")
+        
+        # 检查分镜数据
+        has_shots = hasattr(mixin_instance, 'current_shots')
+        print(f"2. 是否有 current_shots 属性: {has_shots}")
+        if has_shots:
+            shots = mixin_instance.current_shots
+            print(f"   分镜数量: {len(shots) if shots else 0}")
+            if shots:
+                print(f"   第一个分镜类型: {type(shots[0])}")
+                if isinstance(shots[0], dict):
+                    print(f"   第一个分镜内容: shot_number={shots[0].get('shot_number')}, shot_type={shots[0].get('shot_type')}")
+                    print(f"   所有分镜编号: {[s.get('shot_number', '?') if isinstance(s, dict) else '?' for s in shots[:10]]}")
+        
+        # 检查下拉框
+        has_combo = hasattr(mixin_instance, 'shot_select_combo')
+        print(f"3. 是否有 shot_select_combo: {has_combo}")
+        if has_combo:
+            try:
+                current_values = mixin_instance.shot_select_combo['values']
+                print(f"   当前下拉框选项: {current_values}")
+            except:
+                print(f"   无法读取下拉框选项")
+        
+        print("="*80)
+        
+        # 如果没有分镜数据，尝试从项目加载
+        if has_project and (not has_shots or not mixin_instance.current_shots):
+            print("\n⚠️ 检测到没有分镜数据，尝试从项目加载...")
+            if hasattr(mixin_instance, '_load_director_data_from_project'):
+                try:
+                    mixin_instance._load_director_data_from_project()
+                    print("✅ 已尝试加载项目数据")
+                except Exception as e:
+                    print(f"❌ 加载失败: {e}")
+        
+        # 刷新下拉框
+        print("\n🔄 开始刷新下拉框...")
+        mixin_instance._refresh_shot_combo(silent=False)
+        
+        # 同时刷新预览页面下拉框
+        if hasattr(mixin_instance, '_refresh_preview_shot_combo'):
+            print("🔄 同时刷新预览页面下拉框...")
+            mixin_instance._refresh_preview_shot_combo()
+        
+        print("="*80 + "\n")
 

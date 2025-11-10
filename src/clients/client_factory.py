@@ -40,7 +40,7 @@ def create_chat_client(
         raise ValueError(f"API密钥不能为空（{api_name}）")
     
     # 根据API名称创建相应的客户端
-    if api_name.lower() == "gemini" or "gemini" in api_name.lower():
+    if api_name.lower() == "gemini" or ("gemini" in api_name.lower()):
         # Gemini不需要base_url，但保留参数以兼容接口
         return GeminiClient(
             api_key=api_key,
@@ -48,14 +48,14 @@ def create_chat_client(
             model=model,
             timeout_seconds=timeout_seconds
         )
-    elif api_name.lower() == "deepseek" or "deepseek" in api_name.lower():
+    elif api_name.lower() == "deepseek" or ("deepseek" in api_name.lower()):
         return DeepSeekClient(
             api_key=api_key,
             base_url=base_url,
             model=model,
             timeout_seconds=timeout_seconds
         )
-    elif api_name.lower() == "openai" or "openai" in api_name.lower():
+    elif api_name.lower() == "openai" or ("openai" in api_name.lower()):
         # OpenAI也使用OpenAI兼容的客户端（DeepSeekClient实际上就是OpenAI兼容的）
         return DeepSeekClient(
             api_key=api_key,

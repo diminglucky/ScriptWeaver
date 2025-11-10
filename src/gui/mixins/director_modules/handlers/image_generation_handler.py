@@ -22,19 +22,29 @@ class ImageGenerationHandler:
     @staticmethod
     def handle_generate_selected_shot(mixin_instance) -> None:
         """处理生成选中分镜图片的事件"""
+        print("[DEBUG] ========== handle_generate_selected_shot 被调用 ==========")
+        print(f"[DEBUG] hasattr current_shots: {hasattr(mixin_instance, 'current_shots')}")
+        
+        if hasattr(mixin_instance, 'current_shots'):
+            print(f"[DEBUG] current_shots 数量: {len(mixin_instance.current_shots) if mixin_instance.current_shots else 0}")
+        
         if not hasattr(mixin_instance, 'current_shots') or not mixin_instance.current_shots:
             messagebox.showwarning("提示", "请先生成分镜")
             return
         
         selection = mixin_instance.shot_select_var.get()
+        print(f"[DEBUG] 选中的分镜: {selection}")
+        
         if selection == "全部分镜":
             ImageGenerationHandler._generate_all_shots(mixin_instance)
         else:
             # 提取分镜编号
             try:
                 shot_num = int(selection.replace("分镜", ""))
+                print(f"[DEBUG] 准备生成分镜 {shot_num}")
                 ImageGenerationHandler._generate_single_shot(mixin_instance, shot_num)
-            except ValueError:
+            except ValueError as e:
+                print(f"[ERROR] 解析分镜编号失败: {e}")
                 messagebox.showerror("错误", "无法解析分镜编号")
     
     @staticmethod
@@ -51,35 +61,101 @@ class ImageGenerationHandler:
             f"将为 {total_shots} 个分镜各生成 {images_per_shot} 张图片，共 {total_shots * images_per_shot} 张。\n\n确定继续吗？"
         ):
             mixin_instance.status.set(f"开始生成 {total_shots} 个分镜的图片...")
+            # 更新右上角状态
+            if hasattr(mixin_instance, 'update_header_status'):
+                mixin_instance.update_header_status(f"开始生成 {total_shots} 个分镜的图片...", "🎨")
             
             def generate_task():
                 try:
-                    for shot_num in range(1, total_shots + 1):
-                        mixin_instance.after(0, lambda s=shot_num: mixin_instance.status.set(
-                            f"正在生成分镜 {s}/{total_shots}..."
-                        ))
-                        ImageGenerationHandler._generate_single_shot(mixin_instance, shot_num)
-                    mixin_instance.after(0, lambda: (
-                        mixin_instance.status.set("所有分镜图片生成完成！"),
-                        messagebox.showinfo("完成", f"已为 {total_shots} 个分镜生成图片")
-                    ))
+                    success_count = 0
+                    fail_count = 0
+                    
+                    for shot_idx, shot_num in enumerate(range(1, total_shots + 1), 1):
+                        def update_status(idx=shot_idx, s=shot_num):
+                            status_text = f"正在生成分镜 {idx}/{total_shots}..."
+                            mixin_instance.status.set(status_text)
+                            if hasattr(mixin_instance, 'update_header_status'):
+                                mixin_instance.update_header_status(status_text, "🎨")
+                        mixin_instance.after(0, update_status)
+                        
+                        # 获取输出目录
+                        if hasattr(mixin_instance.current_project, 'project_dir'):
+                            project_path = str(mixin_instance.current_project.project_dir)
+                        elif isinstance(mixin_instance.current_project, dict):
+                            project_path = mixin_instance.current_project.get('path', '')
+                        else:
+                            project_path = str(mixin_instance.current_project)
+                        
+                        shots_dir = Path(project_path) / "director" / "shots"
+                        shots_dir.mkdir(parents=True, exist_ok=True)
+                        
+                        # 获取分镜信息
+                        shot = mixin_instance.current_shots[shot_num - 1]
+                        
+                        # 生成多个变体
+                        shot_success = False
+                        for variant in range(1, images_per_shot + 1):
+                            try:
+                                image_path = mixin_instance._generate_single_shot_image(
+                                    shot_num=shot_num,
+                                    description=shot.get('visual_description', ''),
+                                    output_dir=str(shots_dir),
+                                    shot_variant=variant,
+                                    seed_offset=(variant - 1) * 1000
+                                )
+                                
+                                if image_path:
+                                    shot_success = True
+                                    logger.info(f"✅ 分镜 {shot_num} 变体 {variant} 生成成功")
+                                else:
+                                    logger.warning(f"⚠️ 分镜 {shot_num} 变体 {variant} 生成失败")
+                            except Exception as e:
+                                logger.error(f"❌ 分镜 {shot_num} 变体 {variant} 生成异常: {e}")
+                        
+                        if shot_success:
+                            success_count += 1
+                        else:
+                            fail_count += 1
+                    
+                    # 刷新UI
+                    def final_refresh():
+                        mixin_instance.status.set("所有分镜图片生成完成！")
+                        # 更新右上角状态
+                        if hasattr(mixin_instance, 'update_header_status'):
+                            mixin_instance.update_header_status(f"所有分镜图片生成完成！成功: {success_count}, 失败: {fail_count}", "✅")
+                        ImageGenerationHandler._refresh_preview_images(mixin_instance)
+                        if hasattr(mixin_instance, '_refresh_preview_shot_combo'):
+                            mixin_instance._refresh_preview_shot_combo()
+                        messagebox.showinfo(
+                            "完成", 
+                            f"已为 {total_shots} 个分镜生成图片\n✅ 成功: {success_count}\n❌ 失败: {fail_count}"
+                        )
+                    
+                    mixin_instance.after(0, final_refresh)
+                    
                 except Exception as e:
                     logger.error(f"批量生成图片失败: {e}", exc_info=True)
-                    mixin_instance.after(0, lambda: (
-                        mixin_instance.status.set("生成失败"),
+                    def handle_error():
+                        mixin_instance.status.set("生成失败")
+                        if hasattr(mixin_instance, 'update_header_status'):
+                            mixin_instance.update_header_status("生成失败", "❌")
                         messagebox.showerror("错误", f"生成图片时发生错误: {str(e)}")
-                    ))
+                    mixin_instance.after(0, handle_error)
             
             threading.Thread(target=generate_task, daemon=True).start()
     
     @staticmethod
     def _generate_single_shot(mixin_instance, shot_num: int) -> None:
         """生成单个分镜的图片"""
+        print(f"[DEBUG] _generate_single_shot 被调用: shot_num={shot_num}")
+        
         if not hasattr(mixin_instance, 'current_shots') or shot_num > len(mixin_instance.current_shots):
             messagebox.showwarning("提示", f"分镜 {shot_num} 不存在")
             return
         
         shot = mixin_instance.current_shots[shot_num - 1]
+        print(f"[DEBUG] 分镜数据类型: {type(shot)}")
+        
         if not isinstance(shot, dict):
             logger.error(f"分镜 {shot_num} 不是字典格式: {type(shot)}")
             messagebox.showerror("错误", f"分镜 {shot_num} 数据格式不正确")
@@ -93,15 +169,40 @@ class ImageGenerationHandler:
         project_dir = Path(mixin_instance.current_project.project_dir)
         shots_dir = project_dir / "director" / "shots"
         shots_dir.mkdir(parents=True, exist_ok=True)
+        print(f"[DEBUG] 输出目录: {shots_dir}")
         
         mixin_instance.status.set(f"正在生成分镜 {shot_num} 的图片...")
+        # 更新右上角状态
+        if hasattr(mixin_instance, 'update_header_status'):
+            mixin_instance.update_header_status(f"正在生成分镜 {shot_num} 的图片...", "🎨")
         
         def generate_task():
             try:
+                # ★★★ 在函数内部获取每个分镜生成的图片数量 ★★★
+                images_per_shot = 1  # 默认值
+                if hasattr(mixin_instance, 'images_per_shot_var'):
+                    try:
+                        images_per_shot = mixin_instance.images_per_shot_var.get()
+                    except:
+                        images_per_shot = 1
+                print(f"[DEBUG] 每个分镜生成图片数: {images_per_shot}")
+                
                 for variant in range(1, images_per_shot + 1):
-                    mixin_instance.after(0, lambda v=variant: mixin_instance.status.set(
-                        f"正在生成分镜 {shot_num} 第 {v}/{images_per_shot} 张..."
-                    ))
+                    def update_variant_status(v=variant):
+                        status_text = f"正在生成分镜 {shot_num} 第 {v}/{images_per_shot} 张..."
+                        mixin_instance.status.set(status_text)
+                        if hasattr(mixin_instance, 'update_header_status'):
+                            mixin_instance.update_header_status(status_text, "🎨")
+                    mixin_instance.after(0, update_variant_status)
+                    
+                    print(f"[DEBUG] 准备调用 _generate_single_shot_image: shot_num={shot_num}, variant={variant}")
+                    print(f"[DEBUG] hasattr _generate_single_shot_image: {hasattr(mixin_instance, '_generate_single_shot_image')}")
+                    
+                    if not hasattr(mixin_instance, '_generate_single_shot_image'):
+                        error_msg = "错误：未找到 _generate_single_shot_image 方法"
+                        print(f"[ERROR] {error_msg}")
+                        mixin_instance.after(0, lambda: messagebox.showerror("错误", error_msg))
+                        return
                     
                     image_path = mixin_instance._generate_single_shot_image(
                         shot_num=shot_num,
@@ -113,17 +214,30 @@ class ImageGenerationHandler:
                     
                     if image_path:
                         logger.info(f"分镜 {shot_num} 变体 {variant} 生成成功: {image_path}")
+                        print(f"[DEBUG] 图片生成成功: {image_path}")
+                    else:
+                        print(f"[WARNING] 分镜 {shot_num} 变体 {variant} 生成失败")
                 
-                mixin_instance.after(0, lambda: (
-                    mixin_instance.status.set(f"分镜 {shot_num} 图片生成完成"),
+                # 刷新UI显示
+                def refresh_ui():
+                    mixin_instance.status.set(f"分镜 {shot_num} 图片生成完成")
+                    # 更新右上角状态
+                    if hasattr(mixin_instance, 'update_header_status'):
+                        mixin_instance.update_header_status(f"分镜 {shot_num} 图片生成完成", "✅")
                     ImageGenerationHandler._refresh_preview_images(mixin_instance)
-                ))
+                    # 刷新预览下拉框
+                    if hasattr(mixin_instance, '_refresh_preview_shot_combo'):
+                        mixin_instance._refresh_preview_shot_combo()
+                
+                mixin_instance.after(0, refresh_ui)
             except Exception as e:
                 logger.error(f"生成分镜 {shot_num} 图片失败: {e}", exc_info=True)
-                mixin_instance.after(0, lambda: (
-                    mixin_instance.status.set("生成失败"),
+                def handle_single_error():
+                    mixin_instance.status.set("生成失败")
+                    if hasattr(mixin_instance, 'update_header_status'):
+                        mixin_instance.update_header_status(f"分镜 {shot_num} 生成失败", "❌")
                     messagebox.showerror("错误", f"生成图片时发生错误: {str(e)}")
-                ))
+                mixin_instance.after(0, handle_single_error)
         
         threading.Thread(target=generate_task, daemon=True).start()
     

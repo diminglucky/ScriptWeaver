@@ -26,6 +26,46 @@ class ImageGeneratorService:
     def __init__(self):
         self.prompt_builder = PromptBuilderService()
     
+    def _sanitize_prompt_for_content_filter(self, prompt: str) -> str:
+        """清理提示词，移除可能触发内容过滤的词汇"""
+        import re
+        
+        # 替换可能引起误判的词汇
+        replacements = {
+            r'黑洞洞': '暗淡',
+            r'注视': '看向',
+            r'眼睛注视': '窗户',
+            r'无数双眼睛': '多个窗户',
+            r'血': '红色',
+            r'死': '静止',
+            r'尸': '人',
+            r'鬼': '影子',
+            r'恐怖': '神秘',
+            r'惊悚': '紧张',
+            r'诡异': '不寻常',
+            r'阴森': '昏暗',
+            r'骷髅': '骨架',
+            r'暴力': '激烈',
+        }
+        
+        result = prompt
+        for pattern, replacement in replacements.items():
+            result = re.sub(pattern, replacement, result)
+        
+        return result
+    
+    def _simplify_prompt_aggressively(self, shot) -> str:
+        """激进简化提示词，只保留核心视觉元素"""
+        # 提取最基本的信息
+        location = shot.location if hasattr(shot, 'location') else ''
+        characters = ', '.join(shot.characters) if hasattr(shot, 'characters') and shot.characters else 'person'
+        shot_type = shot.shot_type if hasattr(shot, 'shot_type') else 'medium shot'
+        
+        # 构建最简单的描述
+        simple_prompt = f"{shot_type}, {characters} at {location}, cinematic lighting, professional photography"
+        
+        return simple_prompt
+    
     def generate_shot_image(
         self,
         shot: Shot,
@@ -191,6 +231,9 @@ class ImageGeneratorService:
             shot, "openai", characters_data
         )
         
+        # 清理提示词，移除可能触发内容过滤的词汇
+        prompt = self._sanitize_prompt_for_content_filter(prompt)
+        
         print(f"\n=== OpenAI图片生成 ===")
         print(f"提示词: {prompt[:200]}...")
         
@@ -201,11 +244,36 @@ class ImageGeneratorService:
             model=api_config.get("model", "")
         )
         
-        # 生成图片
-        image_data = client.generate(
-            prompt=prompt,
-            size="1024x1024"
-        )
+        # 生成图片（带重试）
+        max_retries = 2
+        last_error = None
+        
+        for attempt in range(max_retries):
+            try:
+                image_data = client.generate(
+                    prompt=prompt,
+                    size="1024x1024"
+                )
+                break
+            except Exception as e:
+                last_error = e
+                error_str = str(e)
+                
+                # 如果是内容过滤错误，进一步简化提示词
+                if 'content_policy_violation' in error_str or 'content filter' in error_str.lower():
+                    print(f"⚠️ 内容过滤触发，尝试简化提示词（尝试 {attempt + 1}/{max_retries}）")
+                    if attempt < max_retries - 1:
+                        # 进一步简化提示词
+                        prompt = self._simplify_prompt_aggressively(shot)
+                        print(f"简化后提示词: {prompt[:150]}...")
+                    else:
+                        print(f"❌ 多次简化后仍被过滤，跳过此分镜")
+                        raise
+                else:
+                    raise
+        
+        if 'image_data' not in locals():
+            raise last_error
         
         if image_data:
             # 保存图片

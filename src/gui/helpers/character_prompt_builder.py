@@ -242,30 +242,24 @@ class CharacterPromptBuilder:
         ]
         
         # === 1. 风格和质量标签（根据style参数设置）===
-        # 根据style参数添加写实风格约束，防止抽象化
-        if "写实" in style or "realistic" in style.lower() or "照片" in style or "photo" in style.lower():
-            # 写实照片风格：强调真实、照片质量
-            quality_tags = [
-                "photorealistic", "(photorealistic:1.5)",  # 照片写实，高权重
-                "realistic", "(realistic:1.3)",  # 写实风格
-                "professional photography", "professional photo",  # 专业摄影
-                "high quality photo", "high resolution photo",  # 高质量照片
-                "sharp focus", "detailed", "8k", "best quality",  # 清晰度和质量
-                "realistic proportions", "anatomically correct",  # 真实比例和解剖学正确
-                "natural lighting", "natural skin texture",  # 自然光线和皮肤纹理
-                "realistic hair", "realistic clothing",  # 真实的头发和服装
-                "no illustration", "no artwork", "no painting",  # 禁止插画和艺术作品
-                "no stylized", "no abstract", "no artistic style"  # 禁止风格化和抽象化
-            ]
-        else:
-            # 默认写实风格（即使没有明确指定）
-            quality_tags = [
-                "photorealistic", "(photorealistic:1.4)",  # 照片写实
-                "realistic", "(realistic:1.2)",  # 写实风格
-                "professional photography",  # 专业摄影
-                "best quality", "high resolution", "detailed",  # 基本质量要求
-                "no illustration", "no artwork", "no abstract"  # 禁止抽象化
-            ]
+        # 🔥 强化真实感标签，排除动漫/插画风格（最关键）
+        quality_tags = [
+            # 核心真实感标签（最高权重）
+            "(photorealistic:1.6)", "(realistic:1.5)", "(RAW photo:1.4)",
+            "masterpiece", "best quality", "ultra detailed",
+            # 照片属性
+            "real photo", "professional DSLR photography", 
+            "natural lighting", "cinematic lighting",
+            # 细节标签
+            "sharp focus", "highly detailed", "8k",
+            "detailed face", "detailed skin texture", "realistic skin",
+            "realistic proportions", "anatomically correct",
+            # 排除非真实风格（关键）
+            "(no illustration:1.5)", "(no artwork:1.5)", "(no painting:1.5)",
+            "(no anime:1.6)", "(no manga:1.6)", "(no cartoon:1.6)",
+            "(no 3d render:1.5)", "(no cg:1.5)", "(no stylized:1.4)",
+            "not illustration", "not anime", "not cartoon", "not 3d"
+        ]
         
         # 先添加质量标签
         tags.extend(quality_tags)
@@ -1178,17 +1172,27 @@ class CharacterPromptBuilder:
                 "background", "scene", "environment", "indoor", "outdoor", "room", "street", "building",
                 "landscape", "wall", "floor", "ceiling", "furniture", "interior", "exterior",
                 "complex background", "detailed background", "busy background",
-                # ★★★ 禁止抽象、艺术化风格（新增，防止生成抽象图片）★★★
-                "abstract", "abstract art", "abstract style", "abstract painting",
-                "artistic", "artistic style", "artistic painting", "artwork",
-                "illustration", "illustrated", "illustration style", "drawing", "sketch",
-                "cartoon", "cartoon style", "anime style", "manga style",
-                "stylized", "stylized art", "stylized illustration",
+                # ★★★ 强力排除动漫/插画/3D风格（最关键）★★★
+                # 动漫/卡通风格（高权重）
+                "(anime:2.0)", "(manga:2.0)", "(cartoon:2.0)", "(comic:2.0)",
+                "(illustration:1.8)", "(drawing:1.8)", "(sketch:1.8)", "(artwork:1.8)",
+                "anime style", "manga style", "cartoon style", "comic style",
+                "animated", "cel shading", "toon shading",
+                # 3D渲染风格（高权重）
+                "(3d render:1.8)", "(3d rendering:1.8)", "(cg:1.8)", "(CGI:1.8)",
+                "(rendered:1.7)", "(3d:1.7)", "computer graphics", "game art",
+                "video game", "game engine", "unreal engine", "unity", "blender render",
+                # 材质问题
+                "(plastic:1.6)", "(doll:1.6)", "(toy:1.6)", "plastic skin",
+                "mannequin", "wax figure", "artificial", "fake", "synthetic",
+                # 艺术风格
+                "abstract", "abstract art", "stylized", "stylized art",
                 "watercolor", "oil painting", "digital painting", "concept art",
-                "lowpoly", "vector art", "graphic art", "2d art",
-                "distorted", "surreal", "fantasy art", "fantasy style",
-                "unrealistic", "non-realistic", "stylized rendering",
-                "no realistic", "not realistic", "not photorealistic"
+                "lowpoly", "vector art", "graphic art", "fantasy art",
+                "artistic painting", "artistic style", "surreal",
+                # 明确排除
+                "unrealistic", "non-realistic", "not photorealistic",
+                "not realistic", "no realistic"
             ]
             
             # 根据描述添加针对性的负面提示词

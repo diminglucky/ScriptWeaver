@@ -218,7 +218,7 @@ class StoryUIBuilderMixin:
 			},
 			"Gemini": {
 				"base_url": "",
-				"model": "gemini-pro",
+				"model": "gemini-1.5-flash",  # 更新为最新模型，更快更稳定
 				"key": ""
 			},
 			"OpenAI": {

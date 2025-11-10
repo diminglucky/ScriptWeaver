@@ -52,15 +52,51 @@ class PromptBuilderService:
     ) -> Tuple[str, str]:
         """构建Stable Diffusion提示词（标签风格）"""
         
+        # ★★★ 核心改进：优先使用 jimeng_prompt 作为主要场景描述 ★★★
+        main_description = ""
+        
+        # 1. 首选：使用 jimeng_prompt（专门为图像生成优化的提示词）
+        if hasattr(shot, 'jimeng_prompt') and shot.jimeng_prompt:
+            main_description = shot.jimeng_prompt
+        # 2. 备选：使用 visual_description（详细的画面描述）
+        elif shot.visual_description:
+            main_description = shot.visual_description
+        
+        # 如果有主描述，需要翻译成英文（使用 PromptTranslator）
+        if main_description:
+            from src.utils.prompt_translator import PromptTranslator
+            
+            # 翻译中文描述为英文
+            english_description = PromptTranslator.translate_chinese_to_english(
+                main_description,
+                shot.characters,
+                {char: shot.get_character_detail(char) for char in shot.characters}
+            )
+            
+            if english_description:
+                # 使用翻译后的完整描述
+                main_tags = [english_description]
+            else:
+                # 翻译失败，使用关键词提取
+                main_tags = self._extract_keywords_from_description(main_description)
+        else:
+            main_tags = []
+        
         # === 质量标签 ===
         quality_tags = [
             "masterpiece", "best quality", "ultra detailed", "8k",
-            "photorealistic", "cinematic lighting", "professional photography",
-            "sharp focus", "highly detailed", "intricate details",
-            "character consistency", "consistent character design", "same person"
+            "(photorealistic:1.4)", "(realistic:1.4)", 
+            "professional photography", "cinematic lighting",
+            "sharp focus", "highly detailed", "intricate details"
         ]
         
-        # === 人物描述 ===
+        # === 人物一致性标签 ===
+        consistency_tags = [
+            "character consistency", "consistent character design", 
+            "same person", "same appearance"
+        ]
+        
+        # === 人物详细描述 ===
         character_tags = []
         for char_name in shot.characters:
             char_tags = self._build_character_tags_for_sd(
@@ -71,23 +107,25 @@ class PromptBuilderService:
             if char_tags:
                 character_tags.extend(char_tags)
         
-        # === 场景描述 ===
-        scene_tags = self._build_scene_tags_for_sd(shot)
-        
-        # === 动作和表情 ===
-        action_tags = self._build_action_tags_for_sd(shot)
-        
-        # === 镜头类型 ===
+        # === 镜头类型和构图 ===
         shot_type_tags = self._build_shot_type_tags_for_sd(shot)
         
-        # === 组合提示词 ===
-        positive_prompt = ", ".join(
-            quality_tags +
-            character_tags +
-            action_tags +
-            scene_tags +
-            shot_type_tags
+        # === 光线和氛围（从 lighting 字段提取）===
+        lighting_tags = []
+        if hasattr(shot, 'lighting') and shot.lighting:
+            lighting_tags = self._extract_lighting_tags(shot.lighting)
+        
+        # === 组合提示词（主描述放在最前面）===
+        all_tags = (
+            main_tags +           # 主场景描述（最重要）
+            character_tags +      # 人物详细描述
+            shot_type_tags +      # 镜头类型
+            lighting_tags +       # 光线氛围
+            quality_tags +        # 质量标签
+            consistency_tags      # 一致性标签
         )
+        
+        positive_prompt = ", ".join(all_tags)
         
         # === 负向提示词 ===
         negative_prompt = self._build_sd_negative_prompt(shot)
@@ -161,36 +199,56 @@ class PromptBuilderService:
         
         return tags
     
-    def _build_scene_tags_for_sd(self, shot: Shot) -> List[str]:
-        """构建场景标签"""
+    def _extract_keywords_from_description(self, description: str) -> List[str]:
+        """从中文描述中提取关键词（备用方案）"""
+        from src.utils.tag_extractor import TagExtractor
+        
         tags = []
         
-        # 环境
-        visual_desc = shot.visual_description
-        if "教室" in visual_desc:
-            tags.extend(["classroom", "school interior"])
-        if "办公室" in visual_desc:
-            tags.extend(["office", "professional environment"])
-        if "阳光" in visual_desc or "太阳" in visual_desc:
-            tags.extend(["sunlight", "natural lighting"])
-        if "窗" in visual_desc:
-            tags.append("window")
+        # 提取场景标签
+        tags.extend(TagExtractor.extract_scene_tags(description))
         
-        # 光线
-        if shot.lighting:
-            if "自然光" in shot.lighting:
-                tags.append("natural light")
-            if "柔和" in shot.lighting:
-                tags.append("soft lighting")
+        # 提取动作标签
+        tags.extend(TagExtractor.extract_action_tags(description))
         
-        # 氛围
-        if shot.atmosphere:
-            if "寂静" in shot.atmosphere or "安静" in shot.atmosphere:
-                tags.extend(["quiet atmosphere", "serene"])
-            if "紧张" in shot.atmosphere:
-                tags.append("tense atmosphere")
+        # 提取情绪标签
+        tags.extend(TagExtractor.extract_emotion_tags(description))
         
         return tags
+    
+    def _extract_lighting_tags(self, lighting_desc: str) -> List[str]:
+        """从光线描述中提取标签"""
+        tags = []
+        
+        # 光源类型
+        if "自然光" in lighting_desc or "阳光" in lighting_desc:
+            tags.append("natural light")
+        if "手机" in lighting_desc or "屏幕" in lighting_desc:
+            tags.append("screen light")
+        if "冷光" in lighting_desc or "冷色" in lighting_desc:
+            tags.append("cold lighting")
+        if "暖光" in lighting_desc or "暖色" in lighting_desc:
+            tags.append("warm lighting")
+        
+        # 光线强度
+        if "微弱" in lighting_desc or "昏暗" in lighting_desc:
+            tags.append("dim lighting")
+        if "明亮" in lighting_desc or "强烈" in lighting_desc:
+            tags.append("bright lighting")
+        if "柔和" in lighting_desc:
+            tags.append("soft lighting")
+        
+        # 光线效果
+        if "明暗对比" in lighting_desc or "对比" in lighting_desc:
+            tags.append("high contrast")
+        if "阴影" in lighting_desc:
+            tags.append("dramatic shadows")
+        
+        return tags
+    
+    def _build_scene_tags_for_sd(self, shot: Shot) -> List[str]:
+        """构建场景标签（已被主描述替代，保留用于兼容）"""
+        return []
     
     def _build_action_tags_for_sd(self, shot: Shot) -> List[str]:
         """构建动作标签"""
@@ -260,50 +318,100 @@ class PromptBuilderService:
         characters_data: Optional[Dict[str, Character]] = None
     ) -> Tuple[str, str]:
         """构建OpenAI提示词（自然语言风格）"""
-        parts = []
         
-        # 场景描述
-        if shot.visual_description:
-            parts.append(shot.visual_description)
+        # ★★★ 核心改进：优先使用 jimeng_prompt，它是专门为图像生成优化的 ★★★
         
-        # 人物描述
-        char_descriptions = []
-        for char_name in shot.characters:
-            char_desc = self._build_character_description_natural(
-                char_name,
-                shot.get_character_detail(char_name),
-                characters_data.get(char_name) if characters_data else None
-            )
-            if char_desc:
-                char_descriptions.append(char_desc)
+        # 1. 首选：jimeng_prompt（最优化的图像生成描述）
+        if hasattr(shot, 'jimeng_prompt') and shot.jimeng_prompt:
+            base_prompt = shot.jimeng_prompt
+        # 2. 备选：visual_description（详细的画面描述）
+        elif shot.visual_description:
+            base_prompt = shot.visual_description
+        else:
+            # 3. 兜底：组合各个字段
+            parts = []
+            
+            # 位置
+            if shot.location:
+                parts.append(f"场景：{shot.location}")
+            
+            # 人物描述
+            char_descriptions = []
+            for char_name in shot.characters:
+                char_desc = self._build_character_description_natural(
+                    char_name,
+                    shot.get_character_detail(char_name),
+                    characters_data.get(char_name) if characters_data else None
+                )
+                if char_desc:
+                    char_descriptions.append(char_desc)
+            
+            if char_descriptions:
+                parts.append("人物：" + "，".join(char_descriptions))
+            
+            # 动作
+            if shot.action:
+                parts.append(f"动作：{shot.action}")
+            
+            # 镜头类型
+            if shot.shot_type:
+                parts.append(f"镜头：{shot.shot_type}")
+            
+            base_prompt = "。".join(parts) if parts else "高质量摄影作品"
         
-        if char_descriptions:
-            parts.append("人物：" + "，".join(char_descriptions))
-        
-        # 动作
-        if shot.action:
-            parts.append(f"动作：{shot.action}")
-        
-        # 氛围
-        if shot.atmosphere:
-            parts.append(f"氛围：{shot.atmosphere}")
-        
-        # 镜头类型
-        if shot.shot_type:
-            parts.append(f"镜头：{shot.shot_type}")
-        
-        prompt = "，".join(parts)
+        # 添加质量提示
+        prompt = f"{base_prompt}。专业摄影，高清细节，电影级画质。"
         
         return prompt, ""  # OpenAI不需要负向提示词
+    
+    def _build_character_description_natural(
+        self,
+        char_name: str,
+        detail: Optional[object],
+        character: Optional[Character]
+    ) -> str:
+        """构建自然语言的人物描述"""
+        parts = []
+        
+        # 从 character_details 获取信息
+        if detail:
+            if hasattr(detail, 'appearance') and detail.appearance:
+                parts.append(detail.appearance)
+            if hasattr(detail, 'clothing') and detail.clothing:
+                parts.append(f"穿着{detail.clothing}")
+            if hasattr(detail, 'expression') and detail.expression:
+                parts.append(f"表情{detail.expression}")
+        
+        # 从 Character 对象获取信息
+        if character and not parts:
+            if character.description:
+                parts.append(character.description)
+        
+        return char_name + "：" + "，".join(parts) if parts else char_name
     
     def _build_hunyuan_prompt(
         self,
         shot: Shot,
         characters_data: Optional[Dict[str, Character]] = None
     ) -> Tuple[str, str]:
-        """构建腾讯混元提示词（中文自然语言）"""
-        # 混元偏好详细的中文描述
-        return self._build_openai_prompt(shot, characters_data)
+        """构建混元提示词（中文自然语言）"""
+        
+        # ★★★ 混元支持中文，直接使用 jimeng_prompt 或 visual_description ★★★
+        
+        # 1. 首选：jimeng_prompt
+        if hasattr(shot, 'jimeng_prompt') and shot.jimeng_prompt:
+            prompt = shot.jimeng_prompt
+        # 2. 备选：visual_description
+        elif shot.visual_description:
+            prompt = shot.visual_description
+        else:
+            # 3. 兜底：使用 OpenAI 的构建逻辑
+            prompt, _ = self._build_openai_prompt(shot, characters_data)
+        
+        # 添加质量提示
+        prompt = f"{prompt}。高质量，专业摄影，细节丰富。"
+        
+        return prompt, "低质量，模糊，变形"
     
     def _build_generic_prompt(
         self,

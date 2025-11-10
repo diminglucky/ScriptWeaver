@@ -71,6 +71,7 @@ class Shot:
     shot_type: str = ""
     visual_description: str = ""
     scene_description: str = ""
+    jimeng_prompt: str = ""  # 图像生成专用提示词
     lighting: str = ""
     atmosphere: str = ""
     characters: List[str] = field(default_factory=list)
@@ -116,6 +117,7 @@ class Shot:
             'shot_type': self.shot_type,
             'visual_description': self.visual_description,
             'scene_description': self.scene_description,
+            'jimeng_prompt': self.jimeng_prompt,
             'lighting': self.lighting,
             'atmosphere': self.atmosphere,
             'characters': self.characters,
@@ -154,6 +156,7 @@ class Shot:
             shot_type=data.get('shot_type', ''),
             visual_description=data.get('visual_description', ''),
             scene_description=data.get('scene_description', ''),
+            jimeng_prompt=data.get('jimeng_prompt', ''),
             lighting=data.get('lighting', ''),
             atmosphere=data.get('atmosphere', ''),
             characters=data.get('characters', []),

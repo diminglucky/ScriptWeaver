@@ -17,7 +17,7 @@ class ZhihuPublisherMixin:
         Args:
             parent_frame: 父容器
         """
-        # 发布区域 - 单行布局
+        # 第一行：标题和话题在同一行
         publish_frame = ttk.Frame(parent_frame)
         publish_frame.pack(fill="x", padx=10, pady=6)
         
@@ -29,14 +29,33 @@ class ZhihuPublisherMixin:
             width=6  # 固定宽度
         ).pack(side="left", padx=(0, 8))
         
-        # 标题输入框（使用fill='x'和expand让它自适应）
+        # 标题输入框（固定宽度）
         self.zhihu_title_var = tk.StringVar(value="")
         title_entry = ttk.Entry(
             publish_frame,
             textvariable=self.zhihu_title_var,
-            font=("Microsoft YaHei", 10)
+            font=("Microsoft YaHei", 10),
+            width=30
         )
-        title_entry.pack(side="left", fill="x", expand=True, padx=(0, 10))
+        title_entry.pack(side="left", padx=(0, 10))
+        
+        # 投稿至问题标签
+        ttk.Label(
+            publish_frame,
+            text="投稿至问题:",
+            font=("Microsoft YaHei", 10),
+            width=10
+        ).pack(side="left", padx=(0, 5))
+        
+        # 投稿至问题输入框（用户输入问题标题）
+        self.zhihu_question_var = tk.StringVar(value="")
+        question_entry = ttk.Entry(
+            publish_frame,
+            textvariable=self.zhihu_question_var,
+            font=("Microsoft YaHei", 10),
+            width=30
+        )
+        question_entry.pack(side="left", padx=(0, 10))
         
         # AI生成标题按钮（固定宽度，文字完整）
         ttk.Button(
@@ -74,14 +93,6 @@ class ZhihuPublisherMixin:
             width=15  # 固定宽度供进度显示
         )
         self.zhihu_progress_label.pack(side="left", padx=(0, 10))
-        
-        # 说明（自适应剩余空间）
-        ttk.Label(
-            publish_frame,
-            text="💡 点击发布后可在预览窗口选择输入模式（流式/粘贴）",
-            font=("Microsoft YaHei", 8),
-            foreground="#666666"
-        ).pack(side="left", fill="x", expand=False)
     
     def _on_generate_zhihu_title(self) -> None:
         """使用AI生成文章标题"""
@@ -312,6 +323,10 @@ class ZhihuPublisherMixin:
             foreground="gray"
         ).pack(anchor="w", pady=(3, 0))
         
+        # 获取用户输入的问题标题（不显示在预览窗口，但保存下来）
+        user_question = self.zhihu_question_var.get().strip()
+        question_var = tk.StringVar(value=user_question)
+        
         # 内容编辑区域（可编辑）
         content_frame = ttk.LabelFrame(
             scrollable_main,
@@ -372,10 +387,11 @@ class ZhihuPublisherMixin:
                 messagebox.showwarning("提示", "内容不能为空")
                 return
             
-            # 更新标题和内容（通过一个临时变量传递）
+            # 更新标题、内容和问题（通过临时变量传递）
             self.zhihu_title_var.set(edited_title)
             self._zhihu_edited_content = edited_content  # 保存编辑后的内容
             self._zhihu_input_mode = input_mode_var.get()  # 保存选择的输入模式
+            self._zhihu_custom_question = question_var.get().strip()  # 保存用户指定的问题标题
             
             publish_confirmed[0] = True
             main_canvas.unbind_all("<MouseWheel>")  # 解绑滚轮事件
@@ -419,6 +435,11 @@ class ZhihuPublisherMixin:
         if hasattr(self, '_zhihu_input_mode'):
             delattr(self, '_zhihu_input_mode')  # 清理临时属性
         
+        # 获取自定义问题标题
+        custom_question = getattr(self, '_zhihu_custom_question', '')
+        if hasattr(self, '_zhihu_custom_question'):
+            delattr(self, '_zhihu_custom_question')  # 清理临时属性
+        
         # 检查是否安装了playwright
         try:
             import playwright
@@ -460,6 +481,7 @@ class ZhihuPublisherMixin:
                     content=content,
                     headless=headless,
                     input_mode=input_mode,  # 传递输入模式（从预览窗口获取）
+                    custom_question=custom_question,  # 传递用户自定义问题标题
                     progress_callback=progress_callback
                 )
                 
@@ -483,6 +505,9 @@ class ZhihuPublisherMixin:
                     
                     self.after(0, lambda: self.zhihu_progress_label.config(text="✅ 完成"))
                     self.after(0, lambda: self.status.set("✅ 知乎发布完成"))
+                    
+                    # 清空问题框（发布成功后）
+                    self.after(0, lambda: self.zhihu_question_var.set(""))
                     
                 else:
                     # 发布失败

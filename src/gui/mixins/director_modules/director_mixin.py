@@ -47,6 +47,11 @@ class DirectorMixin(
         # 初始化
         if not hasattr(self, 'character_seed_map'):
             self.character_seed_map = {}
+        
+        # 初始化current_shots（如果还没有）
+        if not hasattr(self, 'current_shots'):
+            self.current_shots = []
+            logger.info("初始化 current_shots 为空列表")
 
         # 创建主容器
         director_frame = ttk.Frame(self.notebook)
@@ -56,10 +61,43 @@ class DirectorMixin(
         DirectorUIBuilder.build_left_workflow_panel(director_frame, self)
         DirectorUIBuilder.build_center_content_panel(director_frame, self)
         DirectorUIBuilder.build_right_settings_panel(director_frame, self)
+        
+        # 绑定标签页切换事件，当切换到导演页面时重新加载数据
+        def on_tab_changed(event):
+            try:
+                current_tab = self.notebook.index(self.notebook.select())
+                # 找到导演标签页的索引
+                for i in range(self.notebook.index("end")):
+                    if "导演" in self.notebook.tab(i, "text"):
+                        if current_tab == i:
+                            # 切换到导演页面，重新加载数据
+                            logger.info("切换到导演页面，重新加载数据")
+                            self.after(50, self._load_director_data_from_project)
+                        break
+            except Exception as e:
+                logger.error(f"标签页切换事件处理失败: {e}")
+        
+        # 绑定事件（只绑定一次）
+        if not hasattr(self, '_director_tab_bound'):
+            self.notebook.bind("<<NotebookTabChanged>>", on_tab_changed)
+            self._director_tab_bound = True
+        
+        # 加载项目数据（如果有当前项目）
+        self.after(100, self._load_director_data_from_project)
 
     def _on_generate_shots(self) -> None:
         """生成分镜 - 从剧本转换为分镜列表（别名方法）"""
-        self._on_script_to_shots()
+        print("[DEBUG] ========== _on_generate_shots 被调用 ==========")
+        print(f"[DEBUG] self 类型: {type(self)}")
+        print(f"[DEBUG] 是否有 _on_script_to_shots: {hasattr(self, '_on_script_to_shots')}")
+        
+        try:
+            self._on_script_to_shots()
+        except Exception as e:
+            print(f"[ERROR] _on_generate_shots 调用失败: {e}")
+            import traceback
+            traceback.print_exc()
+            messagebox.showerror("错误", f"生成分镜失败:\n{str(e)}")
     
     def _refresh_shot_combo(self, silent=False) -> None:
         """刷新分镜下拉框
@@ -67,36 +105,99 @@ class DirectorMixin(
         Args:
                 silent: 是否静默刷新（不显示提示框）
         """
-        logger.debug(f"_refresh_shot_combo 被调用，silent={silent}")
+        logger.info(f"========== _refresh_shot_combo 被调用，silent={silent} ==========")
 
         if not hasattr(self, 'shot_select_combo'):
-            logger.error("未找到分镜选择下拉框")
+            logger.error("未找到分镜选择下拉框 shot_select_combo")
             return
 
-        if not hasattr(self, 'current_shots') or not self.current_shots:
-            # 没有分镜时，只显示默认选项
+        if not hasattr(self, 'current_shots'):
+            logger.error("未找到 current_shots 属性")
             self.shot_select_combo['values'] = ["全部分镜"]
             self.shot_select_combo.current(0)
-            logger.debug("没有分镜，设置默认选项")
+            return
+            
+        if not self.current_shots:
+            # 没有分镜时，只显示默认选项
+            logger.warning("current_shots 为空")
+            self.shot_select_combo['values'] = ["全部分镜"]
+            self.shot_select_combo.current(0)
             if not silent:
                 messagebox.showinfo("提示", "还没有生成分镜")
             return
 
+        logger.info(f"当前分镜数量: {len(self.current_shots)}")
+        logger.info(f"第一个分镜类型: {type(self.current_shots[0]) if self.current_shots else 'N/A'}")
+        
         # 生成简洁的选项列表
-        shot_options = ["全部分镜"] + [
-            f"分镜{s.get('shot_number', i + 1) if isinstance(s, dict) else i + 1}"
-            for i, s in enumerate(self.current_shots)
-            if isinstance(s, dict)  # 确保s是字典
-        ]
+        shot_options = ["全部分镜"]
+        for i, s in enumerate(self.current_shots):
+            if isinstance(s, dict):
+                shot_num = s.get('shot_number', i + 1)
+                shot_options.append(f"分镜{shot_num}")
+            else:
+                logger.warning(f"分镜 {i} 不是字典类型: {type(s)}")
 
-        self.shot_select_combo['values'] = shot_options
-        self.shot_select_combo.current(0)
-        self.shot_select_combo.update_idletasks()
+        logger.info(f"生成的选项列表: {shot_options}")
 
-        logger.info(f"刷新下拉框成功，共 {len(self.current_shots)} 个分镜")
+        # 设置新的选项列表
+        try:
+            # 保存当前状态
+            original_state = self.shot_select_combo['state']
+            
+            # 方法1：临时改变状态来触发刷新
+            self.shot_select_combo.configure(state='normal')
+            self.shot_select_combo.configure(values=tuple(shot_options))
+            self.shot_select_combo.configure(state=original_state)
+            logger.info(f"✅ 方法1: 通过状态切换设置values")
+            
+            # 设置当前选中项
+            self.shot_select_combo.current(0)
+            logger.info(f"✅ 已设置选中项为: {self.shot_select_combo.get()}")
+            
+            # 方法2：强制刷新UI
+            self.shot_select_combo.update()
+            self.shot_select_combo.update_idletasks()
+            
+            # 方法3：刷新父容器
+            if self.shot_select_combo.master:
+                self.shot_select_combo.master.update_idletasks()
+            
+            # 方法4：使用 after 延迟再次刷新
+            def double_check_refresh():
+                try:
+                    current_values = self.shot_select_combo['values']
+                    logger.info(f"🔍 延迟检查：下拉框values = {current_values}")
+                    logger.info(f"🔍 延迟检查：当前显示 = {self.shot_select_combo.get()}")
+                    
+                    # 如果还是不对，再次强制设置
+                    if len(current_values) <= 1:
+                        logger.warning("⚠️ 下拉框values还是为空，强制重设")
+                        self.shot_select_combo.configure(state='normal')
+                        self.shot_select_combo.configure(values=tuple(shot_options))
+                        self.shot_select_combo.configure(state=original_state)
+                        self.shot_select_combo.current(0)
+                        self.shot_select_combo.update_idletasks()
+                    
+                    logger.info("✅ 延迟刷新完成")
+                except Exception as e:
+                    logger.error(f"延迟刷新失败: {e}")
+            
+            self.after(100, double_check_refresh)
+            
+            # 立即验证设置是否成功
+            current_values = self.shot_select_combo['values']
+            logger.info(f"验证：下拉框当前values = {current_values}")
+            
+        except Exception as e:
+            logger.error(f"设置下拉框失败: {e}")
+            import traceback
+            traceback.print_exc()
+
+        logger.info(f"✅ 刷新下拉框成功，共 {len(shot_options) - 1} 个分镜选项")
 
         if not silent:
-            messagebox.showinfo("成功", f"已刷新！共 {len(self.current_shots)} 个分镜")
+            messagebox.showinfo("成功", f"已刷新！共 {len(shot_options) - 1} 个分镜")
 
     def _generate_jimeng_prompts_for_all_shots(self, shots=None) -> None:
         """为所有分镜生成即梦AI视频提示词（智能版）"""
@@ -760,6 +861,18 @@ class DirectorMixin(
             
             # 转换为Shot对象（如果有分镜信息）
             if current_shot:
+                # 处理camera参数
+                from .models.shot import ShotCamera
+                camera_data = current_shot.get('camera', {})
+                if isinstance(camera_data, dict):
+                    camera = ShotCamera(
+                        movement=camera_data.get('movement', ''),
+                        angle=camera_data.get('angle', current_shot.get('camera_angle', '')),
+                        lens=camera_data.get('lens', '')
+                    )
+                else:
+                    camera = ShotCamera()
+                
                 shot = Shot(
                     shot_number=shot_num,
                     characters=current_shot.get('characters', []),
@@ -768,10 +881,18 @@ class DirectorMixin(
                     emotion=current_shot.get('emotion', ''),
                     shot_type=current_shot.get('shot_type', ''),
                     visual_description=current_shot.get('visual_description', description),
-                    dialogue=current_shot.get('dialogue', ''),
-                    camera_angle=current_shot.get('camera_angle', ''),
                     duration=current_shot.get('duration', ''),
-                    transition=current_shot.get('transition', '')
+                    transition=current_shot.get('transition', ''),
+                    camera=camera,
+                    scene_description=current_shot.get('scene_description', ''),
+                    jimeng_prompt=current_shot.get('jimeng_prompt', ''),
+                    lighting=current_shot.get('lighting', ''),
+                    atmosphere=current_shot.get('atmosphere', ''),
+                    character_details=current_shot.get('character_details', {}),
+                    props=current_shot.get('props', []),
+                    continuity=current_shot.get('continuity', ''),
+                    scene_id=current_shot.get('scene_id', ''),
+                    time=current_shot.get('time', '')
                 )
             else:
                 # 创建基本Shot对象

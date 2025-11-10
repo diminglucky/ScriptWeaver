@@ -88,7 +88,21 @@ class EnhancedProjectManager:
             
             # 分镜
             if hasattr(self, 'current_shots') and self.current_shots:
-                director_data["shots"] = self.current_shots
+                # 将 Shot 对象转换为字典以便 JSON 序列化
+                shots_list = []
+                for shot in self.current_shots:
+                    # 检查是否是 Shot 对象（有 to_dict 方法）
+                    if hasattr(shot, 'to_dict'):
+                        shots_list.append(shot.to_dict())
+                    elif isinstance(shot, dict):
+                        # 已经是字典，直接使用
+                        shots_list.append(shot)
+                    else:
+                        # 其他类型，尝试转换为字符串或跳过
+                        import logging
+                        logging.warning(f"无法序列化的分镜对象类型: {type(shot)}")
+                        continue
+                director_data["shots"] = shots_list
             
             # 一致性设定
             if hasattr(self, 'consistency_data') and self.consistency_data:
