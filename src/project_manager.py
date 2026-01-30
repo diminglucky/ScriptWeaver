@@ -84,7 +84,11 @@ class Project:
 		"""列出项目中的所有图片"""
 		if not self.images_dir.exists():
 			return []
-		return sorted(self.images_dir.glob("*.{png,jpg,jpeg,webp}"))
+		extensions = ['png', 'jpg', 'jpeg', 'webp']
+		images = []
+		for ext in extensions:
+			images.extend(self.images_dir.glob(f"*.{ext}"))
+		return sorted(images)
 	
 	def get_info(self) -> dict[str, Any]:
 		"""获取项目信息摘要"""

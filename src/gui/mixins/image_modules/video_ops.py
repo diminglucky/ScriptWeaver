@@ -14,7 +14,6 @@ from src.utils.text import sanitize as _sanitize
 from ...helpers.image_styles import IMAGE_TYPES, HUNYUAN_STYLE_MAP
 from ...helpers.image_helpers import ImagePromptHelper, DescriptionPromptBuilder
 from ...helpers.character_prompt_builder import CharacterPromptBuilder
-from ...widgets.character_manager import CharacterPhotoGallery
 from ...helpers.character_sheet_builder import CharacterSheetBuilder
 
 

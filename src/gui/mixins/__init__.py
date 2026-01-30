@@ -6,6 +6,10 @@ from .image_modules import ImageMixin
 from .kb_mixin import KbMixin
 from .config_modules import ConfigMixin
 from .ui_mixin import UiMixin
+from .settings_mixin import SettingsMixin
+from .enhancements import EnhancementsMixin
+from .kb_enhancements import KBEnhancementsMixin
+from .async_utils import PerformanceMixin
 
 __all__ = [
 	"ProjectMixin",
@@ -14,4 +18,8 @@ __all__ = [
 	"KbMixin",
 	"ConfigMixin",
 	"UiMixin",
+	"SettingsMixin",
+	"EnhancementsMixin",
+	"KBEnhancementsMixin",
+	"PerformanceMixin",
 ]

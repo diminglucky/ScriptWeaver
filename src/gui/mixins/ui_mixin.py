@@ -18,14 +18,18 @@ class UiMixin:
         self.page_project = tk.Frame(self.notebook, bg="#2b2b2b")
         self.page_story = tk.Frame(self.notebook, bg="#2b2b2b")
         self.page_image = tk.Frame(self.notebook, bg="#2b2b2b")
+        self.page_settings = tk.Frame(self.notebook, bg="#2b2b2b")
+        
         self.notebook.add(self.page_project, text="  📁 项目管理  ")
         self.notebook.add(self.page_story, text="  📝 故事生成  ")
         self.notebook.add(self.page_image, text="  🎨 图片生成  ")
+        self.notebook.add(self.page_settings, text="  ⚙️ 设置  ")
         
         # Build pages
         self._build_project_page()
         self._build_story_page()
         self._build_image_page()
+        self._build_settings_page()
     
     def _clear_prompt_placeholder(self, event=None) -> None:
         """清除占位符"""

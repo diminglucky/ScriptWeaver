@@ -1,6 +1,5 @@
-"""GUI独立组件"""
+"""自定义组件模块"""
 
-from .character_manager import CharacterPhotoGallery, ImageViewer
+from .character_manager import CharacterPhotoGallery
 
-__all__ = ['CharacterPhotoGallery', 'ImageViewer']
-
+__all__ = ['CharacterPhotoGallery']

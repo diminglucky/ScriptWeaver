@@ -18,22 +18,13 @@ class StoryUIBuilderMixin:
 	"""Story ui_builder 功能"""
 	
 	def _build_story_page(self) -> None:
-		"""构建故事生成页面"""
-
-		# 创建内部标签页
-		self.story_notebook = ttk.Notebook(self.page_story)
-		self.story_notebook.pack(fill=BOTH, expand=True, padx=10, pady=10)
+		"""构建故事生成页面 - 简化版，配置已移至设置页面"""
 		
-		# 创建各个子页面
-		self.story_tab_create = tk.Frame(self.story_notebook, bg="#2b2b2b")
-		self.story_tab_setup = tk.Frame(self.story_notebook, bg="#2b2b2b")
+		# 直接在页面上构建创作界面，不再使用子标签页
+		self.story_tab_create = self.page_story  # 兼容旧代码引用
 		
-		self.story_notebook.add(self.story_tab_create, text="  ✍️ 创作  ")
-		self.story_notebook.add(self.story_tab_setup, text="  ⚙️ 配置  ")
-		
-		# 构建各个子页面
+		# 构建创作界面
 		self._build_story_create_tab()
-		self._build_story_setup_tab()
 	
 	
 	def _build_story_setup_tab(self) -> None:
@@ -562,8 +553,8 @@ class StoryUIBuilderMixin:
 			f"【特别提醒】\n"
 			f"请写够 {min_chars} 字以上，展开细节描写和情节发展。\n"
 			f"主题/需求：{requirement}\n\n"
-			f"{f'【参考资料】\n{ctx}\n' if ctx else ''}"
-			f"请直接开始写正文，不要任何前缀或标题："
+			+ (f"【参考资料】\n{ctx}\n" if ctx else "")
+			+ "请直接开始写正文，不要任何前缀或标题："
 		)
 
 

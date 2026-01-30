@@ -369,7 +369,7 @@ class CharacterSheetBuilder:
 				font_path = "/System/Library/Fonts/Supplemental/Arial.ttf"
 			
 			font = ImageFont.truetype(font_path, font_size)
-		except:
+		except Exception:
 			font = ImageFont.load_default()
 		
 		# 获取文本边界框
@@ -394,7 +394,7 @@ class CharacterSheetBuilder:
 			if not os.path.exists(font_path):
 				font_path = "/System/Library/Fonts/Supplemental/Arial.ttf"
 			font = ImageFont.truetype(font_path, font_size)
-		except:
+		except Exception:
 			font = ImageFont.load_default()
 		
 		draw.text(position, text, fill=color, font=font)
@@ -410,7 +410,7 @@ class CharacterSheetBuilder:
 			if not os.path.exists(font_path):
 				font_path = "/System/Library/Fonts/Supplemental/Arial.ttf"
 			font = ImageFont.truetype(font_path, font_size)
-		except:
+		except Exception:
 			font = ImageFont.load_default()
 		
 		bbox = draw.textbbox((0, 0), text, font=font)

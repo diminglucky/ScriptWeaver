@@ -12,7 +12,6 @@ from src.clients.deepseek_client import DeepSeekClient
 from src.clients.image_client import OpenAIImageClient
 from src.utils.text import sanitize as _sanitize
 from ...helpers.character_prompt_builder import CharacterPromptBuilder
-from ...widgets.character_manager import CharacterPhotoGallery
 from ...helpers.character_sheet_builder import CharacterSheetBuilder
 
 

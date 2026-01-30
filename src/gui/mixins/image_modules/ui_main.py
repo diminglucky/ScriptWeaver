@@ -35,23 +35,20 @@ class ImageUIMainMixin:
 		self.character_preview_photo: ImageTk.PhotoImage | None = None
 		self.character_photos_dir = None  # 人物照片保存目录
 		
-		# 创建图片页面的内部Notebook
+		# 创建图片页面的内部Notebook - 简化版，配置已移至设置页面
 		self.image_notebook = ttk.Notebook(self.page_image)
 		self.image_notebook.pack(fill=BOTH, expand=True, padx=0, pady=0)
 		
-		# 创建三个子标签页
+		# 创建两个子标签页（配置已移至统一设置页面）
 		self.image_tab_character = tk.Frame(self.image_notebook, bg="#2b2b2b")
 		self.image_tab_create = tk.Frame(self.image_notebook, bg="#2b2b2b")
-		self.image_tab_setup = tk.Frame(self.image_notebook, bg="#2b2b2b")
 		
 		self.image_notebook.add(self.image_tab_character, text="  👥 人物描述  ")
 		self.image_notebook.add(self.image_tab_create, text="  🎨 图片创作  ")
-		self.image_notebook.add(self.image_tab_setup, text="  ⚙️ 配置  ")
 		
 		# 构建各个标签页
 		self._build_character_tab()
 		self._build_image_create_tab()
-		self._build_image_setup_tab()
 	
 	
 	

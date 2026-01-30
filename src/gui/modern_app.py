@@ -8,16 +8,20 @@ import os
 from pathlib import Path
 from datetime import datetime
 
-from .theme import Theme, Styles, Icons
+from .theme import Theme, Styles, Icons, theme_manager
 from .mixins.story_modules import StoryMixin
 from .mixins.image_modules import ImageMixin
 from .mixins.project_mixin import ProjectMixin
 from .mixins.config_modules import ConfigMixin
 from .mixins.kb_mixin import KbMixin
 from .mixins.ui_mixin import UiMixin
+from .mixins.settings_mixin import SettingsMixin
+from .mixins.enhancements import EnhancementsMixin
+from .mixins.kb_enhancements import KBEnhancementsMixin
+from .mixins.async_utils import PerformanceMixin
 
 
-class ModernApp(tk.Tk, ProjectMixin, StoryMixin, ImageMixin, KbMixin, ConfigMixin, UiMixin):
+class ModernApp(tk.Tk, ProjectMixin, StoryMixin, ImageMixin, KbMixin, ConfigMixin, UiMixin, SettingsMixin, EnhancementsMixin, KBEnhancementsMixin, PerformanceMixin):
     """现代化专业UI应用 - 整合所有原有功能"""
     
     def __init__(self):
@@ -57,8 +61,25 @@ class ModernApp(tk.Tk, ProjectMixin, StoryMixin, ImageMixin, KbMixin, ConfigMixi
         # 更新时间显示
         self._update_time()
         
+        # 初始化增强功能
+        self._init_enhancements()
+        
+        # 初始化性能优化
+        self._init_performance()
+        
+        # 注册主题变更回调
+        theme_manager.register_callback(self._on_theme_change)
+        
         # 启动后自动加载配置
         self.after(100, self._auto_load_api_config)
+    
+    def _on_theme_change(self, new_theme):
+        """主题变更回调"""
+        # 重新应用样式
+        self._setup_modern_styles()
+        self.configure(bg=Theme.BG_PRIMARY)
+        if hasattr(self, '_apply_modern_theme'):
+            self._apply_modern_theme()
     
     def _init_variables(self):
         """初始化所有必需的变量"""
@@ -90,6 +111,117 @@ class ModernApp(tk.Tk, ProjectMixin, StoryMixin, ImageMixin, KbMixin, ConfigMixi
         # 章节管理
         self.parsed_sections: list[dict] = []
         self.generated_content: str = ""
+        
+        # API预设初始化 - 包含主流AI提供商和多个模型
+        self.api_providers = {
+            "OpenAI": {
+                "base_url": "https://api.openai.com/v1",
+                "models": ["gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "gpt-4", "gpt-3.5-turbo", "o1-preview", "o1-mini"],
+                "key": ""
+            },
+            "Google Gemini": {
+                "base_url": "https://generativelanguage.googleapis.com/v1beta/openai",
+                "models": ["gemini-2.0-flash-exp", "gemini-1.5-pro", "gemini-1.5-flash", "gemini-1.0-pro"],
+                "key": ""
+            },
+            "Anthropic Claude": {
+                "base_url": "https://api.anthropic.com/v1",
+                "models": ["claude-3-5-sonnet-20241022", "claude-3-5-haiku-20241022", "claude-3-opus-20240229", "claude-3-sonnet-20240229"],
+                "key": ""
+            },
+            "DeepSeek": {
+                "base_url": "https://api.deepseek.com",
+                "models": ["deepseek-chat", "deepseek-reasoner", "deepseek-coder"],
+                "key": ""
+            },
+            "Moonshot (月之暗面)": {
+                "base_url": "https://api.moonshot.cn/v1",
+                "models": ["moonshot-v1-128k", "moonshot-v1-32k", "moonshot-v1-8k"],
+                "key": ""
+            },
+            "智谱AI (GLM)": {
+                "base_url": "https://open.bigmodel.cn/api/paas/v4",
+                "models": ["glm-4-plus", "glm-4", "glm-4-air", "glm-4-flash", "glm-4-long"],
+                "key": ""
+            },
+            "阿里通义 (Qwen)": {
+                "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+                "models": ["qwen-max", "qwen-plus", "qwen-turbo", "qwen-long", "qwen2.5-72b-instruct"],
+                "key": ""
+            },
+            "百度文心": {
+                "base_url": "https://aip.baidubce.com/rpc/2.0/ai_custom/v1/wenxinworkshop",
+                "models": ["ernie-4.0-8k", "ernie-4.0-turbo-8k", "ernie-3.5-8k"],
+                "key": ""
+            },
+            "硅基流动 (SiliconFlow)": {
+                "base_url": "https://api.siliconflow.cn/v1",
+                "models": ["Qwen/Qwen2.5-72B-Instruct", "deepseek-ai/DeepSeek-V3", "Pro/Qwen/Qwen2.5-7B-Instruct"],
+                "key": ""
+            },
+            "Groq": {
+                "base_url": "https://api.groq.com/openai/v1",
+                "models": ["llama-3.3-70b-versatile", "llama-3.1-8b-instant", "mixtral-8x7b-32768", "gemma2-9b-it"],
+                "key": ""
+            },
+            "零一万物 (01.AI)": {
+                "base_url": "https://api.lingyiwanwu.com/v1",
+                "models": ["yi-lightning", "yi-large", "yi-medium", "yi-spark"],
+                "key": ""
+            },
+            "自定义": {
+                "base_url": "",
+                "models": ["custom-model"],
+                "key": ""
+            }
+        }
+        
+        # 兼容旧代码 - 从 providers 生成 api_presets
+        self.api_presets = {}
+        for name, config in self.api_providers.items():
+            self.api_presets[name] = {
+                "base_url": config["base_url"],
+                "model": config["models"][0],  # 默认第一个模型
+                "key": config["key"]
+            }
+        
+        # 图片API预设初始化 - 扩展更多选项
+        self.img_api_providers = {
+            "OpenAI (DALL-E)": {
+                "base_url": "https://api.openai.com/v1",
+                "models": ["dall-e-3", "dall-e-2"],
+                "key": ""
+            },
+            "V-API (Flux)": {
+                "base_url": "https://api.v-api.ai/v1",
+                "models": ["flux-1.1-pro", "flux-1-schnell", "flux-1-dev"],
+                "key": ""
+            },
+            "硅基流动 (图片)": {
+                "base_url": "https://api.siliconflow.cn/v1",
+                "models": ["black-forest-labs/FLUX.1-schnell", "stabilityai/stable-diffusion-3-medium"],
+                "key": ""
+            },
+            "腾讯混元": {
+                "base_url": "",
+                "models": ["hunyuan"],
+                "key": ""
+            },
+            "自定义": {
+                "base_url": "",
+                "models": ["custom-model"],
+                "key": ""
+            }
+        }
+        
+        # 兼容旧代码
+        self.img_api_presets = {}
+        for name, config in self.img_api_providers.items():
+            self.img_api_presets[name] = {
+                "base_url": config["base_url"],
+                "model": config["models"][0],
+                "key": config["key"]
+            }
     
     def _setup_modern_styles(self):
         """设置现代化ttk组件样式"""
@@ -269,13 +401,66 @@ class ModernApp(tk.Tk, ProjectMixin, StoryMixin, ImageMixin, KbMixin, ConfigMixi
         )
         subtitle.pack(anchor="w")
         
-        # 右侧：状态提示和用户信息
+        # 右侧：工具按钮、状态提示和用户信息
         right_frame = tk.Frame(header, bg=Theme.BG_PRIMARY)
         right_frame.pack(side="right", padx=24, pady=12)
         
         # 创建一个容器来放置状态提示和用户信息
         right_container = tk.Frame(right_frame, bg=Theme.BG_PRIMARY)
         right_container.pack(side="left")
+        
+        # 工具按钮区域
+        tools_frame = tk.Frame(right_container, bg=Theme.BG_PRIMARY)
+        tools_frame.pack(side="left", padx=(0, 16))
+        
+        # 主题切换按钮
+        self.theme_btn = tk.Button(
+            tools_frame,
+            text="🌙" if theme_manager.is_dark else "☀️",
+            font=(Theme.FONT_FAMILY, 14),
+            bg=Theme.SURFACE,
+            fg=Theme.TEXT_PRIMARY,
+            relief="flat",
+            cursor="hand2",
+            command=self._toggle_theme_ui
+        )
+        self.theme_btn.pack(side="left", padx=4)
+        
+        # 导入按钮
+        tk.Button(
+            tools_frame,
+            text="📥",
+            font=(Theme.FONT_FAMILY, 14),
+            bg=Theme.SURFACE,
+            fg=Theme.TEXT_PRIMARY,
+            relief="flat",
+            cursor="hand2",
+            command=lambda: self.import_config() if hasattr(self, 'import_config') else None
+        ).pack(side="left", padx=4)
+        
+        # 导出按钮
+        tk.Button(
+            tools_frame,
+            text="📤",
+            font=(Theme.FONT_FAMILY, 14),
+            bg=Theme.SURFACE,
+            fg=Theme.TEXT_PRIMARY,
+            relief="flat",
+            cursor="hand2",
+            command=lambda: self.export_config() if hasattr(self, 'export_config') else None
+        ).pack(side="left", padx=4)
+        
+        # 快捷键帮助按钮
+        tk.Button(
+            tools_frame,
+            text="⌨️",
+            font=(Theme.FONT_FAMILY, 14),
+            bg=Theme.SURFACE,
+            fg=Theme.TEXT_PRIMARY,
+            relief="flat",
+            cursor="hand2",
+            command=lambda: self._show_shortcuts_help() if hasattr(self, '_show_shortcuts_help') else None
+        ).pack(side="left", padx=4)
         
         # 状态提示区域（在用户卡片左边）
         status_card = tk.Frame(
@@ -492,8 +677,15 @@ class ModernApp(tk.Tk, ProjectMixin, StoryMixin, ImageMixin, KbMixin, ConfigMixi
             if hasattr(self, 'time_label'):
                 self.time_label.config(text=now)
             self.after(1000, self._update_time)
-        except:
+        except Exception:
             pass
+    
+    def _toggle_theme_ui(self):
+        """切换主题（带UI更新）"""
+        theme_manager.toggle()
+        # 更新按钮图标
+        if hasattr(self, 'theme_btn'):
+            self.theme_btn.config(text="🌙" if theme_manager.is_dark else "☀️")
     
     def update_header_status(self, text: str, icon: str = "🔄", color: str = None):
         """

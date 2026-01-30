@@ -418,7 +418,7 @@ class ImageUICharacterTabMixin:
 			try:
 				for child in widget.winfo_children():
 					_bind_mousewheel_recursive(child)
-			except:
+			except Exception:
 				pass
 		
 		# 延迟绑定，确保所有子控件已创建

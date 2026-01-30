@@ -124,8 +124,16 @@ class StoryGeneratorMixin:
 			messagebox.showwarning("提示", "请先输入创作需求/主题")
 			return
 		
-		if not (_sanitize(self.api_key.get())):
-			messagebox.showwarning("提示", "API Key 为空")
+		# 获取选中的故事生成API配置（与其他方法保持一致）
+		selected_api = self.story_gen_api.get() if hasattr(self, 'story_gen_api') else "DeepSeek"
+		if selected_api not in self.api_presets:
+			messagebox.showerror("错误", f"未找到API预设: {selected_api}")
+			return
+		
+		api_config = self.api_presets[selected_api]
+		api_key = _sanitize(api_config.get("key", ""))
+		if not api_key:
+			messagebox.showwarning("提示", f"API Key 为空，请在'基础 API 配置'中为 {selected_api} 填写后保存")
 			return
 		
 		# 确认开始
@@ -166,7 +174,8 @@ class StoryGeneratorMixin:
 					searcher = KnowledgeBaseSearcher(SearchConfig(index_dir=Path(self.index_dir.get()), top_k=self.top_k.get()))
 					results = searcher.search(query, self.top_k.get())
 					contexts = [c for c, _s, _m in results]
-					self._auto_generate_all_sections_with_contexts(query, contexts, start_index)
+					# 修复：调用 _auto_generate_all_sections 而非未定义的方法
+					self._auto_generate_all_sections(query, contexts, start_index)
 				except Exception as e:
 					import traceback
 					self.output.insert(END, "\n自动生成出错:\n" + traceback.format_exc() + "\n")

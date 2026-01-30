@@ -14,7 +14,6 @@ from src.utils.text import sanitize as _sanitize
 from ...helpers.image_styles import IMAGE_TYPES, HUNYUAN_STYLE_MAP
 from ...helpers.image_helpers import ImagePromptHelper, DescriptionPromptBuilder
 from ...helpers.character_prompt_builder import CharacterPromptBuilder
-from ...widgets.character_manager import CharacterPhotoGallery
 from ...helpers.character_sheet_builder import CharacterSheetBuilder
 
 
@@ -123,7 +122,7 @@ class PromptOperationsMixin:
 			x = self.btn_add_style.winfo_rootx()
 			y = self.btn_add_style.winfo_rooty() + self.btn_add_style.winfo_height()
 			menu.post(x, y)
-		except:
+		except Exception:
 			menu.tk_popup(self.winfo_pointerx(), self.winfo_pointery())
 	
 	
@@ -270,7 +269,7 @@ class PromptOperationsMixin:
 					try:
 						import subprocess
 						subprocess.run(["open", str(result_path)])
-					except:
+					except Exception:
 						pass
 				else:
 					self.after(0, lambda: self.status.set("❌ 生成角色设定表失败"))

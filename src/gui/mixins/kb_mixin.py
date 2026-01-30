@@ -2,9 +2,13 @@
 Kb相关功能模块
 """
 
+import threading
+from pathlib import Path
 from tkinter import BOTH, LEFT, RIGHT, DISABLED, NORMAL, END, messagebox, filedialog
 import tkinter as tk
 from tkinter import ttk
+
+from src.kb.ingest import IngestConfig, KnowledgeBaseIngestor
 
 
 class KbMixin:
