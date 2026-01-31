@@ -142,6 +142,7 @@ class Character:
     # 照片路径
     photo_paths: List[str] = field(default_factory=list)
     primary_photo: str = ""
+    turnaround_image: str = ""  # 三视图组合图（用于保持一致性）
     
     # 元数据
     character_id: str = ""
@@ -304,6 +305,7 @@ class Character:
             "dna": asdict(self.dna),
             "photo_paths": self.photo_paths,
             "primary_photo": self.primary_photo,
+            "turnaround_image": self.turnaround_image,
         }
     
     @classmethod
@@ -322,6 +324,7 @@ class Character:
         
         char.photo_paths = data.get("photo_paths", [])
         char.primary_photo = data.get("primary_photo", data.get("photo_path", ""))
+        char.turnaround_image = data.get("turnaround_image", "")
         
         return char
     

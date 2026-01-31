@@ -346,16 +346,28 @@ class ImageUICharacterTabMixin:
 											  state=DISABLED)
 		self.char_btn_save_photo.pack(side=LEFT, fill="x", expand=True)
 		
-		# 第二行：查看照片管理和生成设定表
+		# 第二行：一键三视图（新功能）
 		action_row2 = ttk.Frame(grp_actions)
-		action_row2.pack(fill="x", padx=6, pady=(0, 6))
+		action_row2.pack(fill="x", padx=6, pady=(0, 3))
 		
-		self.char_btn_view_gallery = ttk.Button(action_row2, text="🖼️ 查看所有照片", 
+		self.char_btn_turnaround = ttk.Button(action_row2, text="🎯 一键三视图（参考图）", 
+											  command=self._on_generate_turnaround_sheet,
+											  state=DISABLED)
+		self.char_btn_turnaround.pack(side=LEFT, fill="x", expand=True)
+		
+		# 提示
+		tk.Label(action_row2, text="← 用于保持一致性", font=("", 9), fg="#4CAF50").pack(side=LEFT, padx=(8, 0))
+		
+		# 第三行：查看照片管理和生成设定表
+		action_row3 = ttk.Frame(grp_actions)
+		action_row3.pack(fill="x", padx=6, pady=(0, 6))
+		
+		self.char_btn_view_gallery = ttk.Button(action_row3, text="🖼️ 查看所有照片", 
 												command=self._on_view_character_gallery,
 												state=DISABLED)
 		self.char_btn_view_gallery.pack(side=LEFT, fill="x", expand=True, padx=(0, 3))
 		
-		self.char_btn_generate_sheet = ttk.Button(action_row2, text="📋 生成角色设定表", 
+		self.char_btn_generate_sheet = ttk.Button(action_row3, text="📋 生成角色设定表", 
 												  command=self._on_generate_character_sheet,
 												  state=DISABLED)
 		self.char_btn_generate_sheet.pack(side=LEFT, fill="x", expand=True, padx=(3, 0))

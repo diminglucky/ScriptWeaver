@@ -631,6 +631,199 @@ class CharacterPhotoMixin:
 			except Exception as e:
 				messagebox.showerror("错误", f"保存失败：{str(e)}")
 	
+	def _on_generate_turnaround_sheet(self) -> None:
+		"""生成三视图组合图（正面+侧面+背面在一张图上）
+		
+		借鉴自 DirectorAI 项目的人物一致性方案：
+		生成单张组合图，用于后续图片生成时作为参考，保持人物一致性
+		"""
+		print("🎯 开始生成三视图组合图")
+		
+		selection = self.char_listbox.curselection()
+		if not selection:
+			messagebox.showwarning("提示", "请先选择一个人物！")
+			return
+		
+		index = selection[0]
+		character = self.character_list[index]
+		
+		# 兼容新旧数据格式
+		from ...models.character import Character
+		if isinstance(character, Character):
+			character_name = character.name
+			description = character.description
+		else:
+			character_name = character["name"]
+			description = character.get("description", "")
+		
+		if not description:
+			messagebox.showwarning("提示", "请先设计人物外貌！")
+			return
+		
+		if not self.current_project:
+			messagebox.showwarning("提示", "请先创建或打开一个项目！")
+			return
+		
+		# 禁用按钮
+		self.char_btn_turnaround.config(state=DISABLED)
+		self.status.set(f"🎯 正在生成\"{character_name}\"的三视图组合图...")
+		if hasattr(self, 'update_header_status'):
+			self.update_header_status("生成三视图...", "🎯")
+		
+		def generate_thread():
+			try:
+				import base64
+				from io import BytesIO
+				from src.clients.hunyuan_image_client import HunyuanImageClient
+				
+				# 构建三视图组合提示词（借鉴自 DirectorAI）
+				turnaround_prompt = self._build_turnaround_prompt(description)
+				print(f"📝 三视图提示词: {turnaround_prompt[:200]}...")
+				
+				# 获取图片风格
+				style = self.char_img_style.get()
+				
+				# 检查API类型
+				img_api_type = self.img_api_type.get() if hasattr(self, 'img_api_type') else "openai"
+				
+				if img_api_type == "hunyuan":
+					# 使用腾讯混元
+					secret_id = self.hunyuan_secret_id.get() if hasattr(self, 'hunyuan_secret_id') else ""
+					secret_key = self.hunyuan_secret_key.get() if hasattr(self, 'hunyuan_secret_key') else ""
+					
+					if not secret_id or not secret_key:
+						self.after(0, lambda: messagebox.showerror("错误", "请先配置腾讯混元API密钥"))
+						return
+					
+					# 优化提示词
+					optimized_prompt = CharacterPromptBuilder.optimize_for_api(turnaround_prompt, "hunyuan", 256)
+					
+					self.after(0, lambda: self.status.set("🚀 正在调用腾讯混元API..."))
+					
+					client = HunyuanImageClient(secret_id=secret_id, secret_key=secret_key)
+					result = client.generate(
+						prompt=optimized_prompt,
+						resolution="1024:1024",
+						style="201"
+					)
+					
+					img_base64 = result["ResultImage"]
+					img_data = base64.b64decode(img_base64)
+					img = Image.open(BytesIO(img_data))
+				else:
+					# 使用OpenAI
+					api_key = self.img_api_key.get()
+					base_url = self.img_base_url.get() if hasattr(self, 'img_base_url') and self.img_base_url.get() else None
+					model = self.img_model.get() if hasattr(self, 'img_model') else "dall-e-3"
+					
+					if not api_key:
+						self.after(0, lambda: messagebox.showerror("错误", "请先配置图片API密钥"))
+						return
+					
+					self.after(0, lambda: self.status.set("🚀 正在调用图片API..."))
+					
+					client = OpenAIImageClient(api_key=api_key, base_url=base_url, model=model)
+					results = client.generate(turnaround_prompt, size="1024x1024")
+					
+					if results:
+						img = results[0].image
+					else:
+						raise RuntimeError("API未返回任何图片")
+				
+				# 保存三视图
+				self.character_last_image = img
+				
+				# 保存到项目
+				import re
+				characters_dir = self.current_project.project_dir / "characters"
+				characters_dir.mkdir(parents=True, exist_ok=True)
+				
+				clean_name = re.sub(r'[^\w\s\u4e00-\u9fff-]', '', character_name)
+				filename = f"{clean_name}_三视图.png"
+				save_path = characters_dir / filename
+				
+				img.save(str(save_path))
+				print(f"✅ 三视图已保存: {save_path}")
+				
+				# 更新角色信息
+				if isinstance(character, Character):
+					character.turnaround_image = str(save_path)
+					if character.dna:
+						character.dna.anchor_image = str(save_path)
+				else:
+					character["turnaround_image"] = str(save_path)
+				
+				# 更新UI
+				def update_ui():
+					self._update_character_photo_preview(img)
+					self.status.set(f"✅ 三视图组合图已生成！可用于保持人物一致性")
+					if hasattr(self, 'update_header_status'):
+						self.update_header_status("三视图完成", "✅")
+					
+					messagebox.showinfo(
+						"成功", 
+						f"三视图组合图已生成！\n\n"
+						f"📁 保存位置：{save_path}\n\n"
+						f"💡 用途：在后续生成分镜图片时，\n"
+						f"   可将此图作为参考，保持人物一致性"
+					)
+					
+					self._update_reference_character_list()
+				
+				self.after(0, update_ui)
+				
+			except Exception as e:
+				import traceback
+				error_detail = traceback.format_exc()
+				print(f"❌ 生成三视图失败:\n{error_detail}")
+				self.after(0, lambda: messagebox.showerror("错误", f"生成失败: {str(e)}"))
+				self.after(0, lambda: self.status.set("❌ 三视图生成失败"))
+			finally:
+				self.after(0, lambda: self.char_btn_turnaround.config(state=NORMAL))
+		
+		threading.Thread(target=generate_thread, daemon=True).start()
+	
+	def _build_turnaround_prompt(self, description: str) -> str:
+		"""构建三视图组合提示词
+		
+		借鉴自 DirectorAI 的 _buildCombinedViewPrompt 方法
+		"""
+		# 提取核心特征
+		base_desc = description if description else "A character"
+		
+		# 根据图片风格调整提示词
+		style = self.char_img_style.get() if hasattr(self, 'char_img_style') else "写实照片"
+		
+		if "动漫" in style or "漫画" in style:
+			style_prefix = "anime style, manga art, 2D animation, cel shaded"
+		elif "3D" in style:
+			style_prefix = "3D render, highly detailed, professional 3D character"
+		elif "国风" in style or "古风" in style or "中国风" in style:
+			style_prefix = "Chinese traditional style, ink wash painting style"
+		else:
+			style_prefix = "realistic portrait, professional photography, high quality"
+		
+		# 组合三视图提示词
+		prompt = f"""Character turnaround reference sheet with three views arranged horizontally:
+
+LEFT PANEL: Front view (character facing camera directly)
+CENTER PANEL: Three-quarter view (character at 45 degree angle)  
+RIGHT PANEL: Back view (showing character's back)
+
+Character Description: {base_desc}
+
+Style: {style_prefix}
+Layout: Three full body shots side by side in ONE single image
+Composition: All three poses same size, equal spacing, full body visible
+Background: Plain white or light gray background
+Quality: High quality, detailed, 4K, consistent appearance across all three views
+Pose: Neutral standing pose, arms slightly away from body
+
+IMPORTANT: This is a CHARACTER REFERENCE SHEET for maintaining consistency. 
+The same character must appear in all three panels with identical features."""
+		
+		return prompt
+	
 	
 	
 	

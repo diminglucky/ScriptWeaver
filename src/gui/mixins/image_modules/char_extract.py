@@ -140,6 +140,8 @@ class CharacterExtractMixin:
             self.char_txt_desc.insert("1.0", display)
             self.char_btn_copy_desc.config(state=NORMAL)
             self.char_btn_gen_photo.config(state=NORMAL)
+            if hasattr(self, 'char_btn_turnaround'):
+                self.char_btn_turnaround.config(state=NORMAL)
         else:
             display = f"【{name}】尚未设计外貌\n\n"
             if profile:
@@ -157,6 +159,8 @@ class CharacterExtractMixin:
             self.char_txt_desc.insert("1.0", display)
             self.char_btn_copy_desc.config(state=DISABLED)
             self.char_btn_gen_photo.config(state=DISABLED)
+            if hasattr(self, 'char_btn_turnaround'):
+                self.char_btn_turnaround.config(state=DISABLED)
         
         self.char_txt_desc.config(state=DISABLED)
         
