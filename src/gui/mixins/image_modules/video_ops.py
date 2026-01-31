@@ -309,9 +309,14 @@ class VideoPromptMixin:
 			
 			self.status.set(f"✅ 视频工作流已导出到: {export_dir}")
 			
-			# 打开导出目录
-			import subprocess
-			subprocess.run(["open", str(export_dir)])
+			# 跨平台打开导出目录
+			import subprocess, platform
+			try:
+				s = platform.system()
+				if s == "Darwin": subprocess.run(["open", str(export_dir)])
+				elif s == "Windows": subprocess.run(["explorer", str(export_dir)])
+				elif s == "Linux": subprocess.run(["xdg-open", str(export_dir)])
+			except: pass
 			
 			messagebox.showinfo(
 				"导出成功",

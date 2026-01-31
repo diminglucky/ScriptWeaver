@@ -198,12 +198,10 @@ class ImagePromptHelper:
         
         # 2. 移除剩余的禁止词汇
         for word in ImagePromptHelper.FORBIDDEN_WORDS:
-            sanitized = re.sub(
-                r'\b' + re.escape(word) + r'\b', 
-                '', 
-                sanitized, 
-                flags=re.IGNORECASE
-            )
+            if word.isascii():
+                sanitized = re.sub(r'\b' + re.escape(word) + r'\b', '', sanitized, flags=re.IGNORECASE)
+            else:
+                sanitized = sanitized.replace(word, '')
         
         # 3. 清理多余空格
         sanitized = re.sub(r'\s+', ' ', sanitized).strip()

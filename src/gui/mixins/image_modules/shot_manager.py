@@ -103,9 +103,7 @@ class ShotManagerMixin:
 			# 用户确认，直接生成
 			self._on_img_extract_shots(mode=mode)
 		else:
-			# 更新提示文字
-			self.recommend_label.config(text=f"💡 推荐：{recommendation}")
-			self.status.set(f"已分析故事，推荐使用 {recommendation}")
+			self.status.set(f"💡 推荐使用 {recommendation}")
 
 	
 	def _on_img_extract_shots(self, mode="normal") -> None:
@@ -649,17 +647,16 @@ class ShotManagerMixin:
 		# 获取参考人物（如果有三视图，优先使用）
 		reference_images = []
 		for char in self.character_list:
-			from ...models.character import Character
-			if isinstance(char, Character):
-				if char.turnaround_image:
-					reference_images.append(char.turnaround_image)
-				elif char.primary_photo:
-					reference_images.append(char.primary_photo)
-			else:
+			if isinstance(char, dict):
 				if char.get("turnaround_image"):
 					reference_images.append(char["turnaround_image"])
 				elif char.get("photo_path"):
 					reference_images.append(char["photo_path"])
+			else:
+				if hasattr(char, 'turnaround_image') and char.turnaround_image:
+					reference_images.append(char.turnaround_image)
+				elif hasattr(char, 'primary_photo') and char.primary_photo:
+					reference_images.append(char.primary_photo)
 		
 		# 保存中断标志
 		self._batch_cancelled = False
@@ -777,15 +774,23 @@ class ShotManagerMixin:
 	
 	def _generate_shot_image_sync(self, index: int, reference_images: list = None) -> None:
 		"""同步生成单个分镜的图片"""
-		# 调用现有的图片生成方法
-		# 这会使用当前的提示词和参考人物
-		self.after(0, self._on_img_generate)
-		
-		# 等待生成完成（简单的轮询方式）
 		import time
-		for _ in range(60):  # 最多等待60秒
+		old_count = 0
+		if self.current_project:
+			shots_dir = self.current_project.project_dir / "shots"
+			if shots_dir.exists():
+				old_count = len(list(shots_dir.glob("*.png")))
+		self.after(0, self._on_img_generate)
+		for _ in range(90):
 			time.sleep(1)
-			if hasattr(self, 'img_last_image') and self.img_last_image:
+			if hasattr(self, '_batch_cancelled') and self._batch_cancelled:
+				break
+			if self.current_project:
+				shots_dir = self.current_project.project_dir / "shots"
+				if shots_dir.exists() and len(list(shots_dir.glob("*.png"))) > old_count:
+					time.sleep(0.5)
+					break
+			if hasattr(self, '_is_busy') and not self._is_busy:
 				break
 	
 	def _cancel_batch_generation(self) -> None:
@@ -794,11 +799,12 @@ class ShotManagerMixin:
 		self.status.set("⏳ 正在取消批量生成...")
 	
 	def _on_img_prompt_from_shots(self) -> None:
-		shots = self.img_txt_shots.get("1.0", END).strip()
-		if not shots:
-			messagebox.showwarning("提示", "请先在左侧生成或填写分镜，再转为提示词")
+		"""从分镜列表生成提示词"""
+		if not hasattr(self, 'parsed_shots') or not self.parsed_shots:
+			messagebox.showwarning("提示", "请先生成分镜列表")
 			return
-		story_text = self.output.get("1.0", END).strip()
+		shots = "\n".join(self.parsed_shots)
+		story_text = self.output.get("1.0", END).strip() if hasattr(self, 'output') else ""
 		scene = self.img_entry_scene.get().strip() if hasattr(self, 'img_entry_scene') else ""
 		roles = self.img_txt_roles.get("1.0", END).strip() if hasattr(self, 'img_txt_roles') else ""
 		try:
