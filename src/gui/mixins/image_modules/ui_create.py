@@ -142,12 +142,20 @@ class ImageUICreateTabMixin:
 		self.video_prompt_text.insert("1.0", "生成图片后，这里会自动显示适合即梦AI的视频提示词...")
 		self.video_prompt_text.config(state=DISABLED)
 		
-		# 复制按钮
+		# 视频操作按钮
 		video_btn_frame = ttk.Frame(tab_video_prompt)
 		video_btn_frame.pack(fill="x", padx=6, pady=(0, 6))
-		self.video_btn_copy = ttk.Button(video_btn_frame, text="📋 复制视频提示词", 
-										  command=self._on_copy_video_prompt, width=22)
-		self.video_btn_copy.pack(side=LEFT)
+		
+		self.video_btn_copy = ttk.Button(video_btn_frame, text="📋 复制提示词", 
+										  command=self._on_copy_video_prompt, width=15)
+		self.video_btn_copy.pack(side=LEFT, padx=(0, 4))
+		
+		self.video_btn_export = ttk.Button(video_btn_frame, text="📦 导出视频工作流", 
+										   command=self._export_video_workflow, width=18)
+		self.video_btn_export.pack(side=LEFT)
+		
+		# 提示
+		tk.Label(video_btn_frame, text="← 导出完整制作资料", font=("", 9), fg="#888").pack(side=LEFT, padx=(8, 0))
 
 		# Right: 参考人物选择（移到这里，更显眼）
 		grp_ref_characters = ttk.LabelFrame(right, text="🎭 参考人物", padding=(8, 5))
@@ -169,20 +177,41 @@ class ImageUICreateTabMixin:
 
 		grp_actions = ttk.LabelFrame(right, text="🚀 操作", padding=(8, 5))
 		grp_actions.pack(fill="x", padx=0, pady=(0, 8))
+		
+		# 第一行：单张图片操作
 		action_row = ttk.Frame(grp_actions)
-		action_row.pack(fill="x", padx=6, pady=6)
+		action_row.pack(fill="x", padx=6, pady=(6, 3))
 		action_row.columnconfigure(0, weight=1)
 		action_row.columnconfigure(1, weight=1)
 		action_row.columnconfigure(2, weight=1)
 		
 		# 预览提示词按钮
-		self.img_btn_preview = ttk.Button(action_row, text="👁️ 预览提示词", command=self._on_preview_prompt)
+		self.img_btn_preview = ttk.Button(action_row, text="👁️ 预览", command=self._on_preview_prompt)
 		self.img_btn_preview.grid(row=0, column=0, padx=(0, 3), sticky="ew")
 		
 		self.img_btn_gen = ttk.Button(action_row, text="🎨 生成图片", command=self._on_img_generate)
 		self.img_btn_gen.grid(row=0, column=1, padx=3, sticky="ew")
 		self.img_btn_save = ttk.Button(action_row, text="💾 保存", command=self._on_img_save, state=DISABLED)
 		self.img_btn_save.grid(row=0, column=2, padx=(3, 0), sticky="ew")
+		
+		# 第二行：批量操作（新功能）
+		batch_row = ttk.Frame(grp_actions)
+		batch_row.pack(fill="x", padx=6, pady=(3, 6))
+		
+		self.btn_batch_generate = ttk.Button(
+			batch_row, 
+			text="🚀 批量生成所有分镜", 
+			command=self._on_batch_generate_all_shots
+		)
+		self.btn_batch_generate.pack(fill="x")
+		
+		# 提示标签
+		tk.Label(
+			batch_row, 
+			text="💡 使用角色三视图作为参考，保持人物一致性", 
+			font=("", 9), 
+			fg="#888"
+		).pack(anchor="w", pady=(4, 0))
 
 		grp_preview = ttk.LabelFrame(right, text="🖼️ 预览", padding=(8, 5))
 		grp_preview.pack(fill=BOTH, expand=True, padx=0, pady=0)

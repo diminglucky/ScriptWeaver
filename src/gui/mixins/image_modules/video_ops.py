@@ -238,6 +238,179 @@ class VideoPromptMixin:
 				messagebox.showwarning("提示", "请先生成图片，然后会自动生成视频提示词")
 		except Exception as e:
 			messagebox.showerror("错误", f"复制失败: {str(e)}")
+	
+	def _export_video_workflow(self) -> None:
+		"""导出视频制作工作流
+		
+		生成完整的视频制作资料包：
+		1. 所有分镜图片
+		2. 对应的视频提示词
+		3. 工作流说明文档
+		"""
+		if not self.current_project:
+			messagebox.showwarning("提示", "请先打开一个项目")
+			return
+		
+		if not hasattr(self, 'parsed_shots') or not self.parsed_shots:
+			messagebox.showwarning("提示", "请先生成分镜")
+			return
+		
+		try:
+			import json
+			from datetime import datetime
+			
+			project_dir = self.current_project.project_dir
+			shots_dir = project_dir / "shots"
+			export_dir = project_dir / "video_workflow"
+			export_dir.mkdir(parents=True, exist_ok=True)
+			
+			# 收集所有分镜数据
+			workflow_data = {
+				"project_name": self.current_project.metadata.get("name", "未命名"),
+				"export_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+				"total_shots": len(self.parsed_shots),
+				"shots": []
+			}
+			
+			# 获取所有分镜图片
+			shot_images = list(shots_dir.glob("shot_*.png")) if shots_dir.exists() else []
+			
+			for i, shot in enumerate(self.parsed_shots):
+				shot_data = {
+					"index": i + 1,
+					"description": shot,
+					"video_prompt": self._generate_single_video_prompt(shot),
+					"image_file": None
+				}
+				
+				# 查找对应的图片
+				for img_path in shot_images:
+					if f"shot_{i+1:02d}" in img_path.name or f"shot_{i+1}" in img_path.name:
+						shot_data["image_file"] = img_path.name
+						break
+				
+				workflow_data["shots"].append(shot_data)
+			
+			# 保存JSON数据
+			json_path = export_dir / "workflow.json"
+			with open(json_path, 'w', encoding='utf-8') as f:
+				json.dump(workflow_data, f, ensure_ascii=False, indent=2)
+			
+			# 生成Markdown说明文档
+			md_content = self._generate_workflow_markdown(workflow_data)
+			md_path = export_dir / "视频制作指南.md"
+			with open(md_path, 'w', encoding='utf-8') as f:
+				f.write(md_content)
+			
+			# 复制图片到导出目录
+			for img_path in shot_images:
+				import shutil
+				shutil.copy2(img_path, export_dir / img_path.name)
+			
+			self.status.set(f"✅ 视频工作流已导出到: {export_dir}")
+			
+			# 打开导出目录
+			import subprocess
+			subprocess.run(["open", str(export_dir)])
+			
+			messagebox.showinfo(
+				"导出成功",
+				f"视频制作资料包已导出！\n\n"
+				f"📁 位置：{export_dir}\n\n"
+				f"包含：\n"
+				f"• {len(shot_images)} 张分镜图片\n"
+				f"• workflow.json - 完整数据\n"
+				f"• 视频制作指南.md - 制作说明\n\n"
+				f"请使用即梦AI或其他视频工具逐一生成视频片段，然后合并。"
+			)
+			
+		except Exception as e:
+			import traceback
+			traceback.print_exc()
+			messagebox.showerror("错误", f"导出失败: {e}")
+	
+	def _generate_single_video_prompt(self, shot: str) -> str:
+		"""为单个分镜生成视频提示词"""
+		parts = [p.strip() for p in shot.split('|')]
+		
+		scene_info = parts[0] if len(parts) > 0 else ""
+		action_info = parts[1] if len(parts) > 1 else shot
+		camera_movement = parts[3] if len(parts) > 3 else ""
+		
+		prompt_parts = []
+		
+		if scene_info:
+			prompt_parts.append(self._enhance_scene_description(scene_info))
+		
+		if action_info:
+			prompt_parts.append(self._enhance_action_description(action_info))
+		
+		camera_desc = self._translate_camera_movement(camera_movement, "")
+		if camera_desc:
+			prompt_parts.append(camera_desc)
+		
+		prompt_parts.append("画面流畅，5秒视频")
+		
+		# 安全清理
+		final_prompt = "，".join(filter(None, prompt_parts))
+		final_prompt = ImagePromptHelper.sanitize_video_prompt(final_prompt)
+		
+		return final_prompt[:150]  # 限制长度
+	
+	def _generate_workflow_markdown(self, data: dict) -> str:
+		"""生成视频制作指南Markdown文档"""
+		md = f"""# 视频制作指南
+
+## 项目信息
+- **项目名称**: {data['project_name']}
+- **导出时间**: {data['export_time']}
+- **分镜总数**: {data['total_shots']}
+
+## 制作步骤
+
+### 1. 准备工作
+1. 打开即梦AI（或其他图片转视频工具）
+2. 准备好所有分镜图片
+
+### 2. 逐一生成视频片段
+
+"""
+		
+		for shot in data['shots']:
+			md += f"""#### 分镜 {shot['index']}
+
+**原始描述**: {shot['description'][:100]}...
+
+**视频提示词**:
+```
+{shot['video_prompt']}
+```
+
+**对应图片**: {shot['image_file'] or '待生成'}
+
+---
+
+"""
+		
+		md += """
+### 3. 视频合并
+使用视频编辑软件（如剪映、Premiere等）将所有片段合并。
+
+### 4. 添加配音和配乐
+- 根据分镜描述中的声音提示添加音效
+- 添加背景音乐
+- 录制或生成AI配音
+
+## 注意事项
+- 每个视频片段建议5秒左右
+- 保持人物一致性，使用相同的参考图
+- 转场可以在后期添加
+
+---
+*由 AI Story Creator Pro 自动生成*
+"""
+		
+		return md
 
 	
 	

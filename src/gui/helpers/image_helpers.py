@@ -8,11 +8,71 @@ from .image_styles import STYLE_KEYWORDS_EN, STYLE_DESC_CN, STYLE_KEYWORDS_SHORT
 class ImagePromptHelper:
     """图片提示词辅助工具"""
     
-    # 敏感词列表（示例）
-    SENSITIVE_WORDS = [
-        "blood", "gore", "violence", "nude", "naked", "nsfw",
-        "血腥", "暴力", "裸体", "色情"
+    # === 敏感词列表（借鉴自 DirectorAI 的安全策略）===
+    
+    # 绝对禁止的词汇（会触发平台拒绝）
+    FORBIDDEN_WORDS = {
+        # 能量/特效类
+        "lightning", "electric", "electric shock", "thunderbolt", "energy", 
+        "energy beam", "energy surge", "power surge", "spark", "arc", "voltage",
+        # 战斗/冲突类
+        "attack", "battle", "fight", "punch", "kick", "hit", "strike", "slam", 
+        "crash", "smash", "beat", "combat", "clash", "confront", "struggle",
+        # 危险元素
+        "fire", "flame", "burn", "explosion", "explode", "blast", "bomb", 
+        "smoke", "weapon", "sword", "knife", "gun", "blade", "sharp",
+        # 负面情绪
+        "fierce", "intense", "aggressive", "violent", "rage", "angry", "furious", 
+        "terrified", "horrified", "scream", "shout", "yell", "panic",
+        # 身体恐怖
+        "glowing eyes", "red eyes", "blood", "wound", "injury", "transform", 
+        "mutate", "distort", "twisted",
+        # 不安全动作
+        "fall", "drop", "trip", "stumble", "chase", "flee", "escape",
+        # 中文敏感词
+        "血腥", "暴力", "裸体", "色情", "武器", "爆炸", "攻击", "战斗",
+        "恐怖", "惊悚", "尖叫", "愤怒", "仇恨"
+    }
+    
+    # 安全替换词映射
+    SAFE_REPLACEMENTS = {
+        "lightning": "soft light",
+        "electric": "warm light",
+        "glowing": "bright",
+        "energy": "atmosphere",
+        "swirl": "flow",
+        "powerful": "beautiful",
+        "strong": "elegant",
+        "fierce": "calm",
+        "intense": "warm",
+        "dramatic": "peaceful",
+        "action": "scene",
+        "dynamic": "smooth",
+        "gripping": "holding",
+        "trembling": "gentle",
+        "fight": "interaction",
+        "attack": "approach",
+        "battle": "encounter",
+        "explosion": "bloom",
+        "fire": "warmth",
+        "angry": "concerned",
+        "scream": "speak",
+        "血腥": "红色",
+        "暴力": "动作",
+        "愤怒": "严肃",
+        "攻击": "动作",
+    }
+    
+    # 推荐添加的安全词汇
+    SAFE_WORDS = [
+        "gentle", "soft", "calm", "peaceful", "warm", "bright", "smooth",
+        "quiet", "serene", "tranquil", "beautiful", "lovely", "cute", "sweet",
+        "heartwarming", "pleasant", "comfortable", "slowly", "softly", "gently",
+        "calmly", "smoothly", "gracefully", "elegantly"
     ]
+    
+    # 旧版兼容
+    SENSITIVE_WORDS = list(FORBIDDEN_WORDS)
     
     @staticmethod
     def build_translation_instruction(img_type: str, has_reference_characters: bool = False, is_img2img: bool = False) -> str:
@@ -104,9 +164,99 @@ class ImagePromptHelper:
             过滤后的文本
         """
         filtered_text = text
-        for word in ImagePromptHelper.SENSITIVE_WORDS:
+        for word in ImagePromptHelper.FORBIDDEN_WORDS:
             filtered_text = re.sub(re.escape(word), "", filtered_text, flags=re.IGNORECASE)
         return filtered_text
+    
+    @staticmethod
+    def sanitize_prompt(text: str, aggressive: bool = False) -> str:
+        """
+        安全清理提示词（借鉴自 DirectorAI）
+        
+        执行以下操作：
+        1. 替换敏感词为安全替代词
+        2. 如果是aggressive模式，添加安全前后缀
+        3. 确保使用柔和的表达方式
+        
+        Args:
+            text: 原始提示词
+            aggressive: 是否使用激进清理模式
+        
+        Returns:
+            安全清理后的提示词
+        """
+        sanitized = text
+        
+        # 1. 替换敏感词为安全替代词
+        for dangerous, safe in ImagePromptHelper.SAFE_REPLACEMENTS.items():
+            sanitized = re.sub(
+                re.escape(dangerous), 
+                safe, 
+                sanitized, 
+                flags=re.IGNORECASE
+            )
+        
+        # 2. 移除剩余的禁止词汇
+        for word in ImagePromptHelper.FORBIDDEN_WORDS:
+            sanitized = re.sub(
+                r'\b' + re.escape(word) + r'\b', 
+                '', 
+                sanitized, 
+                flags=re.IGNORECASE
+            )
+        
+        # 3. 清理多余空格
+        sanitized = re.sub(r'\s+', ' ', sanitized).strip()
+        sanitized = re.sub(r',\s*,', ',', sanitized)  # 清理连续逗号
+        sanitized = re.sub(r'，\s*，', '，', sanitized)
+        
+        # 4. 如果是激进模式，添加安全前后缀
+        if aggressive:
+            safe_prefix = "Peaceful scene, safe for work. "
+            safe_suffix = ". Calm and positive atmosphere, family friendly"
+            
+            if not sanitized.lower().startswith("peaceful"):
+                sanitized = safe_prefix + sanitized
+            if "family friendly" not in sanitized.lower():
+                sanitized = sanitized + safe_suffix
+        
+        return sanitized
+    
+    @staticmethod
+    def sanitize_video_prompt(text: str) -> str:
+        """
+        清理视频提示词（视频生成对提示词更敏感）
+        
+        Args:
+            text: 原始提示词
+        
+        Returns:
+            安全清理后的提示词
+        """
+        # 视频提示词需要更激进的清理
+        sanitized = ImagePromptHelper.sanitize_prompt(text, aggressive=True)
+        
+        # 额外的视频特定替换
+        video_replacements = {
+            "quick": "slow",
+            "fast": "gentle",
+            "sudden": "gradual",
+            "rapid": "smooth",
+            "sharp": "soft",
+            "abrupt": "gradual",
+            "violent": "gentle",
+            "jerky": "smooth",
+        }
+        
+        for dangerous, safe in video_replacements.items():
+            sanitized = re.sub(
+                r'\b' + re.escape(dangerous) + r'\b',
+                safe,
+                sanitized,
+                flags=re.IGNORECASE
+            )
+        
+        return sanitized
     
     @staticmethod
     def add_safety_suffix(text: str) -> str:

@@ -614,6 +614,185 @@ class ShotManagerMixin:
 		threading.Thread(target=task, daemon=True).start()
 
 	
+	def _on_batch_generate_all_shots(self) -> None:
+		"""批量生成所有分镜的图片（借鉴自 DirectorAI）
+		
+		功能：
+		1. 自动为每个分镜生成图片描述
+		2. 使用角色三视图作为参考保持一致性
+		3. 支持中断和恢复
+		"""
+		if not hasattr(self, 'parsed_shots') or not self.parsed_shots:
+			messagebox.showwarning("提示", "请先生成分镜列表")
+			return
+		
+		if not self.current_project:
+			messagebox.showwarning("提示", "请先创建或打开一个项目")
+			return
+		
+		shot_count = len(self.parsed_shots)
+		
+		# 确认对话框
+		result = messagebox.askyesno(
+			"批量生成确认",
+			f"即将为 {shot_count} 个分镜生成图片\n\n"
+			f"⚠️ 注意事项：\n"
+			f"• 每张图片需要调用API，会产生费用\n"
+			f"• 预计耗时：{shot_count * 15}-{shot_count * 30} 秒\n"
+			f"• 生成过程中可以取消\n\n"
+			f"是否继续？"
+		)
+		
+		if not result:
+			return
+		
+		# 获取参考人物（如果有三视图，优先使用）
+		reference_images = []
+		for char in self.character_list:
+			from ...models.character import Character
+			if isinstance(char, Character):
+				if char.turnaround_image:
+					reference_images.append(char.turnaround_image)
+				elif char.primary_photo:
+					reference_images.append(char.primary_photo)
+			else:
+				if char.get("turnaround_image"):
+					reference_images.append(char["turnaround_image"])
+				elif char.get("photo_path"):
+					reference_images.append(char["photo_path"])
+		
+		# 保存中断标志
+		self._batch_cancelled = False
+		
+		# 禁用按钮
+		if hasattr(self, 'btn_batch_generate'):
+			self.btn_batch_generate.config(state=DISABLED, text="⏳ 生成中...")
+		
+		def batch_generate_thread():
+			generated_count = 0
+			failed_count = 0
+			
+			try:
+				import time
+				from pathlib import Path
+				
+				shots_dir = self.current_project.project_dir / "shots"
+				shots_dir.mkdir(parents=True, exist_ok=True)
+				
+				for i, shot in enumerate(self.parsed_shots):
+					# 检查是否被取消
+					if self._batch_cancelled:
+						self.after(0, lambda: self.status.set(f"⚠️ 批量生成已取消，已完成 {generated_count}/{shot_count}"))
+						break
+					
+					# 更新进度
+					self.after(0, lambda idx=i, total=shot_count: self.status.set(
+						f"🎨 [{idx+1}/{total}] 正在生成第 {idx+1} 个分镜的图片..."
+					))
+					if hasattr(self, 'update_header_status'):
+						self.after(0, lambda idx=i, total=shot_count: self.update_header_status(
+							f"[{idx+1}/{total}] 批量生成...", "🎨"
+						))
+					
+					try:
+						# 选择当前分镜
+						self.after(0, lambda idx=i: self.shots_listbox.selection_clear(0, END))
+						self.after(0, lambda idx=i: self.shots_listbox.selection_set(idx))
+						time.sleep(0.1)
+						
+						# 生成图片描述
+						self._generate_shot_description_sync(shot, i)
+						time.sleep(0.5)
+						
+						# 生成图片
+						self._generate_shot_image_sync(i, reference_images)
+						
+						generated_count += 1
+						
+						# 短暂延迟，避免API限流
+						time.sleep(1)
+						
+					except Exception as e:
+						print(f"❌ 分镜 {i+1} 生成失败: {e}")
+						failed_count += 1
+						continue
+				
+				# 完成
+				def on_complete():
+					self.status.set(f"✅ 批量生成完成！成功 {generated_count} 张，失败 {failed_count} 张")
+					if hasattr(self, 'update_header_status'):
+						self.update_header_status("批量完成", "✅")
+					
+					messagebox.showinfo(
+						"批量生成完成",
+						f"生成结果：\n\n"
+						f"✅ 成功：{generated_count} 张\n"
+						f"❌ 失败：{failed_count} 张\n\n"
+						f"保存位置：{shots_dir}"
+					)
+				
+				self.after(0, on_complete)
+				
+			except Exception as e:
+				import traceback
+				traceback.print_exc()
+				self.after(0, lambda: messagebox.showerror("错误", f"批量生成失败: {e}"))
+			finally:
+				if hasattr(self, 'btn_batch_generate'):
+					self.after(0, lambda: self.btn_batch_generate.config(state=NORMAL, text="🚀 批量生成所有分镜"))
+		
+		import threading
+		threading.Thread(target=batch_generate_thread, daemon=True).start()
+	
+	def _generate_shot_description_sync(self, shot: str, index: int) -> str:
+		"""同步生成单个分镜的图片描述"""
+		# 获取API配置
+		selected_api = self.desc_gen_api.get() if hasattr(self, 'desc_gen_api') else "DeepSeek"
+		api_config = self.api_presets.get(selected_api, {})
+		api_key = _sanitize(api_config.get("key", ""))
+		base_url = _sanitize(api_config.get("base_url", ""))
+		model = _sanitize(api_config.get("model", ""))
+		
+		if not api_key:
+			return shot  # 如果没有API Key，直接使用分镜文本
+		
+		# 简化的描述生成
+		img_type = self.img_type.get() if hasattr(self, 'img_type') else "写实照片"
+		
+		client = DeepSeekClient(api_key=api_key, base_url=base_url, model=model)
+		
+		inst = f"将以下分镜转换为简洁的图片描述，用于生成【{img_type}】风格的图片。只输出描述，200字以内。"
+		resp = client.chat([
+			{"role": "system", "content": inst},
+			{"role": "user", "content": shot},
+		], temperature=0.5)
+		
+		description = resp.strip()
+		
+		# 更新UI
+		self.after(0, lambda: self.img_txt_prompt_cn.delete("1.0", END))
+		self.after(0, lambda d=description: self.img_txt_prompt_cn.insert(END, d))
+		
+		return description
+	
+	def _generate_shot_image_sync(self, index: int, reference_images: list = None) -> None:
+		"""同步生成单个分镜的图片"""
+		# 调用现有的图片生成方法
+		# 这会使用当前的提示词和参考人物
+		self.after(0, self._on_img_generate)
+		
+		# 等待生成完成（简单的轮询方式）
+		import time
+		for _ in range(60):  # 最多等待60秒
+			time.sleep(1)
+			if hasattr(self, 'img_last_image') and self.img_last_image:
+				break
+	
+	def _cancel_batch_generation(self) -> None:
+		"""取消批量生成"""
+		self._batch_cancelled = True
+		self.status.set("⏳ 正在取消批量生成...")
+	
 	def _on_img_prompt_from_shots(self) -> None:
 		shots = self.img_txt_shots.get("1.0", END).strip()
 		if not shots:
