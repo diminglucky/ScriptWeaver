@@ -101,8 +101,9 @@ class CharacterUtilsMixin:
 	
 	
 	def _load_project_characters(self) -> None:
-		"""加载当前项目的所有人物信息（包括没有照片的人物）"""
-		# 清空之前的人物列表
+		"""加载当前项目的所有人物信息（支持新旧两种数据格式）"""
+		from ...models.character import Character, CharacterProfile, VisualFeatures, CharacterDNA
+		
 		self.character_list.clear()
 		
 		if not self.current_project:
@@ -114,7 +115,6 @@ class CharacterUtilsMixin:
 			import json
 			from pathlib import Path
 			
-			# 获取项目的 characters 文件夹
 			characters_dir = self.current_project.project_dir / "characters"
 			
 			if not characters_dir.exists():
@@ -122,63 +122,63 @@ class CharacterUtilsMixin:
 				self._update_reference_character_list()
 				return
 			
-			# 读取人物描述信息（这是主要数据源）
 			characters_info_path = characters_dir / "characters_info.json"
-			characters_info = {}
-			if characters_info_path.exists():
-				try:
-					with open(characters_info_path, 'r', encoding='utf-8') as f:
-						characters_info = json.load(f)
-					print(f"📖 已加载人物描述文件：{characters_info_path}")
-				except Exception as e:
-					print(f"⚠️ 读取人物描述文件失败：{str(e)}")
-			
-			if not characters_info:
+			if not characters_info_path.exists():
 				print(f"📋 项目中暂无保存的人物信息")
 				self._update_reference_character_list()
 				return
 			
-			# 从JSON加载所有人物（包括没有照片的）
+			with open(characters_info_path, 'r', encoding='utf-8') as f:
+				characters_info = json.load(f)
+			print(f"📖 已加载人物描述文件：{characters_info_path}")
+			
+			if not characters_info:
+				self._update_reference_character_list()
+				return
+			
 			loaded_count = 0
-			for character_name, char_data in characters_info.items():
-				description = char_data.get("description", "")
-				photo_path = char_data.get("photo_path", "")
-				
-				# 验证照片路径是否有效
-				if photo_path:
-					photo_file = Path(photo_path)
-					if not photo_file.exists():
-						print(f"⚠️ 照片文件不存在：{photo_path}")
-						photo_path = ""  # 重置为空
-				
-				self.character_list.append({
-					"name": character_name,
-					"description": description,
-					"photo_path": str(photo_path) if photo_path else ""
-				})
-				loaded_count += 1
 			
-			# 统计有照片的人物数量
-			photo_count = sum(1 for char in self.character_list if char.get("photo_path"))
+			if isinstance(characters_info, list):
+				# 新格式：Character 对象列表
+				for char_data in characters_info:
+					try:
+						if "profile" in char_data or "dna" in char_data:
+							char = Character.from_dict(char_data)
+						else:
+							char = Character.from_legacy(char_data)
+						
+						if char.primary_photo and not Path(char.primary_photo).exists():
+							print(f"⚠️ 照片不存在：{char.primary_photo}")
+							char.primary_photo = ""
+						
+						self.character_list.append(char)
+						loaded_count += 1
+					except Exception as e:
+						print(f"⚠️ 加载角色失败: {e}")
+			else:
+				# 旧格式
+				for character_name, char_data in characters_info.items():
+					description = char_data.get("description", "")
+					photo_path = char_data.get("photo_path", "")
+					
+					if photo_path and not Path(photo_path).exists():
+						photo_path = ""
+					
+					char = Character(name=character_name)
+					char.description = description
+					char.primary_photo = photo_path
+					self.character_list.append(char)
+					loaded_count += 1
 			
-			print(f"✅ 已加载 {loaded_count} 个人物（其中 {photo_count} 个有照片）")
+			photo_count = sum(1 for c in self.character_list 
+			                 if (isinstance(c, Character) and c.primary_photo) or 
+			                    (isinstance(c, dict) and c.get("photo_path")))
+			dna_count = sum(1 for c in self.character_list 
+			               if isinstance(c, Character) and c.dna and c.dna.core_prompt)
 			
-			# 显示人物列表
-			character_names = [char['name'] for char in self.character_list]
-			print(f"✅ 已加载项目人物：{character_names}")
+			print(f"✅ 已加载 {loaded_count} 个人物（{photo_count} 有照片，{dna_count} 有DNA）")
 			
-			# 显示人物描述预览
-			for char in self.character_list:
-				desc_preview = char["description"][:80] + "..." if len(char["description"]) > 80 else char["description"]
-				if desc_preview:
-					print(f"   📝 {char['name']}: {desc_preview}")
-				else:
-					print(f"   📝 {char['name']}: （尚无描述）")
-			
-			# 更新列表框显示
 			self._update_character_listbox()
-			
-			# 更新参考人物列表
 			self._update_reference_character_list()
 			
 		except Exception as e:
@@ -191,67 +191,71 @@ class CharacterUtilsMixin:
 	
 	
 	def _update_reference_character_list(self) -> None:
-		"""更新图片创作页面的参考人物列表（仅当前项目，支持多选）"""
-		# 清空列表框
-		self.ref_character_listbox.delete(0, END)
+		"""更新图片创作页面的参考人物列表"""
+		from ...models.character import Character
+		from pathlib import Path
 		
-		# 添加"不使用参考"选项
+		self.ref_character_listbox.delete(0, END)
 		self.ref_character_listbox.insert(END, "❌ 不使用参考")
 		
-		# 只显示当前项目中已生成照片的人物
 		character_names = ["不使用参考"]
 		for char in self.character_list:
-			photo_path = char.get("photo_path")
-			if photo_path:
-				# 验证照片文件是否存在
-				from pathlib import Path
-				if Path(photo_path).exists():
-					character_names.append(char["name"])
-					self.ref_character_listbox.insert(END, f"✅ {char['name']}")
-				else:
-					print(f"⚠️ 人物照片不存在：{photo_path}")
+			if isinstance(char, Character):
+				photo_path = char.primary_photo
+				name = char.name
+				has_dna = bool(char.dna and char.dna.core_prompt)
+			else:
+				photo_path = char.get("photo_path", "")
+				name = char.get("name", "")
+				has_dna = bool(char.get("dna_prompt"))
+			
+			if photo_path and Path(photo_path).exists():
+				character_names.append(name)
+				# 显示DNA状态
+				prefix = "🧬" if has_dna else "✅"
+				self.ref_character_listbox.insert(END, f"{prefix} {name}")
 		
-		# 获取项目名称
-		if self.current_project:
-			project_name = self.current_project.metadata.get("name", "未命名项目")
-		else:
-			project_name = "无项目"
-		print(f"📋 已更新参考人物列表 [项目: {project_name}]：{character_names}")
+		project_name = self.current_project.metadata.get("name", "未命名") if self.current_project else "无项目"
+		print(f"📋 已更新参考人物列表 [{project_name}]：{character_names}")
 	
 	
 	
 	
 	def _save_all_characters_info(self) -> bool:
-		"""保存所有人物信息到characters_info.json（包括没有照片的人物）"""
+		"""保存所有人物信息到characters_info.json（使用新格式）"""
+		from ...models.character import Character
+		
 		try:
 			import json
 			from pathlib import Path
 			
-			# 检查是否有当前项目
 			if not self.current_project:
 				print("⚠️ 没有当前项目，无法保存人物信息")
 				return False
 			
-			# 确定保存目录
 			characters_dir = self.current_project.project_dir / "characters"
 			characters_dir.mkdir(parents=True, exist_ok=True)
 			
-			# 构建保存数据
-			characters_info = {}
+			# 转换为可保存格式（新格式：列表）
+			save_data = []
 			for char in self.character_list:
-				char_name = char.get("name", "")
-				if char_name:
-					characters_info[char_name] = {
+				if isinstance(char, Character):
+					save_data.append(char.to_dict())
+				else:
+					save_data.append({
+						"name": char.get("name", ""),
 						"description": char.get("description", ""),
-						"photo_path": char.get("photo_path", "")
-					}
+						"primary_photo": char.get("photo_path", ""),
+						"profile": char.get("character_profile", {}),
+						"visual": char.get("visual_features", {}),
+						"dna": {"core_prompt": char.get("dna_prompt", "")},
+					})
 			
-			# 保存到文件
 			characters_info_path = characters_dir / "characters_info.json"
 			with open(characters_info_path, 'w', encoding='utf-8') as f:
-				json.dump(characters_info, f, ensure_ascii=False, indent=2)
+				json.dump(save_data, f, ensure_ascii=False, indent=2)
 			
-			print(f"💾 已保存 {len(characters_info)} 个人物信息到：{characters_info_path}")
+			print(f"💾 已保存 {len(save_data)} 个人物信息到：{characters_info_path}")
 			return True
 			
 		except Exception as e:
@@ -265,6 +269,8 @@ class CharacterUtilsMixin:
 	
 	def _on_view_character_gallery(self) -> None:
 		"""打开人物照片画廊"""
+		from ...models.character import Character
+		
 		selection = self.char_listbox.curselection()
 		if not selection:
 			messagebox.showwarning("提示", "请先选择一个人物！")
@@ -276,13 +282,15 @@ class CharacterUtilsMixin:
 		
 		index = selection[0]
 		character = self.character_list[index]
-		character_name = character["name"]
 		
-		# 获取characters目录
+		if isinstance(character, Character):
+			character_name = character.name
+		else:
+			character_name = character["name"]
+		
 		from pathlib import Path
 		characters_dir = Path(self.current_project.project_dir) / "characters"
 		
-		# 打开照片画廊
 		try:
 			gallery = CharacterPhotoGallery(
 				parent=self,

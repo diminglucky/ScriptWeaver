@@ -119,21 +119,21 @@ class ImageUICharacterTabMixin:
 		# 绑定选择事件
 		self.char_listbox.bind("<<ListboxSelect>>", self._on_character_selected)
 		
-		# 人物特征描述区域
-		grp_desc = ttk.LabelFrame(left, text="📝 人物特征描述", padding=(8, 5))
+		# 人物外貌设计区域（角色DNA）
+		grp_desc = ttk.LabelFrame(left, text="🧬 人物外貌设计 (角色DNA)", padding=(8, 5))
 		grp_desc.pack(fill=BOTH, expand=True, padx=0, pady=0)
 		
 		# 特征描述文本框
 		self.char_txt_desc = tk.Text(grp_desc, height=10, font=("", 10), 
 									 wrap=tk.WORD, relief=tk.SOLID, borderwidth=1)
 		self.char_txt_desc.pack(fill=BOTH, expand=True, padx=6, pady=(6, 8))
-		self.char_txt_desc.insert("1.0", "第二步：从列表中选择一个人物，然后点击下方按钮生成该人物的特征描述...")
+		self.char_txt_desc.insert("1.0", "第二步：选择人物后，AI将根据角色设定创造性地设计外貌，并生成「角色DNA」用于保持一致性...")
 		self.char_txt_desc.config(state=DISABLED)
 		
 		# 特征描述按钮
 		desc_btn_frame = ttk.Frame(grp_desc)
 		desc_btn_frame.pack(fill="x", padx=6, pady=(0, 6))
-		self.char_btn_gen_desc = ttk.Button(desc_btn_frame, text="✨ 生成特征描述", 
+		self.char_btn_gen_desc = ttk.Button(desc_btn_frame, text="🧬 设计外貌", 
 										    command=self._on_generate_character_description,
 											width=15, state=DISABLED)
 		self.char_btn_gen_desc.pack(side=LEFT, padx=(0, 3))

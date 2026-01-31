@@ -37,14 +37,25 @@ class CharacterPhotoMixin:
 		
 		index = selection[0]
 		character = self.character_list[index]
-		character_name = character["name"]
-		description = character.get("description", "")
+		
+		# 兼容新旧数据格式
+		from ...models.character import Character
+		if isinstance(character, Character):
+			character_name = character.name
+			description = character.description
+			# 获取角色DNA（用于一致性生成）
+			character_dna = character.dna.core_prompt if character.dna else ""
+		else:
+			character_name = character["name"]
+			description = character.get("description", "")
+			character_dna = character.get("dna_prompt", "")
 		
 		print(f"👤 选中人物: {character_name}")
 		print(f"📝 描述长度: {len(description) if description else 0}")
+		print(f"🧬 角色DNA: {'有' if character_dna else '无'}")
 		
 		if not description:
-			messagebox.showwarning("提示", "请先生成人物特征描述！")
+			messagebox.showwarning("提示", "请先设计人物外貌！")
 			return
 		
 		# 检查当前项目
@@ -507,8 +518,18 @@ class CharacterPhotoMixin:
 				print(f"❌ 文件保存失败：{save_path}")
 				return ""
 			
-			# 更新人物列表中的照片路径
-			self.character_list[index]["photo_path"] = str(save_path)
+			# 更新人物列表中的照片路径（兼容新旧格式）
+			from ...models.character import Character
+			char = self.character_list[index]
+			if isinstance(char, Character):
+				char.primary_photo = str(save_path)
+				if str(save_path) not in char.photo_paths:
+					char.photo_paths.append(str(save_path))
+				# 更新DNA中的锚定图
+				if char.dna and not char.dna.anchor_image:
+					char.dna.anchor_image = str(save_path)
+			else:
+				char["photo_path"] = str(save_path)
 			
 			# 保存人物描述到 JSON 文件
 			characters_info_path = self.character_photos_dir / "characters_info.json"
