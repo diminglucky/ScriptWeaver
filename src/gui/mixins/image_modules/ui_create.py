@@ -99,8 +99,28 @@ class ImageUICreateTabMixin:
 		tab_img_desc = tk.Frame(prompt_notebook, bg="#2b2b2b")
 		prompt_notebook.add(tab_img_desc, text="  💬 图片描述  ")
 		
-		self.img_txt_prompt_cn = tk.Text(tab_img_desc, height=10, font=("", 10), wrap=tk.WORD, relief=tk.SOLID, borderwidth=1)
-		self.img_txt_prompt_cn.pack(fill="both", expand=True, padx=6, pady=(6, 8))
+		# 提示词输入区域（带✨补全按钮）
+		prompt_input_frame = tk.Frame(tab_img_desc, bg="#2b2b2b")
+		prompt_input_frame.pack(fill="both", expand=True, padx=6, pady=(6, 8))
+		
+		self.img_txt_prompt_cn = tk.Text(prompt_input_frame, height=10, font=("", 10), wrap=tk.WORD, relief=tk.SOLID, borderwidth=1)
+		self.img_txt_prompt_cn.pack(side=LEFT, fill="both", expand=True)
+		
+		# ✨ AI补全按钮（竖排在右侧）
+		enhance_frame = tk.Frame(prompt_input_frame, bg="#2b2b2b")
+		enhance_frame.pack(side=RIGHT, fill="y", padx=(4, 0))
+		
+		self.btn_enhance_prompt = tk.Button(
+			enhance_frame, text="✨", font=("", 14), 
+			command=self._on_enhance_prompt,
+			bg="#4CAF50", fg="white", relief=tk.FLAT,
+			width=2, height=1, cursor="hand2"
+		)
+		self.btn_enhance_prompt.pack(pady=(0, 4))
+		
+		# 添加提示标签
+		tk.Label(enhance_frame, text="AI\n补全", font=("", 8), bg="#2b2b2b", fg="#888").pack()
+		
 		rowp = ttk.Frame(tab_img_desc)
 		rowp.pack(fill="x", padx=6, pady=(0, 6))
 		self.img_btn_build_from_shot = ttk.Button(rowp, text="✨ 从当前分镜生成", command=self._on_img_prompt_from_current_shot, width=20)
@@ -153,10 +173,16 @@ class ImageUICreateTabMixin:
 		action_row.pack(fill="x", padx=6, pady=6)
 		action_row.columnconfigure(0, weight=1)
 		action_row.columnconfigure(1, weight=1)
+		action_row.columnconfigure(2, weight=1)
+		
+		# 预览提示词按钮
+		self.img_btn_preview = ttk.Button(action_row, text="👁️ 预览提示词", command=self._on_preview_prompt)
+		self.img_btn_preview.grid(row=0, column=0, padx=(0, 3), sticky="ew")
+		
 		self.img_btn_gen = ttk.Button(action_row, text="🎨 生成图片", command=self._on_img_generate)
-		self.img_btn_gen.grid(row=0, column=0, padx=(0, 3), sticky="ew")
+		self.img_btn_gen.grid(row=0, column=1, padx=3, sticky="ew")
 		self.img_btn_save = ttk.Button(action_row, text="💾 保存", command=self._on_img_save, state=DISABLED)
-		self.img_btn_save.grid(row=0, column=1, padx=(3, 0), sticky="ew")
+		self.img_btn_save.grid(row=0, column=2, padx=(3, 0), sticky="ew")
 
 		grp_preview = ttk.LabelFrame(right, text="🖼️ 预览", padding=(8, 5))
 		grp_preview.pack(fill=BOTH, expand=True, padx=0, pady=0)

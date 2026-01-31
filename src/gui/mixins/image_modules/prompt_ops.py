@@ -42,6 +42,204 @@ class PromptOperationsMixin:
 
 	
 	
+	def _on_enhance_prompt(self) -> None:
+		"""✨ AI补全/优化提示词"""
+		current_prompt = self.img_txt_prompt_cn.get("1.0", END).strip()
+		
+		if not current_prompt:
+			messagebox.showwarning("提示", "请先输入一些描述内容，AI将帮您补全和优化")
+			return
+		
+		# 获取API配置
+		selected_api = self.outline_gen_api.get() if hasattr(self, 'outline_gen_api') else "DeepSeek"
+		if selected_api not in self.api_presets:
+			messagebox.showerror("错误", f"未找到API配置: {selected_api}")
+			return
+		
+		api_config = self.api_presets[selected_api]
+		api_key = _sanitize(api_config.get("key", ""))
+		if not api_key:
+			messagebox.showwarning("提示", "请先配置API Key")
+			return
+		
+		# 获取图片类型
+		img_type = self.img_type.get() if hasattr(self, 'img_type') else "写实照片"
+		
+		# 禁用按钮
+		self.btn_enhance_prompt.config(state=DISABLED, text="⏳")
+		self.status.set("✨ AI正在优化提示词...")
+		
+		def enhance_thread():
+			try:
+				client = DeepSeekClient(
+					api_key=api_key,
+					base_url=_sanitize(api_config.get("base_url", "")),
+					model=_sanitize(api_config.get("model", "")),
+				)
+				
+				instruction = f"""你是专业的AI绘图提示词专家。请将用户的简单描述扩展为详细、丰富的图片描述。
+
+## 要求
+1. 保留用户原意，但添加更多视觉细节
+2. 补充画面构图、光线、氛围等
+3. 补充人物的表情、姿态、服装细节
+4. 补充场景的环境、色调、质感
+5. 图片类型是【{img_type}】，请匹配该风格
+6. 输出中文，200-300字
+7. 不要输出任何解释，只输出优化后的描述
+
+## 用户原始描述
+{current_prompt}
+
+请直接输出优化后的描述："""
+				
+				enhanced = client.chat([
+					{"role": "user", "content": instruction}
+				], temperature=0.7)
+				
+				# 更新UI
+				self.after(0, lambda: self._update_enhanced_prompt(enhanced.strip()))
+				self.after(0, lambda: self.status.set("✨ 提示词优化完成"))
+				
+			except Exception as e:
+				self.after(0, lambda: messagebox.showerror("错误", f"优化失败: {str(e)}"))
+				self.after(0, lambda: self.status.set("❌ 优化失败"))
+			finally:
+				self.after(0, lambda: self.btn_enhance_prompt.config(state=NORMAL, text="✨"))
+		
+		threading.Thread(target=enhance_thread, daemon=True).start()
+	
+	def _update_enhanced_prompt(self, enhanced_text: str) -> None:
+		"""更新优化后的提示词"""
+		self.img_txt_prompt_cn.delete("1.0", END)
+		self.img_txt_prompt_cn.insert("1.0", enhanced_text)
+	
+	def _on_preview_prompt(self) -> None:
+		"""👁️ 预览完整提示词（生成前确认）"""
+		prompt_cn = self.img_txt_prompt_cn.get("1.0", END).strip()
+		
+		if not prompt_cn:
+			messagebox.showwarning("提示", "请先输入或生成图片描述")
+			return
+		
+		# 获取其他参数
+		img_type = self.img_type.get() if hasattr(self, 'img_type') else "写实照片"
+		scene = self.img_entry_scene.get().strip() if hasattr(self, 'img_entry_scene') else ""
+		roles = self.img_txt_roles.get("1.0", END).strip() if hasattr(self, 'img_txt_roles') else ""
+		
+		# 获取选中的参考人物
+		selected_chars = self._get_selected_reference_characters() if hasattr(self, '_get_selected_reference_characters') else []
+		char_info = ""
+		if selected_chars:
+			char_names = [c.get("name", "") for c in selected_chars]
+			char_info = f"\n📌 参考人物：{', '.join(char_names)}"
+		
+		# 获取API类型
+		api_type = "腾讯混元" if hasattr(self, 'img_api_type') and self.img_api_type.get() == "hunyuan" else "OpenAI/DALL-E"
+		
+		# 构建预览内容
+		preview_text = f"""═══════════════════════════════════════
+        📝 图片生成预览
+═══════════════════════════════════════
+
+🎨 图片类型：{img_type}
+🖼️ API类型：{api_type}{char_info}
+
+═══════ 中文描述 ═══════
+
+{prompt_cn}
+
+"""
+		if scene:
+			preview_text += f"\n🏞️ 补充场景：{scene}"
+		if roles:
+			preview_text += f"\n👤 角色特征：{roles}"
+		
+		# 估算API调用成本
+		if "混元" in api_type:
+			cost_hint = "约 ¥0.06/张"
+		else:
+			cost_hint = "约 $0.04/张 (DALL-E 3)"
+		
+		preview_text += f"""
+
+═══════════════════════════════════════
+💰 预估成本：{cost_hint}
+═══════════════════════════════════════
+
+确认无误后，点击「生成图片」按钮开始生成。
+"""
+		
+		# 显示预览对话框
+		self._show_preview_dialog(preview_text, prompt_cn)
+	
+	def _show_preview_dialog(self, preview_text: str, prompt_cn: str) -> None:
+		"""显示预览对话框"""
+		dialog = tk.Toplevel(self)
+		dialog.title("📝 提示词预览")
+		dialog.geometry("600x500")
+		dialog.transient(self)
+		dialog.grab_set()
+		
+		# 居中显示
+		dialog.update_idletasks()
+		x = (dialog.winfo_screenwidth() - 600) // 2
+		y = (dialog.winfo_screenheight() - 500) // 2
+		dialog.geometry(f"+{x}+{y}")
+		
+		# 主框架
+		main_frame = tk.Frame(dialog, bg="#2b2b2b")
+		main_frame.pack(fill="both", expand=True, padx=10, pady=10)
+		
+		# 标题
+		title_label = tk.Label(main_frame, text="👁️ 生成前预览", font=("", 14, "bold"), 
+							   bg="#2b2b2b", fg="white")
+		title_label.pack(pady=(0, 10))
+		
+		# 预览文本框
+		text_frame = tk.Frame(main_frame, bg="#2b2b2b")
+		text_frame.pack(fill="both", expand=True)
+		
+		preview_text_widget = tk.Text(text_frame, font=("", 10), wrap=tk.WORD,
+									  bg="#1e1e1e", fg="#e0e0e0", relief=tk.SOLID,
+									  borderwidth=1)
+		preview_text_widget.pack(fill="both", expand=True)
+		preview_text_widget.insert("1.0", preview_text)
+		preview_text_widget.config(state=DISABLED)
+		
+		# 按钮框架
+		btn_frame = tk.Frame(main_frame, bg="#2b2b2b")
+		btn_frame.pack(fill="x", pady=(10, 0))
+		
+		# 编辑按钮
+		def on_edit():
+			dialog.destroy()
+			self.img_txt_prompt_cn.focus_set()
+		
+		btn_edit = ttk.Button(btn_frame, text="✏️ 继续编辑", command=on_edit, width=15)
+		btn_edit.pack(side=LEFT, padx=(0, 10))
+		
+		# 复制按钮
+		def on_copy():
+			self.clipboard_clear()
+			self.clipboard_append(prompt_cn)
+			self.status.set("📋 提示词已复制")
+		
+		btn_copy = ttk.Button(btn_frame, text="📋 复制", command=on_copy, width=10)
+		btn_copy.pack(side=LEFT, padx=(0, 10))
+		
+		# 确认生成按钮
+		def on_confirm():
+			dialog.destroy()
+			self._on_img_generate()
+		
+		btn_confirm = ttk.Button(btn_frame, text="🎨 确认生成", command=on_confirm, width=15)
+		btn_confirm.pack(side=RIGHT)
+		
+		# 关闭按钮
+		btn_close = ttk.Button(btn_frame, text="关闭", command=dialog.destroy, width=10)
+		btn_close.pack(side=RIGHT, padx=(0, 10))
+	
 	def _on_copy_img_prompt(self) -> None:
 		text = self.img_txt_prompt_cn.get("1.0", END)
 		self.clipboard_clear()
