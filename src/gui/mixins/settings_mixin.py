@@ -1265,6 +1265,38 @@ class SettingsMixin:
                 "base_url": base_url,
                 "model": model
             }
+
+        # 持久化故事路由与当前提供商，确保重启后无需再次切换
+        try:
+            import hashlib
+            from pathlib import Path
+            from dotenv import find_dotenv, set_key
+
+            env_path_str = find_dotenv(usecwd=True)
+            env_path = Path(env_path_str) if env_path_str else Path.cwd() / ".env"
+            env_path.touch(exist_ok=True)
+
+            if any(ord(c) > 127 for c in provider_name):
+                hash_suffix = hashlib.md5(provider_name.encode()).hexdigest()[:8]
+                safe_preset_name = f"CUSTOM_{hash_suffix}"
+            else:
+                safe_preset_name = provider_name.replace(" ", "_").replace("(", "").replace(")", "").replace("-", "_")
+
+            set_key(str(env_path), "API_PRESET", provider_name)
+            set_key(str(env_path), "STORY_OUTLINE_GEN_API", provider_name)
+            set_key(str(env_path), "STORY_STORY_GEN_API", provider_name)
+            set_key(str(env_path), f"STORY_{safe_preset_name}_KEY", key)
+            set_key(str(env_path), f"STORY_{safe_preset_name}_BASE_URL", base_url)
+            set_key(str(env_path), f"STORY_{safe_preset_name}_MODEL", model)
+
+            if hasattr(self, 'quick_story_api'):
+                self.quick_story_api.set(provider_name)
+            if hasattr(self, 'outline_gen_api'):
+                self.outline_gen_api.set(provider_name)
+            if hasattr(self, 'story_gen_api'):
+                self.story_gen_api.set(provider_name)
+        except Exception as e:
+            self.settings_log.insert(END, f"⚠ 保存故事提供商到 .env 失败: {e}\n")
         
         # 保存到文件
         self._save_api_config_to_file()
