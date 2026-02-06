@@ -147,7 +147,7 @@ class SettingsMixin:
         grp_kb.columnconfigure(1, weight=1)
         
         # 数据目录
-        tk.Label(grp_kb, text="数据目录:", bg=Theme.BG_SECONDARY, fg="#FCD34D", font=("", 11, "bold")).grid(row=0, column=0, sticky="w", padx=8, pady=6)
+        tk.Label(grp_kb, text="数据目录:", bg=Theme.BG_SECONDARY, fg=Theme.TEXT_PRIMARY, font=("", 11, "bold")).grid(row=0, column=0, sticky="w", padx=8, pady=6)
         self.entry_data = tk.Entry(grp_kb, textvariable=self.data_dir, bg=Theme.SURFACE, fg=Theme.TEXT_PRIMARY, 
                                    insertbackground=Theme.TEXT_PRIMARY, relief=tk.FLAT)
         self.entry_data.grid(row=0, column=1, sticky="we", padx=8)
@@ -158,7 +158,7 @@ class SettingsMixin:
                   relief=tk.FLAT, cursor="hand2").grid(row=0, column=3, padx=(0, 8), pady=6)
         
         # 索引目录
-        tk.Label(grp_kb, text="索引目录:", bg=Theme.BG_SECONDARY, fg="#FCD34D", font=("", 11, "bold")).grid(row=1, column=0, sticky="w", padx=8, pady=(0, 6))
+        tk.Label(grp_kb, text="索引目录:", bg=Theme.BG_SECONDARY, fg=Theme.TEXT_PRIMARY, font=("", 11, "bold")).grid(row=1, column=0, sticky="w", padx=8, pady=(0, 6))
         self.entry_index = tk.Entry(grp_kb, textvariable=self.index_dir, bg=Theme.SURFACE, fg=Theme.TEXT_PRIMARY,
                                     insertbackground=Theme.TEXT_PRIMARY, relief=tk.FLAT)
         self.entry_index.grid(row=1, column=1, sticky="we", padx=8)
@@ -189,19 +189,19 @@ class SettingsMixin:
         params_frame.pack(fill="x", padx=8, pady=8)
         
         # TopK
-        tk.Label(params_frame, text="TopK:", bg=Theme.BG_SECONDARY, fg="#FCD34D", font=("", 11, "bold")).pack(side="left", padx=(0, 5))
+        tk.Label(params_frame, text="TopK:", bg=Theme.BG_SECONDARY, fg=Theme.TEXT_PRIMARY, font=("", 11, "bold")).pack(side="left", padx=(0, 5))
         self.spin_topk = tk.Spinbox(params_frame, from_=1, to=20, textvariable=self.top_k, width=6,
                                     bg=Theme.SURFACE, fg=Theme.TEXT_PRIMARY, relief=tk.FLAT)
         self.spin_topk.pack(side="left", padx=(0, 20))
         
         # 温度
-        tk.Label(params_frame, text="温度:", bg=Theme.BG_SECONDARY, fg="#FCD34D", font=("", 11, "bold")).pack(side="left", padx=(0, 5))
+        tk.Label(params_frame, text="温度:", bg=Theme.BG_SECONDARY, fg=Theme.TEXT_PRIMARY, font=("", 11, "bold")).pack(side="left", padx=(0, 5))
         self.spin_temp = tk.Spinbox(params_frame, from_=0.0, to=1.5, increment=0.1, textvariable=self.temperature, 
                                     width=6, bg=Theme.SURFACE, fg=Theme.TEXT_PRIMARY, relief=tk.FLAT)
         self.spin_temp.pack(side="left", padx=(0, 20))
         
         # 目标字数
-        tk.Label(params_frame, text="目标字数:", bg=Theme.BG_SECONDARY, fg="#FCD34D", font=("", 11, "bold")).pack(side="left", padx=(0, 5))
+        tk.Label(params_frame, text="目标字数:", bg=Theme.BG_SECONDARY, fg=Theme.TEXT_PRIMARY, font=("", 11, "bold")).pack(side="left", padx=(0, 5))
         self.spin_len = tk.Spinbox(params_frame, from_=500, to=30000, increment=500, textvariable=self.target_chars,
                                    width=8, bg=Theme.SURFACE, fg=Theme.TEXT_PRIMARY, relief=tk.FLAT)
         self.spin_len.pack(side="left")
@@ -219,7 +219,7 @@ class SettingsMixin:
         grp_story_api.columnconfigure(1, weight=1)
         
         # 提供商选择
-        tk.Label(grp_story_api, text="API提供商:", bg=Theme.BG_SECONDARY, fg="#FCD34D", font=("", 11, "bold")).grid(row=0, column=0, sticky="e", padx=(8, 4), pady=8)
+        tk.Label(grp_story_api, text="API提供商:", bg=Theme.BG_SECONDARY, fg=Theme.TEXT_PRIMARY, font=("", 11, "bold")).grid(row=0, column=0, sticky="e", padx=(8, 4), pady=8)
         self.settings_api_provider = tk.StringVar(value="DeepSeek")
         
         provider_names = list(self.api_providers.keys()) if hasattr(self, 'api_providers') else ["DeepSeek"]
@@ -233,7 +233,7 @@ class SettingsMixin:
         self.settings_combo_provider.bind("<<ComboboxSelected>>", self._on_settings_provider_change)
         
         # 模型选择
-        tk.Label(grp_story_api, text="模型:", bg=Theme.BG_SECONDARY, fg="#FCD34D", font=("", 11, "bold")).grid(row=1, column=0, sticky="e", padx=(8, 4), pady=4)
+        tk.Label(grp_story_api, text="模型:", bg=Theme.BG_SECONDARY, fg=Theme.TEXT_PRIMARY, font=("", 11, "bold")).grid(row=1, column=0, sticky="e", padx=(8, 4), pady=4)
         self.settings_model_var = tk.StringVar(value="deepseek-chat")
         self.settings_combo_model = ttk.Combobox(grp_story_api, textvariable=self.settings_model_var,
                                                   values=["deepseek-chat"], state="normal", width=35)
@@ -241,7 +241,7 @@ class SettingsMixin:
         tk.Label(grp_story_api, text="(可手动输入)", bg=Theme.BG_SECONDARY, fg=Theme.TEXT_SECONDARY, font=("", 9)).grid(row=1, column=2, sticky="w")
         
         # API Key
-        tk.Label(grp_story_api, text="API Key:", bg=Theme.BG_SECONDARY, fg="#FCD34D", font=("", 11, "bold")).grid(row=2, column=0, sticky="e", padx=(8, 4), pady=4)
+        tk.Label(grp_story_api, text="API Key:", bg=Theme.BG_SECONDARY, fg=Theme.TEXT_PRIMARY, font=("", 11, "bold")).grid(row=2, column=0, sticky="e", padx=(8, 4), pady=4)
         self.settings_api_key = tk.Entry(grp_story_api, show="•", width=50, bg=Theme.SURFACE, fg=Theme.TEXT_PRIMARY,
                                          insertbackground=Theme.TEXT_PRIMARY, relief=tk.FLAT, highlightthickness=1,
                                          highlightbackground=Theme.BORDER, highlightcolor=Theme.BORDER_FOCUS,
@@ -258,7 +258,7 @@ class SettingsMixin:
                        selectcolor=Theme.BG_SECONDARY, activebackground=Theme.BG_SECONDARY).grid(row=2, column=2, padx=4)
         
         # Base URL（可编辑，用于自定义）
-        tk.Label(grp_story_api, text="Base URL:", bg=Theme.BG_SECONDARY, fg="#FCD34D", font=("", 11, "bold")).grid(row=3, column=0, sticky="e", padx=(8, 4), pady=4)
+        tk.Label(grp_story_api, text="Base URL:", bg=Theme.BG_SECONDARY, fg=Theme.TEXT_PRIMARY, font=("", 11, "bold")).grid(row=3, column=0, sticky="e", padx=(8, 4), pady=4)
         self.settings_base_url = tk.Entry(grp_story_api, width=50, bg=Theme.SURFACE, fg=Theme.TEXT_PRIMARY,
                                           insertbackground=Theme.TEXT_PRIMARY, relief=tk.FLAT, highlightthickness=1,
                                           highlightbackground=Theme.BORDER, highlightcolor=Theme.BORDER_FOCUS,
@@ -293,7 +293,7 @@ class SettingsMixin:
         grp_img_api.columnconfigure(1, weight=1)
         
         # 图片API提供商
-        tk.Label(grp_img_api, text="API提供商:", bg=Theme.BG_SECONDARY, fg="#FCD34D", font=("", 11, "bold")).grid(row=0, column=0, sticky="e", padx=(8, 4), pady=8)
+        tk.Label(grp_img_api, text="API提供商:", bg=Theme.BG_SECONDARY, fg=Theme.TEXT_PRIMARY, font=("", 11, "bold")).grid(row=0, column=0, sticky="e", padx=(8, 4), pady=8)
         self.settings_img_provider = tk.StringVar(value="OpenAI (DALL-E)")
         
         img_provider_names = list(self.img_api_providers.keys()) if hasattr(self, 'img_api_providers') else ["OpenAI (DALL-E)"]
@@ -303,7 +303,7 @@ class SettingsMixin:
         self.settings_combo_img_provider.bind("<<ComboboxSelected>>", self._on_settings_img_provider_change)
         
         # 图片模型选择
-        tk.Label(grp_img_api, text="模型:", bg=Theme.BG_SECONDARY, fg="#FCD34D", font=("", 11, "bold")).grid(row=1, column=0, sticky="e", padx=(8, 4), pady=4)
+        tk.Label(grp_img_api, text="模型:", bg=Theme.BG_SECONDARY, fg=Theme.TEXT_PRIMARY, font=("", 11, "bold")).grid(row=1, column=0, sticky="e", padx=(8, 4), pady=4)
         self.settings_img_model_var = tk.StringVar(value="dall-e-3")
         self.settings_combo_img_model = ttk.Combobox(grp_img_api, textvariable=self.settings_img_model_var,
                                                       values=["dall-e-3"], state="normal", width=35)
@@ -311,7 +311,7 @@ class SettingsMixin:
         tk.Label(grp_img_api, text="(可手动输入)", bg=Theme.BG_SECONDARY, fg=Theme.TEXT_SECONDARY, font=("", 9)).grid(row=1, column=2, sticky="w")
         
         # 图片API Key
-        tk.Label(grp_img_api, text="API Key:", bg=Theme.BG_SECONDARY, fg="#FCD34D", font=("", 11, "bold")).grid(row=2, column=0, sticky="e", padx=(8, 4), pady=4)
+        tk.Label(grp_img_api, text="API Key:", bg=Theme.BG_SECONDARY, fg=Theme.TEXT_PRIMARY, font=("", 11, "bold")).grid(row=2, column=0, sticky="e", padx=(8, 4), pady=4)
         self.settings_img_api_key = tk.Entry(grp_img_api, show="•", width=50, bg=Theme.SURFACE, fg=Theme.TEXT_PRIMARY,
                                               insertbackground=Theme.TEXT_PRIMARY, relief=tk.FLAT, highlightthickness=1,
                                               highlightbackground=Theme.BORDER, highlightcolor=Theme.BORDER_FOCUS,
@@ -327,7 +327,7 @@ class SettingsMixin:
                        selectcolor=Theme.BG_SECONDARY, activebackground=Theme.BG_SECONDARY).grid(row=2, column=2, padx=4)
         
         # 图片Base URL
-        tk.Label(grp_img_api, text="Base URL:", bg=Theme.BG_SECONDARY, fg="#FCD34D", font=("", 11, "bold")).grid(row=3, column=0, sticky="e", padx=(8, 4), pady=4)
+        tk.Label(grp_img_api, text="Base URL:", bg=Theme.BG_SECONDARY, fg=Theme.TEXT_PRIMARY, font=("", 11, "bold")).grid(row=3, column=0, sticky="e", padx=(8, 4), pady=4)
         self.settings_img_base_url = tk.Entry(grp_img_api, width=50, bg=Theme.SURFACE, fg=Theme.TEXT_PRIMARY,
                                                insertbackground=Theme.TEXT_PRIMARY, relief=tk.FLAT, highlightthickness=1,
                                                highlightbackground=Theme.BORDER, highlightcolor=Theme.BORDER_FOCUS,
@@ -366,7 +366,7 @@ class SettingsMixin:
                  bg=Theme.BG_SECONDARY, fg="#90CAF9", font=("", 10)).grid(row=0, column=0, columnspan=3, sticky="w", padx=8, pady=(0, 10))
         
         # 故事生成 API 选择
-        tk.Label(grp_quick_switch, text="📝 故事生成:", bg=Theme.BG_SECONDARY, fg="#FCD34D", font=("", 11, "bold")).grid(row=1, column=0, sticky="e", padx=(8, 4), pady=8)
+        tk.Label(grp_quick_switch, text="📝 故事生成:", bg=Theme.BG_SECONDARY, fg=Theme.TEXT_PRIMARY, font=("", 11, "bold")).grid(row=1, column=0, sticky="e", padx=(8, 4), pady=8)
         self.quick_story_api = tk.StringVar(value="DeepSeek")
         self.combo_quick_story_api = ttk.Combobox(grp_quick_switch, textvariable=self.quick_story_api,
                                                    values=["DeepSeek"], state="readonly", width=30)
@@ -374,7 +374,7 @@ class SettingsMixin:
         tk.Label(grp_quick_switch, text="← 用于生成目录和故事", bg=Theme.BG_SECONDARY, fg=Theme.TEXT_SECONDARY, font=("", 9)).grid(row=1, column=2, sticky="w")
         
         # 图片生成 API 选择
-        tk.Label(grp_quick_switch, text="🎨 图片生成:", bg=Theme.BG_SECONDARY, fg="#FCD34D", font=("", 11, "bold")).grid(row=2, column=0, sticky="e", padx=(8, 4), pady=8)
+        tk.Label(grp_quick_switch, text="🎨 图片生成:", bg=Theme.BG_SECONDARY, fg=Theme.TEXT_PRIMARY, font=("", 11, "bold")).grid(row=2, column=0, sticky="e", padx=(8, 4), pady=8)
         self.quick_image_api = tk.StringVar(value="OpenAI (DALL-E)")
         self.combo_quick_image_api = ttk.Combobox(grp_quick_switch, textvariable=self.quick_image_api,
                                                    values=["OpenAI (DALL-E)"], state="readonly", width=30)
@@ -408,7 +408,7 @@ class SettingsMixin:
 
         for idx, (task_key, task_label) in enumerate(MODEL_ROUTING_TASKS, start=1):
             row = idx
-            tk.Label(grp_routing, text=task_label, bg=Theme.BG_SECONDARY, fg="#FCD34D",
+            tk.Label(grp_routing, text=task_label, bg=Theme.BG_SECONDARY, fg=Theme.TEXT_PRIMARY,
                      font=("", 10, "bold")).grid(row=row, column=0, sticky="e", padx=(8, 6), pady=4)
 
             provider_var = tk.StringVar(value=provider_names[0] if provider_names else "DeepSeek")
@@ -498,7 +498,7 @@ class SettingsMixin:
         # 主题切换
         theme_frame = tk.Frame(advanced_frame, bg=Theme.BG_SECONDARY)
         theme_frame.pack(fill="x", pady=5)
-        tk.Label(theme_frame, text="界面主题:", bg=Theme.BG_SECONDARY, fg="#FCD34D", font=("", 11, "bold")).pack(side="left")
+        tk.Label(theme_frame, text="界面主题:", bg=Theme.BG_SECONDARY, fg=Theme.TEXT_PRIMARY, font=("", 11, "bold")).pack(side="left")
         tk.Button(theme_frame, text="🌙 深色主题", command=self._set_dark_theme, bg="#374151", fg=Theme.TEXT_PRIMARY,
                   relief=tk.FLAT, cursor="hand2", padx=10).pack(side="left", padx=(10, 5))
         tk.Button(theme_frame, text="☀️ 浅色主题", command=self._set_light_theme, bg="#F1F5F9", fg="#1E293B",
@@ -507,7 +507,7 @@ class SettingsMixin:
         # 配置导入导出
         config_frame = tk.Frame(advanced_frame, bg=Theme.BG_SECONDARY)
         config_frame.pack(fill="x", pady=5)
-        tk.Label(config_frame, text="配置管理:", bg=Theme.BG_SECONDARY, fg="#FCD34D", font=("", 11, "bold")).pack(side="left")
+        tk.Label(config_frame, text="配置管理:", bg=Theme.BG_SECONDARY, fg=Theme.TEXT_PRIMARY, font=("", 11, "bold")).pack(side="left")
         tk.Button(config_frame, text="📥 导入配置", command=self._import_config_ui, bg="#3B82F6", fg=Theme.TEXT_PRIMARY,
                   relief=tk.FLAT, cursor="hand2", padx=10).pack(side="left", padx=(10, 5))
         tk.Button(config_frame, text="📤 导出配置", command=self._export_config_ui, bg="#10B981", fg=Theme.TEXT_PRIMARY,
@@ -518,7 +518,7 @@ class SettingsMixin:
         # 缓存管理
         cache_frame = tk.Frame(advanced_frame, bg=Theme.BG_SECONDARY)
         cache_frame.pack(fill="x", pady=5)
-        tk.Label(cache_frame, text="缓存管理:", bg=Theme.BG_SECONDARY, fg="#FCD34D", font=("", 11, "bold")).pack(side="left")
+        tk.Label(cache_frame, text="缓存管理:", bg=Theme.BG_SECONDARY, fg=Theme.TEXT_PRIMARY, font=("", 11, "bold")).pack(side="left")
         tk.Button(cache_frame, text="🗑️ 清除缓存", command=self._clear_cache_ui, bg="#EF4444", fg=Theme.TEXT_PRIMARY,
                   relief=tk.FLAT, cursor="hand2", padx=10).pack(side="left", padx=(10, 5))
         self.cache_size_label = tk.Label(cache_frame, text="缓存大小: 计算中...", bg=Theme.BG_SECONDARY, fg=Theme.TEXT_SECONDARY)
@@ -528,7 +528,7 @@ class SettingsMixin:
         # 快捷键提示
         shortcut_frame = tk.Frame(advanced_frame, bg=Theme.BG_SECONDARY)
         shortcut_frame.pack(fill="x", pady=5)
-        tk.Label(shortcut_frame, text="快捷键:", bg=Theme.BG_SECONDARY, fg="#FCD34D", font=("", 11, "bold")).pack(side="left")
+        tk.Label(shortcut_frame, text="快捷键:", bg=Theme.BG_SECONDARY, fg=Theme.TEXT_PRIMARY, font=("", 11, "bold")).pack(side="left")
         tk.Button(shortcut_frame, text="⌨️ 查看快捷键", command=self._show_shortcuts_ui, bg="#6366F1", fg=Theme.TEXT_PRIMARY,
                   relief=tk.FLAT, cursor="hand2", padx=10).pack(side="left", padx=(10, 5))
         tk.Label(shortcut_frame, text="提示: Ctrl+T切换主题, Ctrl+S保存, F1帮助", bg=Theme.BG_SECONDARY, fg=Theme.TEXT_SECONDARY,
@@ -1691,3 +1691,4 @@ class SettingsMixin:
             print(f"[OK] 已加载快速 API 切换: 故事={story_api}, 图片={image_api}")
         except Exception as e:
             print(f"[WARN] 加载快速 API 切换失败: {e}")
+

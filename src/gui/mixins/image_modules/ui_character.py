@@ -119,7 +119,7 @@ class ImageUICharacterTabMixin:
 		model_row = ttk.Frame(btn_frame)
 		model_row.pack(fill="x")
 		
-		tk.Label(model_row, text="🤖 模型:", font=("", 10, "bold"), bg=bg_panel, fg="#FCD34D").pack(side=LEFT, padx=(0, 6))
+		tk.Label(model_row, text="🤖 模型:", font=("", 10, "bold"), bg=bg_panel, fg=Theme.TEXT_PRIMARY).pack(side=LEFT, padx=(0, 6))
 		self.char_model_var = tk.StringVar(value="claude-sonnet-4-5")
 		self.combo_char_model = ttk.Combobox(model_row, textvariable=self.char_model_var, width=20,
 											 values=["正在加载..."],
@@ -531,3 +531,4 @@ class ImageUICharacterTabMixin:
 	
 	
 	
+

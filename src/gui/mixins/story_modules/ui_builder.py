@@ -227,7 +227,7 @@ class StoryUIBuilderMixin:
 				 fg="#90CAF9", font=("", 9), bg="#2b2b2b").grid(row=0, column=0, columnspan=2, sticky="w", padx=8, pady=(8, 10))
 		
 		# 目录生成API选择
-		tk.Label(grp_assist_api, text="目录生成API:", bg="#2b2b2b", fg="#FCD34D", font=("", 11, "bold")).grid(row=1, column=0, sticky="e", padx=(8, 4), pady=8)
+		tk.Label(grp_assist_api, text="目录生成API:", bg="#2b2b2b", fg=Theme.TEXT_PRIMARY, font=("", 11, "bold")).grid(row=1, column=0, sticky="e", padx=(8, 4), pady=8)
 		self.outline_gen_api = tk.StringVar(value="DeepSeek")
 		self.combo_outline_gen_api = ttk.Combobox(grp_assist_api, textvariable=self.outline_gen_api, 
 											   values=["DeepSeek"],  # 初始值，会在加载配置时更新
@@ -235,7 +235,7 @@ class StoryUIBuilderMixin:
 		self.combo_outline_gen_api.grid(row=1, column=1, sticky="w", padx=(0, 8))
 		
 		# 故事生成API选择
-		tk.Label(grp_assist_api, text="故事生成API:", bg="#2b2b2b", fg="#FCD34D", font=("", 11, "bold")).grid(row=2, column=0, sticky="e", padx=(8, 4), pady=8)
+		tk.Label(grp_assist_api, text="故事生成API:", bg="#2b2b2b", fg=Theme.TEXT_PRIMARY, font=("", 11, "bold")).grid(row=2, column=0, sticky="e", padx=(8, 4), pady=8)
 		self.story_gen_api = tk.StringVar(value="DeepSeek")
 		self.combo_story_gen_api = ttk.Combobox(grp_assist_api, textvariable=self.story_gen_api,
 											   values=["DeepSeek"],  # 初始值，会在加载配置时更新
@@ -311,7 +311,7 @@ class StoryUIBuilderMixin:
 		self.combo_category.pack(side=LEFT, padx=(0, 20))
 		
 		# 模型选择
-		tk.Label(row1_frame, text="🤖 模型:", font=("", 12, "bold"), bg="#2b2b2b", fg="#FCD34D").pack(side=LEFT, padx=(0, 8))
+		tk.Label(row1_frame, text="🤖 模型:", font=("", 12, "bold"), bg="#2b2b2b", fg=Theme.TEXT_PRIMARY).pack(side=LEFT, padx=(0, 8))
 		self.story_model_var = tk.StringVar(value="claude-sonnet-4-5")
 		self.combo_story_model = ttk.Combobox(row1_frame, textvariable=self.story_model_var, width=25,
 											  values=["正在加载..."],
@@ -709,3 +709,4 @@ class StoryUIBuilderMixin:
 				_ui_call(self.char_model_var.set, default_models[0])
 			
 		print(f"[INFO] 使用默认模型列表 ({len(default_models)} 个)")
+
