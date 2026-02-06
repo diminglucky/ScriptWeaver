@@ -147,8 +147,10 @@ class APIConfigMixin:
 			# 加载上次使用的预设
 			last_preset = os.getenv("IMG_API_PRESET", "OpenAI (DALL-E)")
 			if last_preset in self.img_api_presets:
-				self.img_api_preset.set(last_preset)
-				self._on_img_api_preset_selected(None)
+				if hasattr(self, 'img_api_preset'):
+					self.img_api_preset.set(last_preset)
+				if hasattr(self, '_on_img_api_preset_selected'):
+					self._on_img_api_preset_selected(None)
 			
 			# 加载图片尺寸
 			img_size = os.getenv("IMG_SIZE", "1024x1024")
