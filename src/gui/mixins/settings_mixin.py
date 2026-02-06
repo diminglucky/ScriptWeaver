@@ -958,7 +958,7 @@ class SettingsMixin:
     def _on_settings_provider_change(self, event=None):
         """故事API提供商切换 - 更新模型列表"""
         provider_name = self.settings_api_provider.get()
-        print(f"🔍 切换到提供商: {provider_name}")
+        print(f"[INFO] 切换到提供商: {provider_name}")
         
         if hasattr(self, 'api_providers') and provider_name in self.api_providers:
             provider = self.api_providers[provider_name]
@@ -986,11 +986,11 @@ class SettingsMixin:
             if saved_model:
                 raw_saved = self._strip_model_label(saved_model)
                 self.settings_model_var.set(self._decorate_model_value(raw_saved, "text"))
-                print(f"   ✅ 设置模型为: {raw_saved}")
+                print(f"   [OK] 设置模型为: {raw_saved}")
             else:
                 default_model = models[0] if models else ""
                 self.settings_model_var.set(self._decorate_model_value(default_model, "text"))
-                print(f"   ⚠️ 使用默认模型: {default_model}")
+                print(f"   [WARN] 使用默认模型: {default_model}")
             
             # 自定义提供商时，优先填充自定义模型输入框
             if provider_name == "自定义" and hasattr(self, 'settings_custom_model'):
@@ -1370,20 +1370,23 @@ class SettingsMixin:
                         img_config[name] = {
                             "key": config["key"],
                             "base_url": config["base_url"],
-                            "models": config.get("models", [])
+                            "models": config.get("models", []),
+                            "provider": config.get("provider", "openai")
                         }
                         
                         # 保存当前选中的模型
                         if current_model:
                             img_config[name]["model"] = current_model
+                        if config.get("secret_key"):
+                            img_config[name]["secret_key"] = config.get("secret_key")
             
             if img_config:
                 with open("custom_image_api_presets.json", 'w', encoding='utf-8') as f:
                     json.dump(img_config, f, ensure_ascii=False, indent=2)
             
-            print("✅ API配置已保存到文件")
+            print("[OK] API配置已保存到文件")
         except Exception as e:
-            print(f"❌ 保存配置失败: {e}")
+            print(f"[ERROR] 保存配置失败: {e}")
             messagebox.showerror("错误", f"保存配置失败: {str(e)}")
     
     def _load_api_config_from_file(self):
@@ -1425,7 +1428,7 @@ class SettingsMixin:
                         if "model" in config:
                             self.api_presets[name]["model"] = config["model"]
                 
-                print(f"✅ 已加载 {len(story_config)} 个故事API配置")
+                print(f"[OK] 已加载 {len(story_config)} 个故事API配置")
             
             # 加载图片API配置
             img_file = Path("custom_image_api_presets.json")
@@ -1442,9 +1445,13 @@ class SettingsMixin:
                             # 加载保存的模型列表
                             if "models" in config:
                                 self.img_api_providers[name]["models"] = config["models"]
-                            # 补充 provider（若缺失）
-                            if "provider" not in self.img_api_providers[name]:
+                            if "provider" in config:
+                                self.img_api_providers[name]["provider"] = config["provider"]
+                            elif "provider" not in self.img_api_providers[name]:
+                                # 补充 provider（若缺失）
                                 self.img_api_providers[name]["provider"] = _infer_img_provider(name)
+                            if "secret_key" in config:
+                                self.img_api_providers[name]["secret_key"] = config.get("secret_key", "")
                 
                 # 同步到 img_api_presets（用于加载保存的模型）
                 if hasattr(self, 'img_api_presets'):
@@ -1456,17 +1463,21 @@ class SettingsMixin:
                         # 保存用户选择的模型
                         if "model" in config:
                             self.img_api_presets[name]["model"] = config["model"]
-                        if "provider" not in self.img_api_presets[name]:
+                        if "provider" in config:
+                            self.img_api_presets[name]["provider"] = config["provider"]
+                        elif "provider" not in self.img_api_presets[name]:
                             self.img_api_presets[name]["provider"] = _infer_img_provider(name)
+                        if "secret_key" in config:
+                            self.img_api_presets[name]["secret_key"] = config.get("secret_key", "")
                 
-                print(f"✅ 已加载 {len(img_config)} 个图片API配置")
+                print(f"[OK] 已加载 {len(img_config)} 个图片API配置")
 
             # 启动时自动同步图片API到运行时（即使未打开设置页）
             if hasattr(self, '_sync_img_runtime_from_config'):
                 self._sync_img_runtime_from_config()
                 
         except Exception as e:
-            print(f"⚠️ 加载配置失败: {e}")
+            print(f"[WARN] 加载配置失败: {e}")
 
     
     def _save_quick_api_switch(self):
@@ -1537,6 +1548,6 @@ class SettingsMixin:
                 img_api_list = list(self.img_api_providers.keys())
                 self.combo_quick_image_api['values'] = img_api_list
             
-            print(f"✅ 已加载快速 API 切换: 故事={story_api}, 图片={image_api}")
+            print(f"[OK] 已加载快速 API 切换: 故事={story_api}, 图片={image_api}")
         except Exception as e:
-            print(f"⚠️ 加载快速 API 切换失败: {e}")
+            print(f"[WARN] 加载快速 API 切换失败: {e}")

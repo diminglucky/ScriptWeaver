@@ -123,6 +123,10 @@ class APIConfigMixin:
 				self.api_key.set(preset_config.get("key", ""))
 				self.base_url.set(preset_config.get("base_url", ""))
 				self.model.set(preset_config.get("model", ""))
+
+			# 同步加载图片API相关配置，避免重启后图片配置丢失
+			if hasattr(self, "_auto_load_image_api_config"):
+				self._auto_load_image_api_config()
 			
 			if hasattr(self, 'status'):
 				self.status.set(f"已自动加载配置: {preset}")
@@ -221,9 +225,7 @@ class APIConfigMixin:
 			desc_api = os.getenv("ASSIST_DESC_GEN_API", "DeepSeek")
 			if hasattr(self, 'desc_gen_api'):
 				self.desc_gen_api.set(desc_api)
-		except Exception as e:
-			print(f"加载图片API配置时出错: {e}")
-			
+
 			# 更新辅助功能API下拉框的选项（从story api_presets）
 			if hasattr(self, 'api_presets') and hasattr(self, 'combo_shot_gen_api'):
 				api_list = list(self.api_presets.keys())

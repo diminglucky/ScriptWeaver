@@ -597,7 +597,7 @@ class StoryUIBuilderMixin:
 					base_url = api_config.get("base_url", "")
 					
 					if not api_key or not base_url:
-						print("⚠️  API 配置不完整，使用默认模型列表")
+						print("[WARN] API 配置不完整，使用默认模型列表")
 						self._set_default_models()
 						return
 					
@@ -652,19 +652,19 @@ class StoryUIBuilderMixin:
 								if current not in models:
 									self._ui(self.char_model_var.set, models[0])
 							
-							print(f"✅ 已加载 {len(models)} 个可用模型（故事生成 + 人物生成）")
+							print(f"[OK] 已加载 {len(models)} 个可用模型（故事生成 + 人物生成）")
 						else:
-							print("⚠️  API 响应未包含模型列表，使用默认模型列表")
+							print("[WARN] API 响应未包含模型列表，使用默认模型列表")
 							self._set_default_models()
 					else:
-						print(f"⚠️  获取模型列表失败 ({last_status})，使用默认模型列表")
+						print(f"[WARN] 获取模型列表失败 ({last_status})，使用默认模型列表")
 						self._set_default_models()
 				else:
-					print("⚠️  未找到自定义 API 配置，使用默认模型列表")
+					print("[WARN] 未找到自定义 API 配置，使用默认模型列表")
 					self._set_default_models()
 					
 			except Exception as e:
-				print(f"⚠️  加载模型列表出错: {e}")
+				print(f"[WARN] 加载模型列表出错: {e}")
 				self._set_default_models()
 		
 		# 在后台线程中执行
@@ -708,4 +708,4 @@ class StoryUIBuilderMixin:
 			if current not in default_models:
 				_ui_call(self.char_model_var.set, default_models[0])
 			
-		print(f"📋 使用默认模型列表 ({len(default_models)} 个)")
+		print(f"[INFO] 使用默认模型列表 ({len(default_models)} 个)")
