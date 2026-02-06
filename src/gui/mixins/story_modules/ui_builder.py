@@ -673,6 +673,11 @@ class StoryUIBuilderMixin:
 	
 	def _set_default_models(self):
 		"""设置默认模型列表（当无法从 API 获取时）"""
+		def _ui_call(func, *args):
+			if hasattr(self, '_ui'):
+				return self._ui(func, *args)
+			return func(*args)
+
 		default_models = [
 			"claude-sonnet-4-5",
 			"claude-sonnet-4-5-20250929",
@@ -687,20 +692,20 @@ class StoryUIBuilderMixin:
 		
 		# 更新故事生成页面
 		if hasattr(self, 'combo_story_model'):
-			self._ui(self.combo_story_model.__setitem__, 'values', default_models)
+			_ui_call(self.combo_story_model.__setitem__, 'values', default_models)
 			
 			# 如果当前值不在列表中，设置为第一个
 			current = self._ui_get(self.story_model_var.get) if hasattr(self, '_ui_get') else self.story_model_var.get()
 			if current not in default_models:
-				self._ui(self.story_model_var.set, default_models[0])
+				_ui_call(self.story_model_var.set, default_models[0])
 		
 		# 更新人物生成页面
 		if hasattr(self, 'combo_char_model'):
-			self._ui(self.combo_char_model.__setitem__, 'values', default_models)
+			_ui_call(self.combo_char_model.__setitem__, 'values', default_models)
 			
 			# 如果当前值不在列表中，设置为第一个
 			current = self._ui_get(self.char_model_var.get) if hasattr(self, '_ui_get') else self.char_model_var.get()
 			if current not in default_models:
-				self._ui(self.char_model_var.set, default_models[0])
+				_ui_call(self.char_model_var.set, default_models[0])
 			
 		print(f"📋 使用默认模型列表 ({len(default_models)} 个)")

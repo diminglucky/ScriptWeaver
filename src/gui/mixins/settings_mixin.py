@@ -1253,6 +1253,8 @@ class SettingsMixin:
         # 更新provider配置
         if hasattr(self, 'api_providers') and provider_name in self.api_providers:
             self.api_providers[provider_name]["key"] = key
+            # Always persist base_url so third-party endpoints survive restart
+            self.api_providers[provider_name]["base_url"] = base_url
             if provider_name == "自定义":
                 self.api_providers[provider_name]["base_url"] = base_url
         
@@ -1281,16 +1283,39 @@ class SettingsMixin:
         # 更新provider配置
         if hasattr(self, 'img_api_providers') and provider_name in self.img_api_providers:
             self.img_api_providers[provider_name]["key"] = key
+            # Always persist base_url so third-party endpoints survive restart
+            self.img_api_providers[provider_name]["base_url"] = base_url
             if provider_name == "自定义":
                 self.img_api_providers[provider_name]["base_url"] = base_url
         
         # 同步更新img_api_presets
         if hasattr(self, 'img_api_presets'):
+            provider_type = "openai"
+            if hasattr(self, 'img_api_providers') and provider_name in self.img_api_providers:
+                provider_type = self.img_api_providers[provider_name].get("provider", "openai")
             self.img_api_presets[provider_name] = {
                 "key": key,
                 "base_url": base_url,
-                "model": model
+                "model": model,
+                "provider": provider_type
             }
+
+        # Persist current image provider selection for next launch
+        try:
+            from pathlib import Path
+            from dotenv import find_dotenv, set_key
+
+            env_path_str = find_dotenv(usecwd=True)
+            env_path = Path(env_path_str) if env_path_str else Path.cwd() / ".env"
+            env_path.touch(exist_ok=True)
+            set_key(str(env_path), "IMAGE_GEN_API", provider_name)
+            set_key(str(env_path), "IMG_API_PRESET", provider_name)
+            if hasattr(self, 'quick_image_api'):
+                self.quick_image_api.set(provider_name)
+            if hasattr(self, 'img_api_preset'):
+                self.img_api_preset.set(provider_name)
+        except Exception as e:
+            self.settings_log.insert(END, f"⚠ 保存图片提供商到 .env 失败: {e}\n")
         
         # 保存到文件
         self._save_api_config_to_file()

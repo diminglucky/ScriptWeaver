@@ -6,6 +6,7 @@ from tkinter import BOTH, LEFT, RIGHT, DISABLED, NORMAL, END, VERTICAL, Y, messa
 import tkinter as tk
 from tkinter import ttk
 import os
+import re
 from PIL import Image, ImageTk
 
 from src.clients.deepseek_client import DeepSeekClient
@@ -18,6 +19,44 @@ from ...helpers.image_helpers import ImagePromptHelper, DescriptionPromptBuilder
 class ImageGeneratorMixin:
 	"""负责图片生成核心逻辑"""
 	
+	def _is_policy_rejection_error(self, err: Exception) -> bool:
+		"""Check whether an image error is caused by safety/policy rejection."""
+		err_text = str(err).lower()
+		keywords = (
+			"blocked",
+			"safety",
+			"policy",
+			"moderation",
+			"content_violation",
+			"content policy",
+			"not allowed",
+		)
+		return any(k in err_text for k in keywords)
+
+	def _build_safe_retry_prompt(self, prompt_en: str) -> str:
+		"""Build a stricter low-risk prompt for one retry when blocked."""
+		safe_prompt = ImagePromptHelper.sanitize_prompt(prompt_en, aggressive=True)
+		safe_prompt = re.sub(
+			r"\b(child|children|kid|kids|teen|teenage|young girl|young boy)\b",
+			"adult",
+			safe_prompt,
+			flags=re.IGNORECASE,
+		)
+		safe_prompt = re.sub(
+			r"\b(sexy|seductive|nude|nudity|lingerie)\b",
+			"fully clothed",
+			safe_prompt,
+			flags=re.IGNORECASE,
+		)
+		safe_prompt = re.sub(
+			r"\b(weapon|knife|gun|blood|gore|corpse)\b",
+			"",
+			safe_prompt,
+			flags=re.IGNORECASE,
+		)
+		safe_prompt = re.sub(r"\s+", " ", safe_prompt).strip(" ,.")
+		return ImagePromptHelper.truncate_text(safe_prompt, 600, prefer_punct=True)
+
 	def _translate_prompt_to_english(self, prompt_cn: str, img_type: str, selected_characters: list) -> str:
 		"""将中文提示词翻译为英文"""
 		fallback_provider = None
@@ -168,9 +207,9 @@ class ImageGeneratorMixin:
 				
 				# 步骤1: 判断使用哪个API提供商
 				current_preset = self.img_api_preset.get()
-				provider = self.img_api_presets.get(current_preset, {}).get("provider")
-				if not provider and hasattr(self, 'img_api_type'):
-					provider = self.img_api_type.get()
+				provider = self.img_api_type.get() if hasattr(self, 'img_api_type') else None
+				if not provider:
+					provider = self.img_api_presets.get(current_preset, {}).get("provider")
 				if not provider:
 					provider = "openai"
 				
@@ -305,9 +344,9 @@ class ImageGeneratorMixin:
 				
 				# 2. 根据当前预设选择API提供商
 				current_preset = self.img_api_preset.get()
-				provider = self.img_api_presets.get(current_preset, {}).get("provider")
-				if not provider and hasattr(self, 'img_api_type'):
-					provider = self.img_api_type.get()
+				provider = self.img_api_type.get() if hasattr(self, 'img_api_type') else None
+				if not provider:
+					provider = self.img_api_presets.get(current_preset, {}).get("provider")
 				if not provider:
 					provider = "openai"
 				
@@ -540,14 +579,38 @@ class ImageGeneratorMixin:
 					
 					if ref_image_path:
 						self._ui(self.status.set, f"📸 使用参考图片生成...（步骤2/3）")
-						results = img_client.generate_with_reference(
-							prompt=prompt_en, 
-							reference_image_path=ref_image_path, 
-							size=self.img_size.get()
-						)
+						try:
+							results = img_client.generate_with_reference(
+								prompt=prompt_en,
+								reference_image_path=ref_image_path,
+								size=self.img_size.get()
+							)
+						except Exception as gen_err:
+							if not self._is_policy_rejection_error(gen_err):
+								raise
+							retry_prompt = self._build_safe_retry_prompt(prompt_en)
+							if not retry_prompt or retry_prompt == prompt_en:
+								raise
+							self._ui(self.status.set, "Moderation blocked once; sanitized prompt and retrying...")
+							results = img_client.generate_with_reference(
+								prompt=retry_prompt,
+								reference_image_path=ref_image_path,
+								size=self.img_size.get()
+							)
+							prompt_en = retry_prompt
 					else:
 						self._ui(self.status.set, f"🚀 正在调用OpenAI API生成图片...（大小：{self.img_size.get()}）")
-						results = img_client.generate(prompt=prompt_en, size=self.img_size.get(), n=1)
+						try:
+							results = img_client.generate(prompt=prompt_en, size=self.img_size.get(), n=1)
+						except Exception as gen_err:
+							if not self._is_policy_rejection_error(gen_err):
+								raise
+							retry_prompt = self._build_safe_retry_prompt(prompt_en)
+							if not retry_prompt or retry_prompt == prompt_en:
+								raise
+							self._ui(self.status.set, "Moderation blocked once; sanitized prompt and retrying...")
+							results = img_client.generate(prompt=retry_prompt, size=self.img_size.get(), n=1)
+							prompt_en = retry_prompt
 					
 					if not results:
 						self._ui(messagebox.showerror, "错误", "生成失败")
