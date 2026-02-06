@@ -4,6 +4,7 @@ import os
 from typing import List, Optional
 
 from openai import OpenAI
+from src.clients.custom_openai_client import create_compatible_client
 
 
 class DeepSeekClient:
@@ -15,7 +16,13 @@ class DeepSeekClient:
 			raise RuntimeError("Missing DEEPSEEK_API_KEY. Create .env and export it.")
 		self.base_url = base_url or os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com/v1")
 		self.model = model or os.getenv("DEEPSEEK_MODEL", "deepseek-chat")
-		self.client = OpenAI(api_key=self.api_key, base_url=self.base_url, timeout=timeout_seconds)
+		
+		# 使用自定义客户端，避免被 Cloudflare 防火墙阻止
+		self.client = create_compatible_client(
+			api_key=self.api_key,
+			base_url=self.base_url,
+			timeout=timeout_seconds
+		)
 
 	def chat(
 		self,

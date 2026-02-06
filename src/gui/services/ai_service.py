@@ -38,9 +38,10 @@ class AIService:
         prompt = f"""你是专业的人物分析师。请从故事中深度分析所有关键人物。
 
 故事：
-{story_text}
+{story_text[:3000]}
 
-返回JSON格式：
+请严格按照以下JSON格式返回，不要添加任何其他文字：
+
 {{
   "characters": [
     {{
@@ -57,19 +58,64 @@ class AIService:
   ]
 }}
 
-要求：按重要性排序，最多8人，确保JSON有效"""
+要求：
+1. 只输出JSON，不要任何解释
+2. 按重要性排序，最多8人
+3. 确保JSON格式完全正确
+4. 不要使用markdown代码块标记"""
 
-        response = self.chat([{"role": "user", "content": prompt}], temperature=0.5)
+        response = self.chat([{"role": "user", "content": prompt}], temperature=0.3)
         
+        print(f"📝 AI原始响应:\n{response[:500]}\n")
+        
+        # 尝试多种方式提取JSON
         try:
-            match = re.search(r'\{.*\}', response, re.DOTALL)
+            # 方法1: 移除markdown代码块标记
+            cleaned = response.strip()
+            if cleaned.startswith('```'):
+                # 移除开头的 ```json 或 ```
+                cleaned = re.sub(r'^```(?:json)?\s*', '', cleaned)
+                # 移除结尾的 ```
+                cleaned = re.sub(r'\s*```$', '', cleaned)
+            
+            # 方法2: 查找JSON对象
+            match = re.search(r'\{[\s\S]*"characters"[\s\S]*\}', cleaned)
             if match:
-                return json.loads(match.group()).get("characters", [])
-        except:
-            pass
+                json_str = match.group()
+                data = json.loads(json_str)
+                characters = data.get("characters", [])
+                
+                if characters:
+                    print(f"✅ 成功解析 {len(characters)} 个人物")
+                    return characters
+            
+            # 方法3: 直接解析整个响应
+            data = json.loads(cleaned)
+            characters = data.get("characters", [])
+            if characters:
+                print(f"✅ 成功解析 {len(characters)} 个人物")
+                return characters
+                
+        except (json.JSONDecodeError, AttributeError, KeyError) as e:
+            print(f"⚠️ 解析角色JSON失败: {e}")
+            print(f"响应内容: {response[:200]}")
         
-        return [{"name": line.strip()} for line in response.split('\n') 
-                if line.strip() and len(line.strip()) <= 10]
+        # 降级方案：从文本中提取人名
+        print("⚠️ 使用降级方案提取人名")
+        names = []
+        for line in response.split('\n'):
+            line = line.strip()
+            # 查找类似 "name": "xxx" 的模式
+            name_match = re.search(r'"name"\s*:\s*"([^"]+)"', line)
+            if name_match:
+                names.append({"name": name_match.group(1)})
+        
+        if names:
+            print(f"✅ 降级方案提取到 {len(names)} 个人物")
+            return names
+        
+        print("❌ 无法提取任何人物")
+        return []
     
     def design_character_appearance(
         self, 
@@ -121,9 +167,12 @@ class AIService:
 1. 外貌与性格匹配（阴险→细长眼/薄唇，温柔→柔和轮廓）
 2. 独特标记提高辨识度（疤痕/痣/配饰）
 3. 特征要具体，不要模糊
-4. dna_prompt是关键，要包含所有核心特征"""
+4. dna_prompt是关键，要包含所有核心特征
+5. 只写“可见外貌”，不要写剧情、经历、冲突、犯罪、暴力、武器、血腥、仇恨
+6. 不要出现未成年相关词（少年/少女/child/teen），统一使用成年人描述
+7. 不要出现具体年龄数字（如20岁/20-year-old），统一用成年表达"""
 
-        response = self.chat([{"role": "user", "content": prompt}], temperature=0.8)
+        response = self.chat([{"role": "user", "content": prompt}], temperature=0.6)
         
         try:
             match = re.search(r'```json\s*(.*?)\s*```', response, re.DOTALL)
@@ -132,7 +181,8 @@ class AIService:
             if match:
                 json_str = match.group(1) if '```' in response else match.group()
                 return json.loads(json_str)
-        except:
+        except (json.JSONDecodeError, AttributeError, KeyError) as e:
+            print(f"解析外貌设计JSON失败: {e}")
             pass
         
         return {"description": response.strip(), "visual_features": {}, "dna_prompt": ""}

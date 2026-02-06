@@ -19,12 +19,27 @@ class CharacterExtractMixin:
             messagebox.showwarning("提示", "请先生成故事内容！")
             return
         
-        selected_api = self.outline_gen_api.get() if hasattr(self, 'outline_gen_api') else "DeepSeek"
-        if not hasattr(self, 'api_presets') or selected_api not in self.api_presets:
-            messagebox.showerror("错误", f"未找到API配置: {selected_api}")
-            return
+        # 人物提取：根据模型路由选择 API
+        fallback_provider = None
+        if hasattr(self, 'quick_story_api'):
+            fallback_provider = self.quick_story_api.get()
+        if not fallback_provider and hasattr(self, 'api_preset'):
+            fallback_provider = self.api_preset.get()
+        fallback_model = None
+        if hasattr(self, 'char_model_var'):
+            fallback_model = self.char_model_var.get()
+        elif hasattr(self, 'story_model_var'):
+            fallback_model = self.story_model_var.get()
+        elif hasattr(self, 'model'):
+            fallback_model = self.model.get()
         
-        ai_service = create_ai_service(self.api_presets, selected_api)
+        api_config = self._resolve_task_api("character_extract", fallback_provider=fallback_provider, fallback_model=fallback_model)
+        selected_api = api_config.get("provider", "")
+        selected_model = api_config.get("model", "")
+        if selected_model:
+            print(f"🤖 使用模型: {selected_model}")
+        
+        ai_service = create_ai_service({"__route__": api_config}, "__route__")
         if not ai_service:
             messagebox.showwarning("提示", "API Key 为空，请在配置页面设置")
             return
@@ -70,6 +85,7 @@ class CharacterExtractMixin:
             finally:
                 self.after(0, lambda: self.char_btn_extract.config(state=NORMAL))
                 self.after(0, lambda: self.char_btn_refresh.config(state=NORMAL))
+                pass
         
         threading.Thread(target=extract_thread, daemon=True).start()
     

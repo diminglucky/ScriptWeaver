@@ -12,6 +12,7 @@ from src.clients.deepseek_client import DeepSeekClient
 from src.clients.image_client import OpenAIImageClient
 from src.utils.text import sanitize as _sanitize
 from ...helpers.image_styles import IMAGE_TYPES, HUNYUAN_STYLE_MAP
+from ...theme import Theme
 from ...helpers.image_helpers import ImagePromptHelper, DescriptionPromptBuilder
 from ...helpers.character_prompt_builder import CharacterPromptBuilder
 from ...helpers.character_sheet_builder import CharacterSheetBuilder
@@ -22,9 +23,9 @@ class PromptOperationsMixin:
 	
 	def _update_after_image_generation(self, img_type: str):
 		"""图片生成成功后的更新操作"""
-		self._update_img_preview()
-		self.img_btn_save.configure(state=NORMAL)
-		self.status.set(f"✨ 【{img_type}】风格图片生成成功！")
+		self._ui(self._update_img_preview)
+		self._ui(self.img_btn_save.configure, state=NORMAL)
+		self._ui(self.status.set, f"✨ 【{img_type}】风格图片生成成功！")
 		
 		# 更新顶部状态栏
 		if hasattr(self, 'update_header_status'):
@@ -35,10 +36,10 @@ class PromptOperationsMixin:
 		
 		# 生成即梦AI视频提示词
 		video_prompt = self._generate_video_prompt()
-		self.video_prompt_text.config(state=NORMAL)
-		self.video_prompt_text.delete("1.0", END)
-		self.video_prompt_text.insert("1.0", video_prompt)
-		self.video_prompt_text.config(state=DISABLED)
+		self._ui(self.video_prompt_text.config, state=NORMAL)
+		self._ui(self.video_prompt_text.delete, "1.0", END)
+		self._ui(self.video_prompt_text.insert, "1.0", video_prompt)
+		self._ui(self.video_prompt_text.config, state=DISABLED)
 
 	
 	
@@ -50,13 +51,19 @@ class PromptOperationsMixin:
 			messagebox.showwarning("提示", "请先输入一些描述内容，AI将帮您补全和优化")
 			return
 		
-		# 获取API配置
-		selected_api = self.outline_gen_api.get() if hasattr(self, 'outline_gen_api') else "DeepSeek"
-		if selected_api not in self.api_presets:
-			messagebox.showerror("错误", f"未找到API配置: {selected_api}")
-			return
+		# 提示词优化：根据模型路由选择 API
+		fallback_provider = None
+		if hasattr(self, 'quick_story_api'):
+			fallback_provider = self.quick_story_api.get()
+		if not fallback_provider and hasattr(self, 'api_preset'):
+			fallback_provider = self.api_preset.get()
+		fallback_model = None
+		if hasattr(self, 'story_model_var'):
+			fallback_model = self.story_model_var.get()
+		elif hasattr(self, 'model'):
+			fallback_model = self.model.get()
 		
-		api_config = self.api_presets[selected_api]
+		api_config = self._resolve_task_api("image_prompt_enhance", fallback_provider=fallback_provider, fallback_model=fallback_model)
 		api_key = _sanitize(api_config.get("key", ""))
 		if not api_key:
 			messagebox.showwarning("提示", "请先配置API Key")
@@ -188,27 +195,41 @@ class PromptOperationsMixin:
 		dialog.geometry(f"+{x}+{y}")
 		
 		# 主框架
-		main_frame = tk.Frame(dialog, bg="#2b2b2b")
+		main_frame = tk.Frame(dialog, bg=Theme.BG_SECONDARY)
 		main_frame.pack(fill="both", expand=True, padx=10, pady=10)
 		
 		# 标题
-		title_label = tk.Label(main_frame, text="👁️ 生成前预览", font=("", 14, "bold"), 
-							   bg="#2b2b2b", fg="white")
+		title_label = tk.Label(
+			main_frame,
+			text="👁️ 生成前预览",
+			font=("", 14, "bold"),
+			bg=Theme.BG_SECONDARY,
+			fg=Theme.TEXT_PRIMARY,
+		)
 		title_label.pack(pady=(0, 10))
 		
 		# 预览文本框
-		text_frame = tk.Frame(main_frame, bg="#2b2b2b")
+		text_frame = tk.Frame(main_frame, bg=Theme.BG_SECONDARY)
 		text_frame.pack(fill="both", expand=True)
 		
-		preview_text_widget = tk.Text(text_frame, font=("", 10), wrap=tk.WORD,
-									  bg="#1e1e1e", fg="#e0e0e0", relief=tk.SOLID,
-									  borderwidth=1)
+		preview_text_widget = tk.Text(
+			text_frame,
+			font=("", 10),
+			wrap=tk.WORD,
+			bg=Theme.SURFACE,
+			fg=Theme.TEXT_PRIMARY,
+			insertbackground=Theme.TEXT_PRIMARY,
+			selectbackground=Theme.PRIMARY,
+			selectforeground=Theme.TEXT_PRIMARY,
+			relief=tk.SOLID,
+			borderwidth=1,
+		)
 		preview_text_widget.pack(fill="both", expand=True)
 		preview_text_widget.insert("1.0", preview_text)
 		preview_text_widget.config(state=DISABLED)
 		
 		# 按钮框架
-		btn_frame = tk.Frame(main_frame, bg="#2b2b2b")
+		btn_frame = tk.Frame(main_frame, bg=Theme.BG_SECONDARY)
 		btn_frame.pack(fill="x", pady=(10, 0))
 		
 		# 编辑按钮
@@ -259,39 +280,58 @@ class PromptOperationsMixin:
 		if not story_text:
 			messagebox.showwarning("提示", "请先在'故事'页生成或粘贴正文内容，然后再提炼提示词")
 			return
-		try:
-			self.set_busy(True)
-			self.status.set("根据故事提炼图片提示词中...")
-			scene = self.img_entry_scene.get().strip() if hasattr(self, 'img_entry_scene') else ""
-			roles = self.img_txt_roles.get("1.0", END).strip() if hasattr(self, 'img_txt_roles') else ""
-			client = DeepSeekClient(
-				api_key=_sanitize(self.api_key.get()),
-				base_url=_sanitize(self.base_url.get()),
-				model=_sanitize(self.model.get()),
-			)
-			prompt_instruct = (
-				"你是资深视觉提示词工程师。请基于提供的故事正文，生成一段用于文本生成图片的英文提示词，"
-				"要求与故事的情节、人物外观与气质完全吻合，保持同一人物的一致性（面部、发型、年龄、服饰等）。"
-				"如有参考图，将作为身份一致性的最高约束。提示词需包含：场景/构图、主体外观细节、表情动作、光线镜头、风格与质感。"
-				"禁止输出任何 Markdown，仅输出单段英文提示词。"
-			)
-			user_payload = (
-				f"故事正文：\n{story_text}\n\n"
-				f"补充场景（可选）：{scene or '无'}\n"
-				f"人物设定（可选）：{roles or '无'}\n"
-				"请输出最终英文提示词。"
-			)
-			resp = client.chat([
-				{"role": "system", "content": prompt_instruct},
-				{"role": "user", "content": user_payload},
-			], temperature=max(0.4, self.temperature.get() - 0.2))
-			self.img_txt_prompt.delete("1.0", END)
-			self.img_txt_prompt.insert(END, resp.strip())
-			self.status.set("已生成图片提示词（请检查后点击生成图片）")
-		except Exception as e:
-			messagebox.showerror("错误", str(e))
-		finally:
-			self.set_busy(False)
+		scene = self.img_entry_scene.get().strip() if hasattr(self, 'img_entry_scene') else ""
+		roles = self.img_txt_roles.get("1.0", END).strip() if hasattr(self, 'img_txt_roles') else ""
+		
+		def task():
+			try:
+				self.set_busy(True)
+				self._ui(self.status.set, "根据故事提炼图片提示词中...")
+				fallback_provider = None
+				if hasattr(self, 'quick_story_api'):
+					fallback_provider = self.quick_story_api.get()
+				if not fallback_provider and hasattr(self, 'api_preset'):
+					fallback_provider = self.api_preset.get()
+				fallback_model = None
+				if hasattr(self, 'story_model_var'):
+					fallback_model = self.story_model_var.get()
+				elif hasattr(self, 'model'):
+					fallback_model = self.model.get()
+				
+				api_config = self._resolve_task_api("image_prompt_from_story", fallback_provider=fallback_provider, fallback_model=fallback_model)
+				if not _sanitize(api_config.get("key", "")):
+					self._ui(messagebox.showwarning, "提示", "请先在设置页配置用于生成提示词的API Key")
+					return
+				client = DeepSeekClient(
+					api_key=_sanitize(api_config.get("key", "")),
+					base_url=_sanitize(api_config.get("base_url", "")),
+					model=_sanitize(api_config.get("model", "")),
+				)
+				prompt_instruct = (
+					"你是资深视觉提示词工程师。请基于提供的故事正文，生成一段用于文本生成图片的英文提示词，"
+					"要求与故事的情节、人物外观与气质完全吻合，保持同一人物的一致性（面部、发型、年龄、服饰等）。"
+					"如有参考图，将作为身份一致性的最高约束。提示词需包含：场景/构图、主体外观细节、表情动作、光线镜头、风格与质感。"
+					"禁止输出任何 Markdown，仅输出单段英文提示词。"
+				)
+				user_payload = (
+					f"故事正文：\n{story_text}\n\n"
+					f"补充场景（可选）：{scene or '无'}\n"
+					f"人物设定（可选）：{roles or '无'}\n"
+					"请输出最终英文提示词。"
+				)
+				resp = client.chat([
+					{"role": "system", "content": prompt_instruct},
+					{"role": "user", "content": user_payload},
+				], temperature=max(0.4, self.temperature.get() - 0.2))
+				self._ui(self.img_txt_prompt.delete, "1.0", END)
+				self._ui(self.img_txt_prompt.insert, END, resp.strip())
+				self._ui(self.status.set, "已生成图片提示词（请检查后点击生成图片）")
+			except Exception as e:
+				self._ui(messagebox.showerror, "错误", str(e))
+			finally:
+				self.set_busy(False)
+		
+		threading.Thread(target=task, daemon=True).start()
 
 	
 	

@@ -10,6 +10,7 @@ from src.clients.deepseek_client import DeepSeekClient
 from src.clients.image_client import OpenAIImageClient
 from src.utils.text import sanitize as _sanitize
 from ...helpers.image_styles import IMAGE_TYPES, HUNYUAN_STYLE_MAP
+from ...theme import Theme
 
 
 class ImageUICharacterTabMixin:
@@ -17,6 +18,14 @@ class ImageUICharacterTabMixin:
 	
 	def _build_character_tab(self) -> None:
 		"""构建人物生成页面"""
+		T = Theme
+		bg_canvas = T.BG_SECONDARY
+		bg_panel = T.BG_TERTIARY
+		bg_surface = T.SURFACE
+		bg_accent = T.BG_SELECTED
+		text_primary = T.TEXT_PRIMARY
+		text_secondary = T.TEXT_SECONDARY
+		divider = T.DIVIDER
 		# 两列布局
 		body = ttk.Frame(self.image_tab_character)
 		body.pack(fill=BOTH, expand=True, padx=10, pady=10)
@@ -28,7 +37,7 @@ class ImageUICharacterTabMixin:
 		right_container.grid(row=0, column=1, sticky="nsew")
 		
 		# 创建Canvas和滚动条
-		char_canvas = tk.Canvas(right_container, bg="#1e1e1e", highlightthickness=0)
+		char_canvas = tk.Canvas(right_container, bg=bg_canvas, highlightthickness=0)
 		char_v_scroll = ttk.Scrollbar(right_container, orient="vertical", command=char_canvas.yview)
 		char_canvas.configure(yscrollcommand=char_v_scroll.set)
 		
@@ -77,29 +86,45 @@ class ImageUICharacterTabMixin:
 		grp_characters.pack(fill=BOTH, expand=True, padx=0, pady=(0, 8))
 		
 		# 提示信息
-		tip_frame_main = tk.Frame(grp_characters, bg="#2b2b2b")
+		tip_frame_main = tk.Frame(grp_characters, bg=bg_panel)
 		tip_frame_main.pack(fill="x", padx=6, pady=(6, 8))
 		
-		tk.Label(tip_frame_main, text="📌 ", font=("", 10, "bold"), fg="#FF9800", bg="#2b2b2b").pack(side=LEFT)
+		tk.Label(tip_frame_main, text="📌 ", font=("", 10, "bold"), fg="#FF9800", bg=bg_panel).pack(side=LEFT)
 		tk.Label(tip_frame_main, text="第一步：点击下方按钮提取人物，然后选择要生成照片的人物", 
-				 font=("", 9), fg="#888888", bg="#2b2b2b").pack(side=LEFT)
+				 font=("", 9), fg=text_secondary, bg=bg_panel).pack(side=LEFT)
 		
-		info_frame = tk.Frame(grp_characters, bg="#1e3a5f", relief=tk.SOLID, borderwidth=1)
+		info_frame = tk.Frame(grp_characters, bg=bg_accent, relief=tk.SOLID, borderwidth=1)
 		info_frame.pack(fill="x", padx=6, pady=(0, 8))
-		tk.Label(info_frame, text="💾 ", font=("", 9), fg="#4CAF50", bg="#1e3a5f").pack(side=LEFT, padx=(6, 0))
-		tk.Label(info_frame, text="照片自动保存到 ", font=("", 9), fg="white", bg="#1e3a5f").pack(side=LEFT)
-		tk.Label(info_frame, text="当前项目/characters/", font=("", 9, "bold"), fg="#4CAF50", bg="#1e3a5f").pack(side=LEFT)
-		tk.Label(info_frame, text=" 文件夹", font=("", 9), fg="white", bg="#1e3a5f").pack(side=LEFT, padx=(0, 6))
+		tk.Label(info_frame, text="💾 ", font=("", 9), fg=T.SUCCESS, bg=bg_accent).pack(side=LEFT, padx=(6, 0))
+		tk.Label(info_frame, text="照片自动保存到 ", font=("", 9), fg=text_primary, bg=bg_accent).pack(side=LEFT)
+		tk.Label(info_frame, text="当前项目/characters/", font=("", 9, "bold"), fg=T.SUCCESS, bg=bg_accent).pack(side=LEFT)
+		tk.Label(info_frame, text=" 文件夹", font=("", 9), fg=text_primary, bg=bg_accent).pack(side=LEFT, padx=(0, 6))
 		
-		# 按钮区域
+		# 按钮区域和模型选择
 		btn_frame = ttk.Frame(grp_characters)
 		btn_frame.pack(fill="x", padx=6, pady=(0, 8))
-		self.char_btn_extract = ttk.Button(btn_frame, text="🔍 提取故事人物", 
+		
+		# 第一行：提取按钮
+		btn_row1 = ttk.Frame(btn_frame)
+		btn_row1.pack(fill="x", pady=(0, 6))
+		
+		self.char_btn_extract = ttk.Button(btn_row1, text="🔍 提取故事人物", 
 										   command=self._on_extract_characters, width=15)
 		self.char_btn_extract.pack(side=LEFT, padx=(0, 3))
-		self.char_btn_refresh = ttk.Button(btn_frame, text="🔄 重新提取", 
+		self.char_btn_refresh = ttk.Button(btn_row1, text="🔄 重新提取", 
 										   command=self._on_extract_characters, width=12, state=DISABLED)
 		self.char_btn_refresh.pack(side=LEFT, padx=(0, 3))
+		
+		# 第二行：模型选择
+		model_row = ttk.Frame(btn_frame)
+		model_row.pack(fill="x")
+		
+		tk.Label(model_row, text="🤖 模型:", font=("", 10, "bold"), bg=bg_panel, fg="#FCD34D").pack(side=LEFT, padx=(0, 6))
+		self.char_model_var = tk.StringVar(value="claude-sonnet-4-5")
+		self.combo_char_model = ttk.Combobox(model_row, textvariable=self.char_model_var, width=20,
+											 values=["正在加载..."],
+											 state="readonly", font=("", 10))
+		self.combo_char_model.pack(side=LEFT, fill="x", expand=True)
 		
 		# 人物列表框（使用Listbox）
 		list_frame = ttk.Frame(grp_characters)
@@ -107,10 +132,18 @@ class ImageUICharacterTabMixin:
 		
 		# 添加滚动条
 		scrollbar = ttk.Scrollbar(list_frame, orient="vertical")
-		self.char_listbox = tk.Listbox(list_frame, font=("", 10), 
-									   yscrollcommand=scrollbar.set,
-									   relief=tk.SOLID, borderwidth=1,
-									   height=8)
+		self.char_listbox = tk.Listbox(
+			list_frame,
+			font=("", 10),
+			yscrollcommand=scrollbar.set,
+			relief=tk.SOLID,
+			borderwidth=1,
+			height=8,
+			bg=bg_surface,
+			fg=text_primary,
+			selectbackground=T.PRIMARY,
+			selectforeground=text_primary,
+		)
 		scrollbar.config(command=self.char_listbox.yview)
 		
 		self.char_listbox.pack(side=LEFT, fill=BOTH, expand=True)
@@ -124,8 +157,19 @@ class ImageUICharacterTabMixin:
 		grp_desc.pack(fill=BOTH, expand=True, padx=0, pady=0)
 		
 		# 特征描述文本框
-		self.char_txt_desc = tk.Text(grp_desc, height=10, font=("", 10), 
-									 wrap=tk.WORD, relief=tk.SOLID, borderwidth=1)
+		self.char_txt_desc = tk.Text(
+			grp_desc,
+			height=10,
+			font=("", 10),
+			wrap=tk.WORD,
+			relief=tk.SOLID,
+			borderwidth=1,
+			bg=bg_surface,
+			fg=text_primary,
+			insertbackground=text_primary,
+			selectbackground=T.PRIMARY,
+			selectforeground=text_primary,
+		)
 		self.char_txt_desc.pack(fill=BOTH, expand=True, padx=6, pady=(6, 8))
 		self.char_txt_desc.insert("1.0", "第二步：选择人物后，AI将根据角色设定创造性地设计外貌，并生成「角色DNA」用于保持一致性...")
 		self.char_txt_desc.config(state=DISABLED)
@@ -144,10 +188,10 @@ class ImageUICharacterTabMixin:
 		
 		# 右侧：生成参数和预览
 		# 添加顶部提示
-		tip_header = tk.Frame(right, bg="#1e3a5f", relief=tk.SOLID, borderwidth=1)
+		tip_header = tk.Frame(right, bg=bg_accent, relief=tk.SOLID, borderwidth=1)
 		tip_header.pack(fill="x", padx=0, pady=(0, 10))
-		tk.Label(tip_header, text="🎨 ", font=("", 11, "bold"), fg="#4CAF50", bg="#1e3a5f").pack(side=LEFT, padx=(10, 0))
-		tk.Label(tip_header, text="第二步：设置生成参数", font=("", 10, "bold"), fg="white", bg="#1e3a5f").pack(side=LEFT, padx=(0, 10), pady=8)
+		tk.Label(tip_header, text="🎨 ", font=("", 11, "bold"), fg=T.SUCCESS, bg=bg_accent).pack(side=LEFT, padx=(10, 0))
+		tk.Label(tip_header, text="第二步：设置生成参数", font=("", 10, "bold"), fg=text_primary, bg=bg_accent).pack(side=LEFT, padx=(0, 10), pady=8)
 		
 		grp_params = ttk.LabelFrame(right, text="🎨 第一步：基础设置", padding=(12, 8))
 		grp_params.pack(fill="x", padx=0, pady=(0, 12))
@@ -162,7 +206,7 @@ class ImageUICharacterTabMixin:
 		self.char_combo_style.grid(row=0, column=1, sticky="we", padx=(0, 6), pady=6)
 		
 		# 分隔线
-		separator1 = tk.Frame(grp_params, height=1, bg="#444444")
+		separator1 = tk.Frame(grp_params, height=1, bg=divider)
 		separator1.grid(row=1, column=0, columnspan=2, sticky="ew", pady=10)
 		
 		# 第二步标题
@@ -171,19 +215,19 @@ class ImageUICharacterTabMixin:
 		
 		# 视角选择
 		self.char_view_angle = tk.StringVar(value="front")
-		view_frame = tk.Frame(grp_params, bg="#2b2b2b", relief=tk.SOLID, borderwidth=1)
+		view_frame = tk.Frame(grp_params, bg=bg_panel, relief=tk.SOLID, borderwidth=1)
 		view_frame.grid(row=3, column=0, columnspan=2, sticky="we", padx=0, pady=6)
 		
 		angles = [("👤 正面", "front"), ("👥 侧面", "side"), ("🔙 背面", "back"), ("🔄 斜侧", "three-quarter")]
 		for i, (label, value) in enumerate(angles):
 			rb = tk.Radiobutton(view_frame, text=label, variable=self.char_view_angle, value=value,
-							   bg="#2b2b2b", fg="white", selectcolor="#4CAF50", font=("", 10),
-							   activebackground="#2b2b2b", activeforeground="#4CAF50",
+							   bg=bg_panel, fg=text_primary, selectcolor="#4CAF50", font=("", 10),
+							   activebackground=bg_panel, activeforeground="#4CAF50",
 							   indicatoron=0, width=12, relief=tk.FLAT, bd=2)
 			rb.pack(side=LEFT, padx=2, pady=2, fill="x", expand=True)
 		
 		# 分隔线
-		separator2 = tk.Frame(grp_params, height=1, bg="#444444")
+		separator2 = tk.Frame(grp_params, height=1, bg=divider)
 		separator2.grid(row=4, column=0, columnspan=2, sticky="ew", pady=10)
 		
 		# 第三步标题
@@ -192,7 +236,7 @@ class ImageUICharacterTabMixin:
 		
 		# 表情选择
 		self.char_expression = tk.StringVar(value="neutral")
-		expr_frame = tk.Frame(grp_params, bg="#2b2b2b", relief=tk.SOLID, borderwidth=1)
+		expr_frame = tk.Frame(grp_params, bg=bg_panel, relief=tk.SOLID, borderwidth=1)
 		expr_frame.grid(row=6, column=0, columnspan=2, sticky="we", padx=0, pady=6)
 		
 		expressions = [
@@ -205,62 +249,76 @@ class ImageUICharacterTabMixin:
 		
 		for i, (label, value) in enumerate(expressions):
 			rb = tk.Radiobutton(expr_frame, text=label, variable=self.char_expression, value=value,
-							   bg="#2b2b2b", fg="white", selectcolor="#FF9800", font=("", 10),
-							   activebackground="#2b2b2b", activeforeground="#FF9800",
+							   bg=bg_panel, fg=text_primary, selectcolor="#FF9800", font=("", 10),
+							   activebackground=bg_panel, activeforeground="#FF9800",
 							   indicatoron=0, width=10, relief=tk.FLAT, bd=2)
 			rb.pack(side=LEFT, padx=2, pady=2, fill="x", expand=True)
 		
 		# 分隔线
-		separator3 = tk.Frame(grp_params, height=1, bg="#444444")
+		separator3 = tk.Frame(grp_params, height=1, bg=divider)
 		separator3.grid(row=7, column=0, columnspan=2, sticky="ew", pady=10)
 		
 		# 批量生成选项
 		batch_title = tk.Label(grp_params, text="⚡ 批量生成选项", font=("", 10, "bold"), fg="#2196F3")
 		batch_title.grid(row=8, column=0, columnspan=2, sticky="w", padx=0, pady=(8, 4))
 		
-		batch_frame = tk.Frame(grp_params, bg="#1e3a5f", relief=tk.SOLID, borderwidth=1)
+		batch_frame = tk.Frame(grp_params, bg=bg_accent, relief=tk.SOLID, borderwidth=1)
 		batch_frame.grid(row=9, column=0, columnspan=2, sticky="we", padx=0, pady=6)
 		
 		self.char_batch_generate = tk.BooleanVar(value=False)
-		batch_angle_check = tk.Checkbutton(batch_frame, text="🎯 批量生成三视图（正面+侧面+背面）", 
-										   variable=self.char_batch_generate,
-										   bg="#1e3a5f", fg="#4CAF50", selectcolor="#2b2b2b", 
-										   font=("", 10, "bold"), activebackground="#1e3a5f", activeforeground="#4CAF50")
+		batch_angle_check = tk.Checkbutton(
+			batch_frame,
+			text="🎯 批量生成三视图（正面+侧面+背面）",
+			variable=self.char_batch_generate,
+			bg=bg_accent,
+			fg="#4CAF50",
+			selectcolor=bg_panel,
+			font=("", 10, "bold"),
+			activebackground=bg_accent,
+			activeforeground="#4CAF50",
+		)
 		batch_angle_check.pack(anchor="w", pady=(8, 4), padx=10)
 		
 		self.char_batch_expressions = tk.BooleanVar(value=False)
-		batch_expr_check = tk.Checkbutton(batch_frame, text="😊 批量生成多表情（中性+开心+悲伤+愤怒+惊讶）", 
-										  variable=self.char_batch_expressions,
-										  bg="#1e3a5f", fg="#FF9800", selectcolor="#2b2b2b", 
-										  font=("", 10, "bold"), activebackground="#1e3a5f", activeforeground="#FF9800")
+		batch_expr_check = tk.Checkbutton(
+			batch_frame,
+			text="😊 批量生成多表情（中性+开心+悲伤+愤怒+惊讶）",
+			variable=self.char_batch_expressions,
+			bg=bg_accent,
+			fg="#FF9800",
+			selectcolor=bg_panel,
+			font=("", 10, "bold"),
+			activebackground=bg_accent,
+			activeforeground="#FF9800",
+		)
 		batch_expr_check.pack(anchor="w", pady=(4, 8), padx=10)
 		
 		# 分隔线
-		separator4 = tk.Frame(grp_params, height=1, bg="#444444")
+		separator4 = tk.Frame(grp_params, height=1, bg=divider)
 		separator4.grid(row=10, column=0, columnspan=2, sticky="ew", pady=10)
 		
 		# 服装/造型变体
 		variant_title = tk.Label(grp_params, text="👔 第四步：服装造型（可选）", font=("", 10, "bold"), fg="#9C27B0")
 		variant_title.grid(row=11, column=0, columnspan=2, sticky="w", padx=0, pady=(8, 4))
 		
-		variant_frame = tk.Frame(grp_params, bg="#2b2b2b", relief=tk.SOLID, borderwidth=1)
+		variant_frame = tk.Frame(grp_params, bg=bg_panel, relief=tk.SOLID, borderwidth=1)
 		variant_frame.grid(row=12, column=0, columnspan=2, sticky="we", padx=0, pady=6)
 		
 		# 变体模式选择
 		self.char_variant_mode = tk.StringVar(value="none")
-		variant_mode_frame = tk.Frame(variant_frame, bg="#2b2b2b")
+		variant_mode_frame = tk.Frame(variant_frame, bg=bg_panel)
 		variant_mode_frame.pack(fill="x", pady=(0, 5))
 		
 		tk.Radiobutton(variant_mode_frame, text="默认", variable=self.char_variant_mode, value="none",
-					   bg="#2b2b2b", fg="white", selectcolor="#444444", font=("", 9)).pack(side=LEFT, padx=(0, 8))
+					   bg=bg_panel, fg=text_primary, selectcolor=divider, font=("", 9)).pack(side=LEFT, padx=(0, 8))
 		tk.Radiobutton(variant_mode_frame, text="预设变体", variable=self.char_variant_mode, value="preset",
-					   bg="#2b2b2b", fg="white", selectcolor="#444444", font=("", 9)).pack(side=LEFT, padx=(0, 8))
+					   bg=bg_panel, fg=text_primary, selectcolor=divider, font=("", 9)).pack(side=LEFT, padx=(0, 8))
 		tk.Radiobutton(variant_mode_frame, text="自定义", variable=self.char_variant_mode, value="custom",
-					   bg="#2b2b2b", fg="white", selectcolor="#444444", font=("", 9)).pack(side=LEFT)
+					   bg=bg_panel, fg=text_primary, selectcolor=divider, font=("", 9)).pack(side=LEFT)
 		
 		# 预设变体选择
 		self.char_variant_preset = tk.StringVar(value="casual")
-		preset_frame = tk.Frame(variant_frame, bg="#2b2b2b")
+		preset_frame = tk.Frame(variant_frame, bg=bg_panel)
 		preset_frame.pack(fill="x", pady=(0, 5))
 		
 		variants = [
@@ -274,36 +332,63 @@ class ImageUICharacterTabMixin:
 		
 		for i, (label, value) in enumerate(variants):
 			tk.Radiobutton(preset_frame, text=label, variable=self.char_variant_preset, value=value,
-						   bg="#2b2b2b", fg="white", selectcolor="#444444", font=("", 8)).pack(side=LEFT, padx=(0, 5))
+						   bg=bg_panel, fg=text_primary, selectcolor=divider, font=("", 8)).pack(side=LEFT, padx=(0, 5))
 		
 		# 自定义变体描述
-		self.char_variant_custom = tk.Entry(variant_frame, font=("", 9), bg="#3c3c3c", fg="white", relief=tk.SOLID, borderwidth=1)
+		self.char_variant_custom = tk.Entry(
+			variant_frame,
+			font=("", 9),
+			bg=bg_surface,
+			fg=text_primary,
+			insertbackground=text_primary,
+			relief=tk.SOLID,
+			borderwidth=1,
+		)
 		self.char_variant_custom.pack(fill="x")
 		self.char_variant_custom.insert(0, "例如：穿着白色婚纱、戴着黑框眼镜...")
+		# 修复Entry颜色问题
+		if hasattr(self, '_fix_entry_colors'):
+			self._fix_entry_colors(self.char_variant_custom)
 		self.char_variant_custom.bind("<FocusIn>", lambda e: self.char_variant_custom.delete(0, tk.END) if self.char_variant_custom.get().startswith("例如") else None)
 		
 		# 提示信息移到variant_frame底部
-		tip_variant = tk.Label(variant_frame, text="💡 提示：变体会改变服装/发型/配饰，但保持基本外貌特征", 
-							   font=("", 9), fg="#FFA500", bg="#2b2b2b")
+		tip_variant = tk.Label(
+			variant_frame,
+			text="💡 提示：变体会改变服装/发型/配饰，但保持基本外貌特征",
+			font=("", 9),
+			fg="#FFA500",
+			bg=bg_panel,
+		)
 		tip_variant.pack(fill="x", pady=(5, 8), padx=10)
 		
 		# 分隔线
-		separator5 = tk.Frame(grp_params, height=1, bg="#444444")
+		separator5 = tk.Frame(grp_params, height=1, bg=divider)
 		separator5.grid(row=13, column=0, columnspan=2, sticky="ew", pady=10)
 		
 		# 额外描述
 		extra_title = tk.Label(grp_params, text="✨ 第五步：额外细节（可选）", font=("", 10, "bold"), fg="#00BCD4")
 		extra_title.grid(row=14, column=0, columnspan=2, sticky="w", padx=0, pady=(8, 4))
 		
-		self.char_txt_extra = tk.Text(grp_params, height=3, font=("", 10), 
-									  wrap=tk.WORD, relief=tk.SOLID, borderwidth=1, bg="#2b2b2b", fg="white")
+		self.char_txt_extra = tk.Text(
+			grp_params,
+			height=3,
+			font=("", 10),
+			wrap=tk.WORD,
+			relief=tk.SOLID,
+			borderwidth=1,
+			bg=bg_surface,
+			fg=text_primary,
+			insertbackground=text_primary,
+			selectbackground=T.PRIMARY,
+			selectforeground=text_primary,
+		)
 		self.char_txt_extra.grid(row=15, column=0, columnspan=2, sticky="we", padx=0, pady=6)
 		
-		tip_extra = tk.Label(grp_params, text="💡 可补充姿态、背景等细节（不包含服装和表情）", font=("", 9), fg="gray")
+		tip_extra = tk.Label(grp_params, text="💡 可补充姿态、背景等细节（不包含服装和表情）", font=("", 9), fg=text_secondary)
 		tip_extra.grid(row=16, column=0, columnspan=2, sticky="w", padx=0)
 		
 		# 分隔线
-		separator6 = tk.Frame(grp_params, height=1, bg="#444444")
+		separator6 = tk.Frame(grp_params, height=1, bg=divider)
 		separator6.grid(row=17, column=0, columnspan=2, sticky="ew", pady=10)
 		
 		# 一致性级别选择
@@ -311,7 +396,7 @@ class ImageUICharacterTabMixin:
 		consistency_title.grid(row=18, column=0, columnspan=2, sticky="w", padx=0, pady=(8, 4))
 		
 		self.char_consistency_level = tk.StringVar(value="high")
-		consistency_frame = tk.Frame(grp_params, bg="#2b2b2b", relief=tk.SOLID, borderwidth=1)
+		consistency_frame = tk.Frame(grp_params, bg=bg_panel, relief=tk.SOLID, borderwidth=1)
 		consistency_frame.grid(row=19, column=0, columnspan=2, sticky="we", padx=0, pady=6)
 		
 		consistency_options = [
@@ -322,8 +407,8 @@ class ImageUICharacterTabMixin:
 		
 		for i, (label, value) in enumerate(consistency_options):
 			rb = tk.Radiobutton(consistency_frame, text=label, variable=self.char_consistency_level, value=value,
-							   bg="#2b2b2b", fg="white", selectcolor="#E91E63", font=("", 9),
-							   activebackground="#2b2b2b", activeforeground="#E91E63",
+							   bg=bg_panel, fg=text_primary, selectcolor="#E91E63", font=("", 9),
+							   activebackground=bg_panel, activeforeground="#E91E63",
 							   indicatoron=0, width=18, relief=tk.FLAT, bd=2)
 			rb.pack(side=LEFT, padx=2, pady=2, fill="x", expand=True)
 		
@@ -383,7 +468,7 @@ class ImageUICharacterTabMixin:
 		v_scroll = ttk.Scrollbar(preview_frame, orient="vertical")
 		h_scroll = ttk.Scrollbar(preview_frame, orient="horizontal")
 		
-		self.char_canvas = tk.Canvas(preview_frame, bg="#2b2b2b", 
+		self.char_canvas = tk.Canvas(preview_frame, bg=bg_panel, 
 									 yscrollcommand=v_scroll.set,
 									 xscrollcommand=h_scroll.set,
 									 highlightthickness=0)
@@ -398,10 +483,14 @@ class ImageUICharacterTabMixin:
 		preview_frame.grid_rowconfigure(0, weight=1)
 		preview_frame.grid_columnconfigure(0, weight=1)
 		
-		self.char_preview = ttk.Label(self.char_canvas, 
-									  text="人物照片预览区\n\n生成人物照片后\n将显示在这里", 
-									  font=("", 10), foreground="#888888", anchor="center",
-									  background="#2b2b2b")
+		self.char_preview = ttk.Label(
+			self.char_canvas,
+			text="人物照片预览区\n\n生成人物照片后\n将显示在这里",
+			font=("", 10),
+			foreground=text_secondary,
+			anchor="center",
+			background=bg_panel,
+		)
 		self.char_canvas_window = self.char_canvas.create_window(0, 0, window=self.char_preview, anchor="nw")
 		
 		# 绑定Canvas大小变化事件

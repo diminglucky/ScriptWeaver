@@ -10,6 +10,7 @@ from src.clients.deepseek_client import DeepSeekClient
 from src.clients.image_client import OpenAIImageClient
 from src.utils.text import sanitize as _sanitize
 from ...helpers.image_styles import IMAGE_TYPES, HUNYUAN_STYLE_MAP
+from ...theme import Theme
 
 
 class ImageUIMainMixin:
@@ -23,6 +24,7 @@ class ImageUIMainMixin:
 		self.img_seed = tk.StringVar(value="")
 		self.img_ref_path = tk.StringVar(value="")
 		self.img_api_key = tk.StringVar(value=os.getenv("OPENAI_API_KEY", ""))
+		self.img_base_url = tk.StringVar(value=os.getenv("OPENAI_BASE_URL", ""))
 		self.img_model = tk.StringVar(value=os.getenv("OPENAI_IMAGE_MODEL", "dall-e-3"))
 		self.img_api_type = tk.StringVar(value="openai")  # API类型：openai 或 hunyuan
 		self.img_last_image: Image.Image | None = None
@@ -40,8 +42,8 @@ class ImageUIMainMixin:
 		self.image_notebook.pack(fill=BOTH, expand=True, padx=0, pady=0)
 		
 		# 创建两个子标签页（配置已移至统一设置页面）
-		self.image_tab_character = tk.Frame(self.image_notebook, bg="#2b2b2b")
-		self.image_tab_create = tk.Frame(self.image_notebook, bg="#2b2b2b")
+		self.image_tab_character = tk.Frame(self.image_notebook, bg=Theme.BG_SECONDARY)
+		self.image_tab_create = tk.Frame(self.image_notebook, bg=Theme.BG_SECONDARY)
 		
 		self.image_notebook.add(self.image_tab_character, text="  👥 人物描述  ")
 		self.image_notebook.add(self.image_tab_create, text="  🎨 图片创作  ")

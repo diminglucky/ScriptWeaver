@@ -20,14 +20,25 @@ class ImageGeneratorMixin:
 	
 	def _translate_prompt_to_english(self, prompt_cn: str, img_type: str, selected_characters: list) -> str:
 		"""将中文提示词翻译为英文"""
-		story_api_key = _sanitize(self.api_key.get())
-		if not story_api_key:
-			raise ValueError("请先在'故事生成'页面配置API Key（用于翻译提示词）")
+		fallback_provider = None
+		if hasattr(self, 'quick_story_api'):
+			fallback_provider = self.quick_story_api.get()
+		if not fallback_provider and hasattr(self, 'api_preset'):
+			fallback_provider = self.api_preset.get()
+		fallback_model = None
+		if hasattr(self, 'story_model_var'):
+			fallback_model = self.story_model_var.get()
+		elif hasattr(self, 'model'):
+			fallback_model = self.model.get()
+		
+		api_config = self._resolve_task_api("image_prompt_translate", fallback_provider=fallback_provider, fallback_model=fallback_model)
+		if not _sanitize(api_config.get("key", "")):
+			raise ValueError("请先在设置页配置用于翻译的API Key")
 		
 		client = DeepSeekClient(
-			api_key=story_api_key,
-			base_url=_sanitize(self.base_url.get()),
-			model=_sanitize(self.model.get()),
+			api_key=_sanitize(api_config.get("key", "")),
+			base_url=_sanitize(api_config.get("base_url", "")),
+			model=_sanitize(api_config.get("model", "")),
 		)
 		
 		# 检查是否有参考人物照片（图生图模式）
@@ -80,7 +91,7 @@ class ImageGeneratorMixin:
 			secret_key=secret_key
 		)
 		
-		self.status.set(f"🚀 正在调用腾讯混元API生成图片...（分辨率{resolution.replace(':', 'x')}）")
+		self._ui(self.status.set, f"🚀 正在调用腾讯混元API生成图片...（分辨率{resolution.replace(':', 'x')}）")
 		
 		result = hunyuan_client.generate(
 			prompt=enhanced_prompt,
@@ -118,14 +129,14 @@ class ImageGeneratorMixin:
 		
 		# 调用API
 		if ref_image_path:
-			self.status.set(f"📸 使用参考图片生成...")
+			self._ui(self.status.set, f"📸 使用参考图片生成...")
 			results = img_client.generate_with_reference(
 				prompt=prompt_en, 
 				reference_image_path=ref_image_path, 
 				size=self.img_size.get()
 			)
 		else:
-			self.status.set(f"🚀 正在调用OpenAI API生成图片...（大小：{self.img_size.get()}）")
+			self._ui(self.status.set, f"🚀 正在调用OpenAI API生成图片...（大小：{self.img_size.get()}）")
 			results = img_client.generate(prompt=prompt_en, size=self.img_size.get(), n=1)
 		
 		if not results:
@@ -150,16 +161,20 @@ class ImageGeneratorMixin:
 		
 		def task(prompt_cn=prompt_cn, selected_characters=selected_characters, img_type=img_type):
 			try:
-				self.img_btn_gen.configure(state=DISABLED)
-				self.status.set("🎨 准备生成图片...")
+				self._ui(self.img_btn_gen.configure, state=DISABLED)
+				self._ui(self.status.set, "🎨 准备生成图片...")
 				if hasattr(self, 'update_header_status'):
 					self.update_header_status("准备生成图片...", "🎨")
 				
 				# 步骤1: 判断使用哪个API提供商
 				current_preset = self.img_api_preset.get()
-				provider = self.img_api_presets.get(current_preset, {}).get("provider", "openai")
+				provider = self.img_api_presets.get(current_preset, {}).get("provider")
+				if not provider and hasattr(self, 'img_api_type'):
+					provider = self.img_api_type.get()
+				if not provider:
+					provider = "openai"
 				
-				self.status.set(f"📝 正在翻译【{img_type}】风格图片描述为英文...（步骤1/3）")
+				self._ui(self.status.set, f"📝 正在翻译【{img_type}】风格图片描述为英文...（步骤1/3）")
 				# 更新顶部状态栏
 				if hasattr(self, 'update_header_status'):
 					self.update_header_status("翻译提示词 (1/3)", "📝")
@@ -196,18 +211,27 @@ class ImageGeneratorMixin:
 				style_keyword = style_keywords.get(img_type, f"{img_type} style, artistic, high quality, detailed")
 				
 				# 1. 先将中文翻译为英文提示词
-				# 使用故事生成的API来翻译（因为需要文本生成能力）
-				story_api_key = _sanitize(self.api_key.get())
-				if not story_api_key:
-					messagebox.showerror("错误", "请先在'故事生成'页面配置API Key（用于翻译提示词）")
+				# 使用模型路由选择翻译模型
+				fallback_provider = None
+				if hasattr(self, 'quick_story_api'):
+					fallback_provider = self.quick_story_api.get()
+				if not fallback_provider and hasattr(self, 'api_preset'):
+					fallback_provider = self.api_preset.get()
+				fallback_model = None
+				if hasattr(self, 'story_model_var'):
+					fallback_model = self.story_model_var.get()
+				elif hasattr(self, 'model'):
+					fallback_model = self.model.get()
+				
+				api_config = self._resolve_task_api("image_prompt_translate", fallback_provider=fallback_provider, fallback_model=fallback_model)
+				if not _sanitize(api_config.get("key", "")):
+					self._ui(messagebox.showerror, "错误", "请先在设置页配置用于翻译的API Key")
 					return
 				
-				print(f"DEBUG: 使用故事API翻译，API Key长度: {len(story_api_key)}")
-				
 				client = DeepSeekClient(
-					api_key=story_api_key,
-					base_url=_sanitize(self.base_url.get()),
-					model=_sanitize(self.model.get()),
+					api_key=_sanitize(api_config.get("key", "")),
+					base_url=_sanitize(api_config.get("base_url", "")),
+					model=_sanitize(api_config.get("model", "")),
 				)
 				# 检查是否有参考人物
 				has_reference_characters = selected_characters and len(selected_characters) > 0
@@ -281,13 +305,15 @@ class ImageGeneratorMixin:
 				
 				# 2. 根据当前预设选择API提供商
 				current_preset = self.img_api_preset.get()
-				provider = self.img_api_presets.get(current_preset, {}).get("provider", "openai")
+				provider = self.img_api_presets.get(current_preset, {}).get("provider")
+				if not provider and hasattr(self, 'img_api_type'):
+					provider = self.img_api_type.get()
+				if not provider:
+					provider = "openai"
 				
-				print(f"DEBUG: 当前图片API预设: {current_preset}, 提供商: {provider}")
-				print(f"DEBUG: 翻译后的英文提示词长度: {len(prompt_en)}")
-				print(f"DEBUG: 英文提示词前100字符: {prompt_en[:100]}...")
+				# 翻译完成，准备生成图片
 				
-				self.status.set(f"🖼️ 翻译完成，正在调用图片生成API...（步骤2/3）")
+				self._ui(self.status.set, f"🖼️ 翻译完成，正在调用图片生成API...（步骤2/3）")
 				# 更新顶部状态栏
 				if hasattr(self, 'update_header_status'):
 					self.update_header_status("正在生成图片 (2/3)", "🎨")
@@ -297,7 +323,7 @@ class ImageGeneratorMixin:
 					# 使用腾讯混元API
 					from src.clients.hunyuan_image_client import HunyuanImageClient
 					
-					self.status.set(f"🎨 使用腾讯混元API生成【{img_type}】风格图片...（步骤2/3）")
+					self._ui(self.status.set, f"🎨 使用腾讯混元API生成【{img_type}】风格图片...（步骤2/3）")
 					# 更新顶部状态栏
 					if hasattr(self, 'update_header_status'):
 						self.update_header_status("腾讯混元生成中 (2/3)", "🎨")
@@ -306,7 +332,7 @@ class ImageGeneratorMixin:
 					secret_key = self.img_secret_key.get().strip()
 					
 					if not secret_id or not secret_key:
-						messagebox.showerror("错误", "请先配置腾讯混元的SecretId和SecretKey")
+						self._ui(messagebox.showerror, "错误", "请先配置腾讯混元的SecretId和SecretKey")
 						return
 					
 					# 根据图片类型映射腾讯混元的style参数
@@ -405,7 +431,7 @@ class ImageGeneratorMixin:
 					}.get(img_type, img_type)
 					
 					# 智能处理描述长度
-					self.status.set(f"⚙️ 优化提示词以适配腾讯混元API...（字符限制256）")
+					self._ui(self.status.set, f"⚙️ 优化提示词以适配腾讯混元API...（字符限制256）")
 					
 					max_base_length = 230  # 为风格关键词留空间
 					
@@ -448,7 +474,7 @@ class ImageGeneratorMixin:
 					current_size = self.img_size.get()
 					resolution = size_mapping.get(current_size, "1024:1024")
 					
-					self.status.set(f"🚀 正在调用腾讯混元API生成图片...（分辨率{resolution.replace(':', 'x')}）")
+					self._ui(self.status.set, f"🚀 正在调用腾讯混元API生成图片...（分辨率{resolution.replace(':', 'x')}）")
 					
 					result = hunyuan_client.generate(
 						prompt=enhanced_prompt,  # 使用优化后的中文提示词
@@ -457,15 +483,15 @@ class ImageGeneratorMixin:
 						rsp_img_type="base64"
 					)
 					
-					self.status.set(f"✅ 处理生成结果...（步骤3/3）")
+					self._ui(self.status.set, f"✅ 处理生成结果...（步骤3/3）")
 					# 更新顶部状态栏
 					if hasattr(self, 'update_header_status'):
 						self.update_header_status("处理结果 (3/3)", "✅")
 					
 					self.img_last_image = result.image
-					self._update_img_preview()
-					self.img_btn_save.configure(state=NORMAL)
-					self.status.set(f"✨ 【{img_type}】风格图片生成成功！使用腾讯混元模型")
+					self._ui(self._update_img_preview)
+					self._ui(self.img_btn_save.configure, state=NORMAL)
+					self._ui(self.status.set, f"✨ 【{img_type}】风格图片生成成功！使用腾讯混元模型")
 					# 更新顶部状态栏
 					if hasattr(self, 'update_header_status'):
 						self.update_header_status("图片生成完成", "✅")
@@ -473,11 +499,12 @@ class ImageGeneratorMixin:
 					self._auto_save_image_to_project()
 					
 					# 生成即梦AI视频提示词
-					video_prompt = self._generate_video_prompt()
-					self.video_prompt_text.config(state=NORMAL)
-					self.video_prompt_text.delete("1.0", END)
-					self.video_prompt_text.insert("1.0", video_prompt)
-					self.video_prompt_text.config(state=DISABLED)
+					if hasattr(self, 'video_prompt_text'):
+						video_prompt = self._generate_video_prompt()
+						self._ui(self.video_prompt_text.config, state=NORMAL)
+						self._ui(self.video_prompt_text.delete, "1.0", END)
+						self._ui(self.video_prompt_text.insert, "1.0", video_prompt)
+						self._ui(self.video_prompt_text.config, state=DISABLED)
 				
 				else:
 					# 使用OpenAI兼容API
@@ -485,17 +512,13 @@ class ImageGeneratorMixin:
 					img_api_key = self.img_api_key.get().strip()
 					img_base_url = self.img_base_url.get().strip() if hasattr(self, 'img_base_url') else None
 					
-					print(f"DEBUG: 使用OpenAI兼容API")
-					print(f"DEBUG: 模型: {model_name}")
-					print(f"DEBUG: API Key长度: {len(img_api_key)}")
-					print(f"DEBUG: Base URL: {img_base_url}")
-					print(f"DEBUG: 图片尺寸: {self.img_size.get()}")
+					# 使用OpenAI兼容API生成图片
 					
 					if not img_api_key:
-						messagebox.showerror("错误", "请先配置图片生成API Key")
+						self._ui(messagebox.showerror, "错误", "请先配置图片生成API Key")
 						return
 					
-					self.status.set(f"🎨 使用OpenAI API生成【{img_type}】风格图片...（模型：{model_name}）")
+					self._ui(self.status.set, f"🎨 使用OpenAI API生成【{img_type}】风格图片...（模型：{model_name}）")
 					# 更新顶部状态栏
 					if hasattr(self, 'update_header_status'):
 						self.update_header_status("OpenAI生成中 (2/3)", "🎨")
@@ -516,29 +539,29 @@ class ImageGeneratorMixin:
 						ref_image_path = self.img_ref_path.get().strip()
 					
 					if ref_image_path:
-						self.status.set(f"📸 使用参考图片生成...（步骤2/3）")
+						self._ui(self.status.set, f"📸 使用参考图片生成...（步骤2/3）")
 						results = img_client.generate_with_reference(
 							prompt=prompt_en, 
 							reference_image_path=ref_image_path, 
 							size=self.img_size.get()
 						)
 					else:
-						self.status.set(f"🚀 正在调用OpenAI API生成图片...（大小：{self.img_size.get()}）")
+						self._ui(self.status.set, f"🚀 正在调用OpenAI API生成图片...（大小：{self.img_size.get()}）")
 						results = img_client.generate(prompt=prompt_en, size=self.img_size.get(), n=1)
 					
 					if not results:
-						messagebox.showerror("错误", "生成失败")
+						self._ui(messagebox.showerror, "错误", "生成失败")
 						return
 					
-					self.status.set(f"✅ 处理生成结果...（步骤3/3）")
+					self._ui(self.status.set, f"✅ 处理生成结果...（步骤3/3）")
 					# 更新顶部状态栏
 					if hasattr(self, 'update_header_status'):
 						self.update_header_status("处理结果 (3/3)", "✅")
 					
 				self.img_last_image = results[0].image
-				self._update_img_preview()
-				self.img_btn_save.configure(state=NORMAL)
-				self.status.set(f"✨ 【{img_type}】风格图片生成成功！提示词：{prompt_en[:40]}...")
+				self._ui(self._update_img_preview)
+				self._ui(self.img_btn_save.configure, state=NORMAL)
+				self._ui(self.status.set, f"✨ 【{img_type}】风格图片生成成功！提示词：{prompt_en[:40]}...")
 				# 更新顶部状态栏
 				if hasattr(self, 'update_header_status'):
 					self.update_header_status("图片生成完成", "✅")
@@ -546,22 +569,28 @@ class ImageGeneratorMixin:
 				self._auto_save_image_to_project()
 				
 				# 生成即梦AI视频提示词
-				video_prompt = self._generate_video_prompt()
-				self.video_prompt_text.config(state=NORMAL)
-				self.video_prompt_text.delete("1.0", END)
-				self.video_prompt_text.insert("1.0", video_prompt)
-				self.video_prompt_text.config(state=DISABLED)
+				if hasattr(self, 'video_prompt_text'):
+					video_prompt = self._generate_video_prompt()
+					self._ui(self.video_prompt_text.config, state=NORMAL)
+					self._ui(self.video_prompt_text.delete, "1.0", END)
+					self._ui(self.video_prompt_text.insert, "1.0", video_prompt)
+					self._ui(self.video_prompt_text.config, state=DISABLED)
 			except Exception as e:
 				import traceback
 				error_detail = traceback.format_exc()
 				print(f"图片生成错误详情：\n{error_detail}")
-				messagebox.showerror("错误", f"{str(e)}\n\n详细错误请查看控制台")
-				self.status.set("❌ 图片生成失败，请检查配置和网络")
+				err_lower = str(e).lower()
+				if "blocked" in err_lower or "safety" in err_lower or "policy" in err_lower:
+					msg = "请求被安全策略拦截。请尝试移除未成年、暴力、裸露、仇恨等敏感描述，或改成更中性描述后再试。"
+				else:
+					msg = f"{str(e)}\n\n详细错误请查看控制台"
+				self._ui(messagebox.showerror, "错误", msg)
+				self._ui(self.status.set, "❌ 图片生成失败，请检查配置和网络")
 				# 更新顶部状态栏
 				if hasattr(self, 'update_header_status'):
 					self.update_header_status("图片生成失败", "❌")
 			finally:
-				self.img_btn_gen.configure(state=NORMAL)
+				self._ui(self.img_btn_gen.configure, state=NORMAL)
 		
 		import threading
 		threading.Thread(target=task, daemon=True).start()

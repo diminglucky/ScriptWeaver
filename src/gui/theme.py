@@ -15,51 +15,89 @@ class DarkTheme(ThemeColors):
     NAME = "dark"
     
     # 主色调
-    PRIMARY = "#6366F1"
-    PRIMARY_DARK = "#4F46E5"
-    PRIMARY_LIGHT = "#818CF8"
-    PRIMARY_GLOW = "rgba(99, 102, 241, 0.5)"
+    PRIMARY = "#4BA3A6"
+    PRIMARY_DARK = "#2F7E7F"
+    PRIMARY_LIGHT = "#6FC1C2"
+    PRIMARY_GLOW = "rgba(75, 163, 166, 0.4)"
     
     # 强调色
-    ACCENT = "#06B6D4"
-    ACCENT_DARK = "#0891B2"
-    ACCENT_LIGHT = "#22D3EE"
+    ACCENT = "#E09F3E"
+    ACCENT_DARK = "#C47A2B"
+    ACCENT_LIGHT = "#F2B65E"
     
     # 状态色
-    SUCCESS = "#10B981"
-    WARNING = "#F59E0B"
-    ERROR = "#EF4444"
-    INFO = "#3B82F6"
+    SUCCESS = "#3BB273"
+    WARNING = "#E09F3E"
+    ERROR = "#E05858"
+    INFO = "#4BA3A6"
     
     # 背景色
-    BG_PRIMARY = "#0A0B0F"
-    BG_SECONDARY = "#13141B"
-    BG_TERTIARY = "#1C1D26"
-    BG_HOVER = "#252631"
-    BG_SELECTED = "#2D2E3D"
-    BG_CARD = "#16171F"
+    BG_PRIMARY = "#0E1318"
+    BG_SECONDARY = "#141B22"
+    BG_TERTIARY = "#1B2430"
+    BG_HOVER = "#232E3B"
+    BG_SELECTED = "#2C3A49"
+    BG_CARD = "#131A20"
     
     # 表面色
-    SURFACE = "#18191F"
-    SURFACE_LIGHT = "#22232B"
-    SURFACE_DARK = "#0E0F14"
-    SURFACE_GLASS = "rgba(30, 31, 40, 0.8)"
+    SURFACE = "#171F26"
+    SURFACE_LIGHT = "#1F2833"
+    SURFACE_DARK = "#10161C"
+    SURFACE_GLASS = "rgba(23, 31, 38, 0.85)"
     
     # 文本色
-    TEXT_PRIMARY = "#F1F3F9"
-    TEXT_SECONDARY = "#9CA3AF"
-    TEXT_DISABLED = "#4B5563"
-    TEXT_HINT = "#6B7280"
+    TEXT_PRIMARY = "#E6EDF3"
+    TEXT_SECONDARY = "#9AA7B4"
+    TEXT_DISABLED = "#5B6B7A"
+    TEXT_HINT = "#7E8B97"
     
     # 边框色
-    BORDER = "#282A36"
-    BORDER_LIGHT = "#32343E"
-    BORDER_FOCUS = "#6366F1"
-    BORDER_SUBTLE = "#1F2028"
+    BORDER = "#253241"
+    BORDER_LIGHT = "#2E3B4A"
+    BORDER_FOCUS = "#4BA3A6"
+    BORDER_SUBTLE = "#1C2630"
     
     # 分隔线
-    DIVIDER = "#1E1F29"
-    DIVIDER_LIGHT = "#252631"
+    DIVIDER = "#1E2A37"
+    DIVIDER_LIGHT = "#243140"
+    
+    # 字体配置（静态）
+    FONT_FAMILY = "Avenir Next, Futura, PingFang SC, Source Han Sans SC, Microsoft YaHei"
+    FONT_FAMILY_MONO = "JetBrains Mono, SF Mono, Monaco, Consolas, Courier New"
+    
+    # 字体大小
+    FONT_SIZE_TINY = 10
+    FONT_SIZE_SMALL = 11
+    FONT_SIZE_NORMAL = 12
+    FONT_SIZE_MEDIUM = 14
+    FONT_SIZE_LARGE = 16
+    FONT_SIZE_XLARGE = 18
+    FONT_SIZE_TITLE = 20
+    FONT_SIZE_HEADER = 24
+    
+    # 间距
+    PADDING_TINY = 4
+    PADDING_SMALL = 8
+    PADDING_NORMAL = 12
+    PADDING_MEDIUM = 16
+    PADDING_LARGE = 20
+    PADDING_XLARGE = 24
+    
+    # 圆角
+    RADIUS_SMALL = 4
+    RADIUS_NORMAL = 6
+    RADIUS_LARGE = 8
+    RADIUS_XLARGE = 12
+    
+    # 阴影
+    SHADOW_SMALL = "0 2px 4px rgba(0,0,0,0.2)"
+    SHADOW_NORMAL = "0 4px 8px rgba(0,0,0,0.3)"
+    SHADOW_LARGE = "0 8px 16px rgba(0,0,0,0.4)"
+    
+    # 动画时长（毫秒）
+    ANIMATION_FAST = 150
+    ANIMATION_NORMAL = 300
+    ANIMATION_SLOW = 500
 
 
 class LightTheme(ThemeColors):
@@ -67,57 +105,95 @@ class LightTheme(ThemeColors):
     NAME = "light"
     
     # 主色调
-    PRIMARY = "#4F46E5"
-    PRIMARY_DARK = "#4338CA"
-    PRIMARY_LIGHT = "#6366F1"
-    PRIMARY_GLOW = "rgba(79, 70, 229, 0.3)"
+    PRIMARY = "#2F7E7F"
+    PRIMARY_DARK = "#246566"
+    PRIMARY_LIGHT = "#4BA3A6"
+    PRIMARY_GLOW = "rgba(47, 126, 127, 0.25)"
     
     # 强调色
-    ACCENT = "#0891B2"
-    ACCENT_DARK = "#0E7490"
-    ACCENT_LIGHT = "#06B6D4"
+    ACCENT = "#C7762F"
+    ACCENT_DARK = "#A85F24"
+    ACCENT_LIGHT = "#E09F3E"
     
     # 状态色
-    SUCCESS = "#059669"
-    WARNING = "#D97706"
-    ERROR = "#DC2626"
-    INFO = "#2563EB"
+    SUCCESS = "#2F855A"
+    WARNING = "#C7762F"
+    ERROR = "#C53030"
+    INFO = "#2F7E7F"
     
     # 背景色
-    BG_PRIMARY = "#F8FAFC"
-    BG_SECONDARY = "#F1F5F9"
-    BG_TERTIARY = "#E2E8F0"
-    BG_HOVER = "#CBD5E1"
-    BG_SELECTED = "#BFDBFE"
+    BG_PRIMARY = "#F5F3EE"
+    BG_SECONDARY = "#EEE9E2"
+    BG_TERTIARY = "#E6DFD7"
+    BG_HOVER = "#DAD3C9"
+    BG_SELECTED = "#D7E6E5"
     BG_CARD = "#FFFFFF"
     
     # 表面色
     SURFACE = "#FFFFFF"
-    SURFACE_LIGHT = "#F8FAFC"
-    SURFACE_DARK = "#E2E8F0"
+    SURFACE_LIGHT = "#F9F7F3"
+    SURFACE_DARK = "#E6DFD7"
     SURFACE_GLASS = "rgba(255, 255, 255, 0.9)"
     
     # 文本色
-    TEXT_PRIMARY = "#1E293B"
-    TEXT_SECONDARY = "#64748B"
-    TEXT_DISABLED = "#94A3B8"
-    TEXT_HINT = "#94A3B8"
+    TEXT_PRIMARY = "#1D262F"
+    TEXT_SECONDARY = "#5B6B7A"
+    TEXT_DISABLED = "#8A97A5"
+    TEXT_HINT = "#8A97A5"
     
     # 边框色
-    BORDER = "#CBD5E1"
-    BORDER_LIGHT = "#E2E8F0"
-    BORDER_FOCUS = "#4F46E5"
-    BORDER_SUBTLE = "#E2E8F0"
+    BORDER = "#D4CCC2"
+    BORDER_LIGHT = "#E6DFD7"
+    BORDER_FOCUS = "#2F7E7F"
+    BORDER_SUBTLE = "#E6DFD7"
     
     # 分隔线
-    DIVIDER = "#E2E8F0"
-    DIVIDER_LIGHT = "#F1F5F9"
+    DIVIDER = "#E1DAD1"
+    DIVIDER_LIGHT = "#EEE9E2"
+
+    # 字体配置（与深色主题保持一致）
+    FONT_FAMILY = "Avenir Next, Futura, PingFang SC, Source Han Sans SC, Microsoft YaHei"
+    FONT_FAMILY_MONO = "JetBrains Mono, SF Mono, Monaco, Consolas, Courier New"
+
+    # 字体大小
+    FONT_SIZE_TINY = 10
+    FONT_SIZE_SMALL = 11
+    FONT_SIZE_NORMAL = 12
+    FONT_SIZE_MEDIUM = 14
+    FONT_SIZE_LARGE = 16
+    FONT_SIZE_XLARGE = 18
+    FONT_SIZE_TITLE = 20
+    FONT_SIZE_HEADER = 24
+
+    # 间距
+    PADDING_TINY = 4
+    PADDING_SMALL = 8
+    PADDING_NORMAL = 12
+    PADDING_MEDIUM = 16
+    PADDING_LARGE = 20
+    PADDING_XLARGE = 24
+
+    # 圆角
+    RADIUS_SMALL = 4
+    RADIUS_NORMAL = 6
+    RADIUS_LARGE = 8
+    RADIUS_XLARGE = 12
+
+    # 阴影
+    SHADOW_SMALL = "0 2px 4px rgba(0,0,0,0.15)"
+    SHADOW_NORMAL = "0 4px 8px rgba(0,0,0,0.2)"
+    SHADOW_LARGE = "0 8px 16px rgba(0,0,0,0.25)"
+
+    # 动画时长（毫秒）
+    ANIMATION_FAST = 150
+    ANIMATION_NORMAL = 300
+    ANIMATION_SLOW = 500
 
 
 class ThemeManager:
     """主题管理器 - 单例模式"""
     _instance = None
-    _current_theme = DarkTheme
+    _current_theme = LightTheme
     _callbacks = []
     _config_path = Path("config/theme_config.json")
     
@@ -196,8 +272,22 @@ class ThemeManager:
                 pass
 
 
-# 全局主题管理器
-theme_manager = ThemeManager()
+# 全局主题管理器（延迟初始化）
+_theme_manager_instance = None
+
+def get_theme_manager():
+    """获取主题管理器实例（延迟初始化）"""
+    global _theme_manager_instance
+    if _theme_manager_instance is None:
+        _theme_manager_instance = ThemeManager()
+    return _theme_manager_instance
+
+# 创建一个简单的代理对象，避免立即初始化
+class _ThemeManagerLazyProxy:
+    def __getattr__(self, name):
+        return getattr(get_theme_manager(), name)
+
+theme_manager = _ThemeManagerLazyProxy()
 
 
 class Theme:
@@ -324,48 +414,32 @@ class Theme:
     ANIMATION_SLOW = 500
 
 
-# 为兼容旧代码，使用类属性代理
+# 主题代理：始终读取当前主题
 class _ThemeProxy:
-    """主题代理类 - 支持直接访问类属性"""
     def __getattr__(self, name):
-        t = theme_manager.current
-        if hasattr(t, name):
-            return getattr(t, name)
-        # 静态属性
-        static_attrs = {
-            'FONT_FAMILY': "SF Pro Display, PingFang SC, Microsoft YaHei, Segoe UI, Arial",
-            'FONT_FAMILY_MONO': "SF Mono, Monaco, Consolas, Courier New",
-            'FONT_SIZE_TINY': 10, 'FONT_SIZE_SMALL': 11, 'FONT_SIZE_NORMAL': 12,
-            'FONT_SIZE_MEDIUM': 14, 'FONT_SIZE_LARGE': 16, 'FONT_SIZE_XLARGE': 18,
-            'FONT_SIZE_TITLE': 20, 'FONT_SIZE_HEADER': 24,
-            'PADDING_TINY': 4, 'PADDING_SMALL': 8, 'PADDING_NORMAL': 12,
-            'PADDING_MEDIUM': 16, 'PADDING_LARGE': 20, 'PADDING_XLARGE': 24,
-            'RADIUS_SMALL': 4, 'RADIUS_NORMAL': 6, 'RADIUS_LARGE': 8, 'RADIUS_XLARGE': 12,
-            'SHADOW_SMALL': "0 2px 4px rgba(0,0,0,0.2)",
-            'SHADOW_NORMAL': "0 4px 8px rgba(0,0,0,0.3)",
-            'SHADOW_LARGE': "0 8px 16px rgba(0,0,0,0.4)",
-            'ANIMATION_FAST': 150, 'ANIMATION_NORMAL': 300, 'ANIMATION_SLOW': 500,
-        }
-        return static_attrs.get(name)
+        return getattr(theme_manager.current, name)
 
 
-# 用代理替换Theme类
 Theme = _ThemeProxy()
 
 
 class Styles:
     """组件样式定义"""
     
+    # 使用当前主题
+    T = Theme
+    
     @staticmethod
     def get_button_style(variant="primary"):
         """获取按钮样式 - 现代设计"""
+        T = Theme
         if variant == "primary":
             return {
-                "font": (Theme.FONT_FAMILY, Theme.FONT_SIZE_NORMAL, "600"),
-                "bg": Theme.PRIMARY,
-                "fg": Theme.TEXT_PRIMARY,
-                "activebackground": Theme.PRIMARY_LIGHT,
-                "activeforeground": Theme.TEXT_PRIMARY,
+                "font": (T.FONT_FAMILY, T.FONT_SIZE_NORMAL, "600"),
+                "bg": T.PRIMARY,
+                "fg": T.TEXT_PRIMARY,
+                "activebackground": T.PRIMARY_LIGHT,
+                "activeforeground": T.TEXT_PRIMARY,
                 "relief": "flat",
                 "bd": 0,
                 "padx": 20,
@@ -376,28 +450,28 @@ class Styles:
             }
         elif variant == "secondary":
             return {
-                "font": (Theme.FONT_FAMILY, Theme.FONT_SIZE_NORMAL, "normal"),
-                "bg": Theme.SURFACE_LIGHT,
-                "fg": Theme.TEXT_PRIMARY,
-                "activebackground": Theme.BG_HOVER,
-                "activeforeground": Theme.TEXT_PRIMARY,
+                "font": (T.FONT_FAMILY, T.FONT_SIZE_NORMAL, "normal"),
+                "bg": T.SURFACE_LIGHT,
+                "fg": T.TEXT_PRIMARY,
+                "activebackground": T.BG_HOVER,
+                "activeforeground": T.TEXT_PRIMARY,
                 "relief": "flat",
                 "bd": 0,
                 "padx": 18,
                 "pady": 9,
                 "cursor": "hand2",
                 "highlightthickness": 1,
-                "highlightbackground": Theme.BORDER,
-                "highlightcolor": Theme.BORDER_FOCUS,
+                "highlightbackground": T.BORDER,
+                "highlightcolor": T.BORDER_FOCUS,
                 "borderwidth": 0
             }
         elif variant == "danger":
             return {
-                "font": (Theme.FONT_FAMILY, Theme.FONT_SIZE_NORMAL, "600"),
-                "bg": Theme.ERROR,
-                "fg": Theme.TEXT_PRIMARY,
+                "font": (T.FONT_FAMILY, T.FONT_SIZE_NORMAL, "600"),
+                "bg": T.ERROR,
+                "fg": T.TEXT_PRIMARY,
                 "activebackground": "#DC2626",
-                "activeforeground": Theme.TEXT_PRIMARY,
+                "activeforeground": T.TEXT_PRIMARY,
                 "relief": "flat",
                 "bd": 0,
                 "padx": 18,
@@ -408,11 +482,11 @@ class Styles:
             }
         elif variant == "success":
             return {
-                "font": (Theme.FONT_FAMILY, Theme.FONT_SIZE_NORMAL, "600"),
-                "bg": Theme.SUCCESS,
-                "fg": Theme.TEXT_PRIMARY,
+                "font": (T.FONT_FAMILY, T.FONT_SIZE_NORMAL, "600"),
+                "bg": T.SUCCESS,
+                "fg": T.TEXT_PRIMARY,
                 "activebackground": "#059669",
-                "activeforeground": Theme.TEXT_PRIMARY,
+                "activeforeground": T.TEXT_PRIMARY,
                 "relief": "flat",
                 "bd": 0,
                 "padx": 18,
@@ -423,11 +497,11 @@ class Styles:
             }
         elif variant == "ghost":
             return {
-                "font": (Theme.FONT_FAMILY, Theme.FONT_SIZE_NORMAL, "normal"),
+                "font": (T.FONT_FAMILY, T.FONT_SIZE_NORMAL, "normal"),
                 "bg": "transparent",
-                "fg": Theme.TEXT_SECONDARY,
-                "activebackground": Theme.BG_HOVER,
-                "activeforeground": Theme.TEXT_PRIMARY,
+                "fg": T.TEXT_SECONDARY,
+                "activebackground": T.BG_HOVER,
+                "activeforeground": T.TEXT_PRIMARY,
                 "relief": "flat",
                 "bd": 0,
                 "padx": 16,

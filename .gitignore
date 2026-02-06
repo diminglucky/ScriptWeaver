@@ -33,9 +33,11 @@ env/
 *.swo
 *~
 
-# Environment
+# Environment - 重要：不要提交真实密钥！
 .env
 .env.local
+.env.*.local
+*.backup
 
 # OS
 .DS_Store
@@ -49,7 +51,46 @@ backup/
 
 # Logs
 *.log
+logs/
 
 # Data (large files)
 *.index
 *.npy
+
+# 知识库索引文件（较大，不应提交）
+index/
+
+# 项目生成的图片和数据（可选择性提交）
+projects/*/images/
+projects/*/characters/*.png
+
+# 测试脚本（临时文件）
+测试*.py
+快速测试.py
+全面功能测试.py
+清理*.py
+
+# 临时文档和报告
+*报告.md
+*说明.md
+*总结.md
+*指南.md
+*检查清单.md
+验证*.md
+修复*.md
+启动说明.md
+
+# 保留重要文档
+!README.md
+!使用指南.md
+
+# API配置文件（包含敏感信息）
+custom_api_presets.json
+custom_image_api_presets.json
+
+# 缓存目录
+cache/
+data/
+
+# pytest缓存
+.pytest_cache/

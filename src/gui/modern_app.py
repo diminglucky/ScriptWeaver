@@ -71,7 +71,9 @@ class ModernApp(tk.Tk, ProjectMixin, StoryMixin, ImageMixin, KbMixin, ConfigMixi
         theme_manager.register_callback(self._on_theme_change)
         
         # 启动后自动加载配置
-        self.after(100, self._auto_load_api_config)
+        self.after(100, self._load_api_config_from_file)  # 先从 JSON 文件加载
+        self.after(150, self._auto_load_api_config)  # 再从 .env 加载（可能覆盖）
+        self.after(200, self._auto_load_story_api_selection)
     
     def _on_theme_change(self, new_theme):
         """主题变更回调"""
@@ -84,13 +86,14 @@ class ModernApp(tk.Tk, ProjectMixin, StoryMixin, ImageMixin, KbMixin, ConfigMixi
     def _init_variables(self):
         """初始化所有必需的变量"""
         # 路径配置
-        self.data_dir = tk.StringVar(value=str(Path("data/raw").resolve()))
+        self.data_dir = tk.StringVar(value=str(Path("data").resolve()))
         self.index_dir = tk.StringVar(value=str(Path("index").resolve()))
         
         # API配置
         self.api_key = tk.StringVar(value=os.getenv("DEEPSEEK_API_KEY", ""))
         self.base_url = tk.StringVar(value=os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com/v1"))
         self.model = tk.StringVar(value=os.getenv("DEEPSEEK_MODEL", "deepseek-chat"))
+        self.api_preset = tk.StringVar(value="DeepSeek")  # API预设选择
         
         # 生成参数
         self.top_k = tk.IntVar(value=6)
@@ -171,7 +174,24 @@ class ModernApp(tk.Tk, ProjectMixin, StoryMixin, ImageMixin, KbMixin, ConfigMixi
             },
             "自定义": {
                 "base_url": "",
-                "models": ["custom-model"],
+                "models": [
+                    "claude-sonnet-4-5",
+                    "claude-sonnet-4-5-20250929",
+                    "claude-sonnet-4",
+                    "claude-sonnet-4-20250514",
+                    "claude-3-7-sonnet-20250219",
+                    "gemini-3-pro-preview",
+                    "gemini-3-flash-preview",
+                    "gemini-2.5-pro",
+                    "gemini-2.5-flash",
+                    "gemini-2.5-flash-lite",
+                    "gemini-2.0-flash",
+                    "gemini-3-pro-image",
+                    "gpt-4o",
+                    "gpt-4o-mini",
+                    "gpt-3.5-turbo",
+                    "custom-model"
+                ],
                 "key": ""
             }
         }
@@ -190,27 +210,32 @@ class ModernApp(tk.Tk, ProjectMixin, StoryMixin, ImageMixin, KbMixin, ConfigMixi
             "OpenAI (DALL-E)": {
                 "base_url": "https://api.openai.com/v1",
                 "models": ["dall-e-3", "dall-e-2"],
-                "key": ""
+                "key": "",
+                "provider": "openai",
             },
             "V-API (Flux)": {
                 "base_url": "https://api.v-api.ai/v1",
                 "models": ["flux-1.1-pro", "flux-1-schnell", "flux-1-dev"],
-                "key": ""
+                "key": "",
+                "provider": "openai",
             },
             "硅基流动 (图片)": {
                 "base_url": "https://api.siliconflow.cn/v1",
                 "models": ["black-forest-labs/FLUX.1-schnell", "stabilityai/stable-diffusion-3-medium"],
-                "key": ""
+                "key": "",
+                "provider": "openai",
             },
             "腾讯混元": {
                 "base_url": "",
                 "models": ["hunyuan"],
-                "key": ""
+                "key": "",
+                "provider": "hunyuan",
             },
             "自定义": {
                 "base_url": "",
                 "models": ["custom-model"],
-                "key": ""
+                "key": "",
+                "provider": "openai",
             }
         }
         
@@ -220,7 +245,8 @@ class ModernApp(tk.Tk, ProjectMixin, StoryMixin, ImageMixin, KbMixin, ConfigMixi
             self.img_api_presets[name] = {
                 "base_url": config["base_url"],
                 "model": config["models"][0],
-                "key": config["key"]
+                "key": config["key"],
+                "provider": config.get("provider", "openai"),
             }
     
     def _setup_modern_styles(self):
@@ -310,6 +336,7 @@ class ModernApp(tk.Tk, ProjectMixin, StoryMixin, ImageMixin, KbMixin, ConfigMixi
                 ("disabled", Theme.BG_TERTIARY)
             ],
             foreground=[
+                ("pressed", Theme.TEXT_PRIMARY),
                 ("active", Theme.TEXT_PRIMARY),
                 ("disabled", Theme.TEXT_DISABLED)
             ]
@@ -366,14 +393,14 @@ class ModernApp(tk.Tk, ProjectMixin, StoryMixin, ImageMixin, KbMixin, ConfigMixi
         icon_canvas.create_oval(
             4, 4, 36, 36,
             fill="",
-            outline=Theme.PRIMARY_LIGHT,
+            outline=Theme.ACCENT,
             width=2
         )
         # 图标
         icon_canvas.create_text(
             20, 20,
-            text="✨",
-            font=(Theme.FONT_FAMILY, 18),
+            text="AS",
+            font=(Theme.FONT_FAMILY, 14, "bold"),
             fill=Theme.TEXT_PRIMARY
         )
         
@@ -535,7 +562,7 @@ class ModernApp(tk.Tk, ProjectMixin, StoryMixin, ImageMixin, KbMixin, ConfigMixi
             self.notebook.pack_configure(padx=0, pady=0)
             
             # 更新页面背景 - 使用更深的背景色
-            for page in [self.page_project, self.page_story, self.page_image]:
+            for page in [self.page_project, self.page_story, self.page_image, self.page_settings]:
                 page.configure(bg=Theme.BG_CARD)
                 self._apply_theme_to_children(page)
         
@@ -564,12 +591,70 @@ class ModernApp(tk.Tk, ProjectMixin, StoryMixin, ImageMixin, KbMixin, ConfigMixi
                 current_bg = widget.cget("bg")
                 if current_bg in ["#2b2b2b", "#1e1e1e", "SystemButtonFace", ""]:
                     widget.configure(bg=Theme.BG_SECONDARY)
+                # 同步文字颜色（仅覆盖默认/高对比色）
+                try:
+                    current_fg = widget.cget("fg")
+                    if current_fg in ["#ffffff", "#FFFFFF", "#d4d4d4", "#D4D4D4", "black", "white", ""]:
+                        widget.configure(fg=Theme.TEXT_PRIMARY)
+                except Exception:
+                    pass
             elif widget_class == "Text":
-                # 保持原有的Text配置
-                pass
+                # 统一文本区域风格（仅覆盖旧黑色背景）
+                current_bg = widget.cget("bg")
+                if current_bg in ["#000000", "#1e1e1e", "#2b2b2b"]:
+                    text_bg = Theme.SURFACE_DARK if theme_manager.is_dark else Theme.SURFACE
+                    widget.configure(
+                        bg=text_bg,
+                        fg=Theme.TEXT_PRIMARY,
+                        insertbackground=Theme.TEXT_PRIMARY,
+                        selectbackground=Theme.PRIMARY,
+                        selectforeground=Theme.TEXT_PRIMARY,
+                    )
             elif widget_class == "Entry":
-                # 保持原有的Entry配置
-                pass
+                current_bg = widget.cget("bg")
+                if current_bg in ["#000000", "#1e1e1e", "#2b2b2b"]:
+                    entry_bg = Theme.BG_TERTIARY if theme_manager.is_dark else Theme.SURFACE_LIGHT
+                    widget.configure(
+                        bg=entry_bg,
+                        fg=Theme.TEXT_PRIMARY,
+                        insertbackground=Theme.TEXT_PRIMARY,
+                        selectbackground=Theme.PRIMARY,
+                        selectforeground=Theme.TEXT_PRIMARY,
+                    )
+            elif widget_class == "Canvas":
+                current_bg = widget.cget("bg")
+                if current_bg in ["#000000", "#1e1e1e", "#2b2b2b"]:
+                    widget.configure(bg=Theme.BG_SECONDARY)
+            elif widget_class == "Listbox":
+                current_bg = widget.cget("bg")
+                if current_bg in ["#000000", "#1e1e1e", "#2b2b2b"]:
+                    widget.configure(
+                        bg=Theme.SURFACE if not theme_manager.is_dark else Theme.BG_TERTIARY,
+                        fg=Theme.TEXT_PRIMARY,
+                        selectbackground=Theme.PRIMARY,
+                        selectforeground=Theme.TEXT_PRIMARY,
+                    )
+            elif widget_class == "Button":
+                # 对常规按钮做轻量主题化
+                current_bg = widget.cget("bg")
+                current_fg = widget.cget("fg")
+                active_bg = widget.cget("activebackground")
+                active_fg = widget.cget("activeforeground")
+                if current_bg in ["#000000", "#1e1e1e", "#2b2b2b", "SystemButtonFace", ""]:
+                    widget.configure(
+                        bg=Theme.PRIMARY_DARK,
+                        fg=Theme.TEXT_PRIMARY,
+                        activebackground=Theme.PRIMARY,
+                        activeforeground=Theme.TEXT_PRIMARY,
+                        relief="flat",
+                        bd=0,
+                    )
+                else:
+                    # 保留自定义颜色，但修复按下状态变白的问题
+                    if active_bg in ["SystemButtonFace", "", None, "#ffffff", "#FFFFFF", "white"]:
+                        widget.configure(activebackground=current_bg)
+                    if active_fg in ["SystemButtonText", "", None] or (active_bg in ["#ffffff", "#FFFFFF", "white"] and active_fg in ["white", "#ffffff", "#FFFFFF"]):
+                        widget.configure(activeforeground=current_fg or Theme.TEXT_PRIMARY)
             
             # 递归处理子组件
             for child in widget.winfo_children():
@@ -705,25 +790,67 @@ class ModernApp(tk.Tk, ProjectMixin, StoryMixin, ImageMixin, KbMixin, ConfigMixi
             ❌ - 错误
             ⚠️ - 警告
         """
-        try:
-            if hasattr(self, 'header_status_icon') and hasattr(self, 'header_status_text'):
-                self.header_status_icon.config(text=icon)
-                self.header_status_text.config(text=text)
-                if color:
-                    self.header_status_text.config(fg=color)
-                else:
-                    # 根据图标自动选择颜色
-                    if icon == "✅":
-                        self.header_status_text.config(fg=Theme.TEXT_PRIMARY)
-                    elif icon == "❌":
-                        self.header_status_text.config(fg="#ef5350")  # 红色
-                    elif icon == "⚠️":
-                        self.header_status_text.config(fg="#ffa726")  # 橙色
-                    elif icon in ["🔄", "📝", "🎨", "⏳"]:
-                        self.header_status_text.config(fg="#42a5f5")  # 蓝色（进行中）
+        def apply():
+            try:
+                if hasattr(self, 'header_status_icon') and hasattr(self, 'header_status_text'):
+                    self.header_status_icon.config(text=icon)
+                    self.header_status_text.config(text=text)
+                    if color:
+                        self.header_status_text.config(fg=color)
                     else:
-                        self.header_status_text.config(fg=Theme.TEXT_PRIMARY)
-                # 强制刷新UI
-                self.update_idletasks()
+                        # 根据图标自动选择颜色
+                        if icon == "✅":
+                            self.header_status_text.config(fg=Theme.TEXT_PRIMARY)
+                        elif icon == "❌":
+                            self.header_status_text.config(fg="#ef5350")  # 红色
+                        elif icon == "⚠️":
+                            self.header_status_text.config(fg="#ffa726")  # 橙色
+                        elif icon in ["🔄", "📝", "🎨", "⏳"]:
+                            self.header_status_text.config(fg="#42a5f5")  # 蓝色（进行中）
+                        else:
+                            self.header_status_text.config(fg=Theme.TEXT_PRIMARY)
+                    # 强制刷新UI
+                    self.update_idletasks()
+            except Exception as e:
+                print(f"更新状态栏失败: {e}")
+        if hasattr(self, "_ui"):
+            self._ui(apply)
+        else:
+            apply()
+
+    
+    def _auto_load_story_api_selection(self):
+        """自动加载故事 API 选择配置"""
+        try:
+            from dotenv import load_dotenv
+            import os
+            
+            load_dotenv(override=True)
+            
+            # 加载故事创作功能API配置
+            outline_api = os.getenv("STORY_OUTLINE_GEN_API", "DeepSeek")
+            if hasattr(self, 'outline_gen_api'):
+                self.outline_gen_api.set(outline_api)
+                print(f"✅ 已加载目录生成API: {outline_api}")
+            
+            story_api = os.getenv("STORY_STORY_GEN_API", "DeepSeek")
+            if hasattr(self, 'story_gen_api'):
+                self.story_gen_api.set(story_api)
+                print(f"✅ 已加载故事生成API: {story_api}")
+            
+            # 更新故事创作功能API下拉框的选项
+            if hasattr(self, 'api_presets') and hasattr(self, 'combo_outline_gen_api'):
+                api_list = list(self.api_presets.keys())
+                self.combo_outline_gen_api['values'] = api_list
+                self.combo_story_gen_api['values'] = api_list
+                print(f"✅ 已更新API选项列表: {api_list}")
+            
+            # 同步到快速切换区域
+            if hasattr(self, 'quick_story_api'):
+                self.quick_story_api.set(story_api)
+                print(f"✅ 已同步到快速切换: {story_api}")
+                
         except Exception as e:
-            print(f"更新状态栏失败: {e}")
+            print(f"❌ 加载故事API选择失败: {e}")
+            import traceback
+            traceback.print_exc()

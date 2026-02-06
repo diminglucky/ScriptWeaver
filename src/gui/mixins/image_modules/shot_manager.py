@@ -17,6 +17,25 @@ from ...helpers.image_helpers import ImagePromptHelper, DescriptionPromptBuilder
 
 class ShotManagerMixin:
 	"""负责分镜头提取和管理"""
+
+	@staticmethod
+	def _parse_shot_response(response_text: str) -> list[str]:
+		"""解析分镜响应文本，提取纯分镜描述列表"""
+		shots: list[str] = []
+		for line in response_text.strip().split('\n'):
+			line = line.strip()
+			if not line:
+				continue
+			if line[0].isdigit() or line.startswith('•') or line.startswith('-'):
+				if '.' in line:
+					shot_text = line.split('.', 1)[1].strip()
+				elif line.startswith('•') or line.startswith('-'):
+					shot_text = line[1:].strip()
+				else:
+					shot_text = line
+				if shot_text:
+					shots.append(shot_text)
+		return shots
 	
 	def _on_recommend_video_mode(self) -> None:
 		"""智能推荐视频模式"""
@@ -103,7 +122,7 @@ class ShotManagerMixin:
 			# 用户确认，直接生成
 			self._on_img_extract_shots(mode=mode)
 		else:
-			self.status.set(f"💡 推荐使用 {recommendation}")
+			self._ui(self.status.set, f"💡 推荐使用 {recommendation}")
 
 	
 	def _on_img_extract_shots(self, mode="normal") -> None:
@@ -121,13 +140,20 @@ class ShotManagerMixin:
 			messagebox.showwarning("提示", "请先在'故事'页生成或粘贴正文内容，然后再生成分镜")
 			return
 		
-		# 获取选中的分镜头生成API配置
-		selected_api = self.shot_gen_api.get() if hasattr(self, 'shot_gen_api') else "DeepSeek"
-		if selected_api not in self.api_presets:
-			messagebox.showerror("错误", f"未找到API预设: {selected_api}")
-			return
+		# 分镜生成：根据模型路由选择 API
+		fallback_provider = None
+		if hasattr(self, 'quick_story_api'):
+			fallback_provider = self.quick_story_api.get()
+		if not fallback_provider and hasattr(self, 'api_preset'):
+			fallback_provider = self.api_preset.get()
+		fallback_model = None
+		if hasattr(self, 'story_model_var'):
+			fallback_model = self.story_model_var.get()
+		elif hasattr(self, 'model'):
+			fallback_model = self.model.get()
 		
-		api_config = self.api_presets[selected_api]
+		api_config = self._resolve_task_api("image_shot_extract", fallback_provider=fallback_provider, fallback_model=fallback_model)
+		selected_api = api_config.get("provider", "")
 		api_key = _sanitize(api_config.get("key", ""))
 		base_url = _sanitize(api_config.get("base_url", ""))
 		model = _sanitize(api_config.get("model", ""))
@@ -226,7 +252,7 @@ class ShotManagerMixin:
 		def task():
 			try:
 				self.set_busy(True)
-				self.status.set(f"🎬 正在使用 {selected_api} 生成{mode_name}分镜（目标{shot_count}个）...")
+				self._ui(self.status.set, f"🎬 正在使用 {selected_api} 生成{mode_name}分镜（目标{shot_count}个）...")
 				# 更新顶部状态栏
 				if hasattr(self, 'update_header_status'):
 					self.update_header_status(f"生成{mode_name}分镜...", "🎬")
@@ -237,61 +263,51 @@ class ShotManagerMixin:
 					model=model,
 				)
 				
-				self.status.set(f"🤖 {selected_api} 正在分析故事并生成{mode_name}分镜...")
+				self._ui(self.status.set, f"🤖 {selected_api} 正在分析故事并生成{mode_name}分镜...")
 				
 				resp = client.chat([
 					{"role": "system", "content": inst},
 					{"role": "user", "content": story_text},
 				], temperature=max(0.4, self.temperature.get() - 0.2))
 				
-				self.status.set("📋 解析分镜头列表...")
+				self._ui(self.status.set, "📋 解析分镜头列表...")
 				# 更新顶部状态栏
 				if hasattr(self, 'update_header_status'):
 					self.update_header_status("解析分镜中...", "📋")
 				
 				# 解析分镜列表
-				shots = []
-				shot_lines = []  # 保留带序号的原始行
-				for line in resp.strip().split('\n'):
-					line = line.strip()
-					if line and (line[0].isdigit() or line.startswith('•') or line.startswith('-')):
-						shot_lines.append(line)
-						# 移除序号提取内容
-						if '.' in line:
-							shot_text = line.split('.', 1)[1].strip()
-						elif line.startswith('•') or line.startswith('-'):
-							shot_text = line[1:].strip()
-						else:
-							shot_text = line
-					shots.append(shot_text)
+				shots = self._parse_shot_response(resp)
 				
 				# 更新分镜列表框
 				if shots:
-					self.status.set(f"✅ 更新分镜显示...")
+					self._ui(self.status.set, f"✅ 更新分镜显示...")
 					
-					# 更新Listbox
-					self.shots_listbox.config(state=NORMAL)
-					self.shots_listbox.delete(0, END)
-					for i, shot in enumerate(shots):
-						# 显示序号和分镜描述（限制长度以便阅读）
-						display_text = f"{i+1}. {shot[:80]}..." if len(shot) > 80 else f"{i+1}. {shot}"
-						self.shots_listbox.insert(END, display_text)
+					def update_shots_ui():
+						# 更新Listbox
+						self.shots_listbox.config(state=NORMAL)
+						self.shots_listbox.delete(0, END)
+						for i, shot in enumerate(shots):
+							# 显示序号和分镜描述（限制长度以便阅读）
+							display_text = f"{i+1}. {shot[:80]}..." if len(shot) > 80 else f"{i+1}. {shot}"
+							self.shots_listbox.insert(END, display_text)
+						
+						# 保存完整的分镜列表
+						self.parsed_shots = shots
+						
+						# 默认选中第一个分镜
+						self.shots_listbox.selection_set(0)
+						self.shots_listbox.activate(0)
+						# 显示第一个分镜
+						self._on_shot_listbox_selected(None)
+						
+						self._ui(self.status.set, f"🎬 已生成{mode_name} {len(shots)} 个分镜（点击列表中的分镜即可选择）")
+						# 更新顶部状态栏
+						if hasattr(self, 'update_header_status'):
+							self.update_header_status("分镜生成完成", "✅")
 					
-					# 保存完整的分镜列表
-					self.parsed_shots = shots
-					
-					# 默认选中第一个分镜
-					self.shots_listbox.selection_set(0)
-					self.shots_listbox.activate(0)
-					# 显示第一个分镜
-					self._on_shot_listbox_selected(None)
-					
-					self.status.set(f"🎬 已生成{mode_name} {len(shots)} 个分镜（点击列表中的分镜即可选择）")
-					# 更新顶部状态栏
-					if hasattr(self, 'update_header_status'):
-						self.update_header_status("分镜生成完成", "✅")
+					self._ui(update_shots_ui)
 			except Exception as e:
-				messagebox.showerror("错误", str(e))
+				self._ui(messagebox.showerror, "错误", str(e))
 				# 更新顶部状态栏
 				if hasattr(self, 'update_header_status'):
 					self.update_header_status("分镜生成失败", "❌")
@@ -319,7 +335,7 @@ class ShotManagerMixin:
 		current_shot = self.parsed_shots[selected_index]
 		
 		# 显示状态
-		self.status.set(f"已选择第 {selected_index+1} 个分镜，正在识别人物...")
+		self._ui(self.status.set, f"已选择第 {selected_index+1} 个分镜，正在识别人物...")
 		
 		# 智能识别并自动选择参考人物（延迟执行以确保UI更新）
 		self.after(50, lambda: self._auto_select_characters_from_shot(current_shot, ""))
@@ -471,13 +487,20 @@ class ShotManagerMixin:
 					f"- 必须明确指定镜头景别"
 				)
 		
-		# 获取选中的图片描述生成API配置
-		selected_api = self.desc_gen_api.get() if hasattr(self, 'desc_gen_api') else "DeepSeek"
-		if selected_api not in self.api_presets:
-			messagebox.showerror("错误", f"未找到API预设: {selected_api}")
-			return
+		# 图片描述生成：根据模型路由选择 API
+		fallback_provider = None
+		if hasattr(self, 'quick_story_api'):
+			fallback_provider = self.quick_story_api.get()
+		if not fallback_provider and hasattr(self, 'api_preset'):
+			fallback_provider = self.api_preset.get()
+		fallback_model = None
+		if hasattr(self, 'story_model_var'):
+			fallback_model = self.story_model_var.get()
+		elif hasattr(self, 'model'):
+			fallback_model = self.model.get()
 		
-		api_config = self.api_presets[selected_api]
+		api_config = self._resolve_task_api("image_shot_to_desc", fallback_provider=fallback_provider, fallback_model=fallback_model)
+		selected_api = api_config.get("provider", "")
 		api_key = _sanitize(api_config.get("key", ""))
 		base_url = _sanitize(api_config.get("base_url", ""))
 		model = _sanitize(api_config.get("model", ""))
@@ -496,7 +519,7 @@ class ShotManagerMixin:
 				has_photo = any(char.get("photo_path") for char in selected_characters if char)
 				
 				mode_text = "图生图（只生成动作表情）" if has_photo else "文生图（完整描述）"
-				self.status.set(f"📸 正在使用 {selected_api} 生成图片描述（{mode_text}，第{selected_index+1}个分镜）...")
+				self._ui(self.status.set, f"📸 正在使用 {selected_api} 生成图片描述（{mode_text}，第{selected_index+1}个分镜）...")
 				# 更新顶部状态栏
 				if hasattr(self, 'update_header_status'):
 					self.update_header_status("生成图片描述...", "📸")
@@ -572,7 +595,7 @@ class ShotManagerMixin:
 				{"role": "user", "content": user},
 				], temperature=max(0.5, self.temperature.get() - 0.1))
 				
-				self.status.set("✅ 更新图片描述...")
+				self._ui(self.status.set, "✅ 更新图片描述...")
 			
 				description = resp.strip()
 			
@@ -587,13 +610,13 @@ class ShotManagerMixin:
 					else:
 						description = truncated
 			
-				self.img_txt_prompt_cn.delete("1.0", END)
-				self.img_txt_prompt_cn.insert(END, description)
+				self._ui(self.img_txt_prompt_cn.delete, "1.0", END)
+				self._ui(self.img_txt_prompt_cn.insert, END, description)
 			
 				# 显示字数统计
 				char_count = len(description)
 				api_type = "腾讯混元简洁版" if is_hunyuan else "精简版"
-				self.status.set(f"✨ 已生成【{img_type}】{api_type}图片描述（{char_count}字，可编辑后生成）")
+				self._ui(self.status.set, f"✨ 已生成【{img_type}】{api_type}图片描述（{char_count}字，可编辑后生成）")
 				# 更新顶部状态栏
 				if hasattr(self, 'update_header_status'):
 					self.update_header_status("图片描述完成", "✅")
@@ -601,7 +624,7 @@ class ShotManagerMixin:
 				# 智能识别并自动选择参考人物
 				self.after(100, lambda: self._auto_select_characters_from_shot(current_shot, description))
 			except Exception as e:
-				messagebox.showerror("错误", str(e))
+				self._ui(messagebox.showerror, "错误", str(e))
 				# 更新顶部状态栏
 				if hasattr(self, 'update_header_status'):
 					self.update_header_status("生成描述失败", "❌")
@@ -679,11 +702,11 @@ class ShotManagerMixin:
 				for i, shot in enumerate(self.parsed_shots):
 					# 检查是否被取消
 					if self._batch_cancelled:
-						self.after(0, lambda: self.status.set(f"⚠️ 批量生成已取消，已完成 {generated_count}/{shot_count}"))
+						self.after(0, lambda: self._ui(self.status.set, f"⚠️ 批量生成已取消，已完成 {generated_count}/{shot_count}"))
 						break
 					
 					# 更新进度
-					self.after(0, lambda idx=i, total=shot_count: self.status.set(
+					self.after(0, lambda idx=i, total=shot_count: self._ui(self.status.set, 
 						f"🎨 [{idx+1}/{total}] 正在生成第 {idx+1} 个分镜的图片..."
 					))
 					if hasattr(self, 'update_header_status'):
@@ -716,7 +739,7 @@ class ShotManagerMixin:
 				
 				# 完成
 				def on_complete():
-					self.status.set(f"✅ 批量生成完成！成功 {generated_count} 张，失败 {failed_count} 张")
+					self._ui(self.status.set, f"✅ 批量生成完成！成功 {generated_count} 张，失败 {failed_count} 张")
 					if hasattr(self, 'update_header_status'):
 						self.update_header_status("批量完成", "✅")
 					
@@ -743,9 +766,19 @@ class ShotManagerMixin:
 	
 	def _generate_shot_description_sync(self, shot: str, index: int) -> str:
 		"""同步生成单个分镜的图片描述"""
-		# 获取API配置
-		selected_api = self.desc_gen_api.get() if hasattr(self, 'desc_gen_api') else "DeepSeek"
-		api_config = self.api_presets.get(selected_api, {})
+		# 分镜转描述：根据模型路由选择 API
+		fallback_provider = None
+		if hasattr(self, 'quick_story_api'):
+			fallback_provider = self.quick_story_api.get()
+		if not fallback_provider and hasattr(self, 'api_preset'):
+			fallback_provider = self.api_preset.get()
+		fallback_model = None
+		if hasattr(self, 'story_model_var'):
+			fallback_model = self.story_model_var.get()
+		elif hasattr(self, 'model'):
+			fallback_model = self.model.get()
+		
+		api_config = self._resolve_task_api("image_shot_to_desc", fallback_provider=fallback_provider, fallback_model=fallback_model)
 		api_key = _sanitize(api_config.get("key", ""))
 		base_url = _sanitize(api_config.get("base_url", ""))
 		model = _sanitize(api_config.get("model", ""))
@@ -796,7 +829,7 @@ class ShotManagerMixin:
 	def _cancel_batch_generation(self) -> None:
 		"""取消批量生成"""
 		self._batch_cancelled = True
-		self.status.set("⏳ 正在取消批量生成...")
+		self._ui(self.status.set, "⏳ 正在取消批量生成...")
 	
 	def _on_img_prompt_from_shots(self) -> None:
 		"""从分镜列表生成提示词"""
@@ -807,36 +840,56 @@ class ShotManagerMixin:
 		story_text = self.output.get("1.0", END).strip() if hasattr(self, 'output') else ""
 		scene = self.img_entry_scene.get().strip() if hasattr(self, 'img_entry_scene') else ""
 		roles = self.img_txt_roles.get("1.0", END).strip() if hasattr(self, 'img_txt_roles') else ""
-		try:
-			self.set_busy(True)
-			self.status.set("根据分镜生成提示词中...")
-			client = DeepSeekClient(
-				api_key=_sanitize(self.api_key.get()),
-				base_url=_sanitize(self.base_url.get()),
-				model=_sanitize(self.model.get()),
-			)
-			inst = (
-				"你是资深视觉提示词工程师。基于分镜清单与故事上下文，输出单段英文提示词用于文生图，"
-				"确保人物与故事中的设定一致（面部/发型/年龄/服饰/气质），并与所选场景匹配。包含场景/构图/主体细节/表情动作/光线镜头/风格与质感。"
-				"禁止 Markdown，仅输出英文提示词。"
-			)
-			user = (
-				f"分镜清单：\n{shots}\n\n"
-				f"故事上下文：\n{story_text}\n\n"
-				f"补充场景：{scene or '无'}\n人物设定：{roles or '无'}\n"
-				"请给出最终英文提示词。"
-			)
-			resp = client.chat([
-				{"role": "system", "content": inst},
-				{"role": "user", "content": user},
-			], temperature=max(0.4, self.temperature.get() - 0.2))
-			self.img_txt_prompt.delete("1.0", END)
-			self.img_txt_prompt.insert(END, resp.strip())
-			self.status.set("已根据分镜生成提示词")
-		except Exception as e:
-			messagebox.showerror("错误", str(e))
-		finally:
-			self.set_busy(False)
+		
+		def task():
+			try:
+				self.set_busy(True)
+				self._ui(self.status.set, "根据分镜生成提示词中...")
+				fallback_provider = None
+				if hasattr(self, 'quick_story_api'):
+					fallback_provider = self.quick_story_api.get()
+				if not fallback_provider and hasattr(self, 'api_preset'):
+					fallback_provider = self.api_preset.get()
+				fallback_model = None
+				if hasattr(self, 'story_model_var'):
+					fallback_model = self.story_model_var.get()
+				elif hasattr(self, 'model'):
+					fallback_model = self.model.get()
+				
+				api_config = self._resolve_task_api("image_prompt_from_shots", fallback_provider=fallback_provider, fallback_model=fallback_model)
+				if not _sanitize(api_config.get("key", "")):
+					self._ui(messagebox.showwarning, "提示", "请先在设置页配置用于生成提示词的API Key")
+					return
+				client = DeepSeekClient(
+					api_key=_sanitize(api_config.get("key", "")),
+					base_url=_sanitize(api_config.get("base_url", "")),
+					model=_sanitize(api_config.get("model", "")),
+				)
+				inst = (
+					"你是资深视觉提示词工程师。基于分镜清单与故事上下文，输出单段英文提示词用于文生图，"
+					"确保人物与故事中的设定一致（面部/发型/年龄/服饰/气质），并与所选场景匹配。包含场景/构图/主体细节/表情动作/光线镜头/风格与质感。"
+					"禁止 Markdown，仅输出英文提示词。"
+				)
+				user = (
+					f"分镜清单：\n{shots}\n\n"
+					f"故事上下文：\n{story_text}\n\n"
+					f"补充场景：{scene or '无'}\n人物设定：{roles or '无'}\n"
+					"请给出最终英文提示词。"
+				)
+				resp = client.chat([
+					{"role": "system", "content": inst},
+					{"role": "user", "content": user},
+				], temperature=max(0.4, self.temperature.get() - 0.2))
+				self._ui(self.img_txt_prompt.delete, "1.0", END)
+				self._ui(self.img_txt_prompt.insert, END, resp.strip())
+				self._ui(self.status.set, "已根据分镜生成提示词")
+			except Exception as e:
+				self._ui(messagebox.showerror, "错误", str(e))
+			finally:
+				self.set_busy(False)
+		
+		import threading
+		threading.Thread(target=task, daemon=True).start()
 
 	
 	def _auto_select_characters_from_shot(self, shot_text: str, description: str = "") -> None:
@@ -856,10 +909,22 @@ class ShotManagerMixin:
 			
 			available_characters = []
 			for char in self.character_list:
-				if char.get("photo_path"):
+				try:
+					from ...models.character import Character
+				except Exception:
+					Character = None
+				if Character and isinstance(char, Character):
+					photo_path = char.primary_photo
+					name = char.name
+					description = char.description or ""
+				else:
+					photo_path = char.get("photo_path") if isinstance(char, dict) else ""
+					name = char.get("name", "") if isinstance(char, dict) else ""
+					description = char.get("description", "") if isinstance(char, dict) else ""
+				if photo_path:
 					available_characters.append({
-						"name": char["name"],
-						"description": char.get("description", "")
+						"name": name,
+						"description": description
 					})
 			
 			print(f"📋 可用人物数量：{len(available_characters)}")
@@ -948,7 +1013,7 @@ class ShotManagerMixin:
 			selected_count = 0
 			for idx in range(self.ref_character_listbox.size()):
 				item_text = self.ref_character_listbox.get(idx)
-				if item_text.startswith("✅ "):
+				if item_text.startswith(("✅ ", "🧬 ")):
 					char_name = item_text[2:].strip()
 					if char_name in mentioned_characters:
 						self.ref_character_listbox.selection_set(idx)
@@ -958,7 +1023,7 @@ class ShotManagerMixin:
 			# 显示提示信息
 			if mentioned_characters:
 				char_names = "、".join(mentioned_characters)
-				self.status.set(f"✅ 已自动选择参考人物：{char_names}")
+				self._ui(self.status.set, f"✅ 已自动选择参考人物：{char_names}")
 				print(f"🎭 智能识别并选中 {selected_count} 个人物：{char_names}")
 			
 			print(f"{'='*60}\n")

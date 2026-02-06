@@ -12,6 +12,7 @@ from src.clients.deepseek_client import DeepSeekClient
 from src.kb.ingest import KnowledgeBaseIngestor, IngestConfig
 from src.kb.search import KnowledgeBaseSearcher, SearchConfig
 from src.utils.text import sanitize as _sanitize
+from ...theme import Theme
 
 
 class StoryUIBuilderMixin:
@@ -226,7 +227,7 @@ class StoryUIBuilderMixin:
 				 fg="#90CAF9", font=("", 9), bg="#2b2b2b").grid(row=0, column=0, columnspan=2, sticky="w", padx=8, pady=(8, 10))
 		
 		# 目录生成API选择
-		tk.Label(grp_assist_api, text="目录生成API:").grid(row=1, column=0, sticky="e", padx=(8, 4), pady=8)
+		tk.Label(grp_assist_api, text="目录生成API:", bg="#2b2b2b", fg="#FCD34D", font=("", 11, "bold")).grid(row=1, column=0, sticky="e", padx=(8, 4), pady=8)
 		self.outline_gen_api = tk.StringVar(value="DeepSeek")
 		self.combo_outline_gen_api = ttk.Combobox(grp_assist_api, textvariable=self.outline_gen_api, 
 											   values=["DeepSeek"],  # 初始值，会在加载配置时更新
@@ -234,7 +235,7 @@ class StoryUIBuilderMixin:
 		self.combo_outline_gen_api.grid(row=1, column=1, sticky="w", padx=(0, 8))
 		
 		# 故事生成API选择
-		tk.Label(grp_assist_api, text="故事生成API:").grid(row=2, column=0, sticky="e", padx=(8, 4), pady=8)
+		tk.Label(grp_assist_api, text="故事生成API:", bg="#2b2b2b", fg="#FCD34D", font=("", 11, "bold")).grid(row=2, column=0, sticky="e", padx=(8, 4), pady=8)
 		self.story_gen_api = tk.StringVar(value="DeepSeek")
 		self.combo_story_gen_api = ttk.Combobox(grp_assist_api, textvariable=self.story_gen_api,
 											   values=["DeepSeek"],  # 初始值，会在加载配置时更新
@@ -309,6 +310,17 @@ class StoryUIBuilderMixin:
 										   font=("", 12))
 		self.combo_category.pack(side=LEFT, padx=(0, 20))
 		
+		# 模型选择
+		tk.Label(row1_frame, text="🤖 模型:", font=("", 12, "bold"), bg="#2b2b2b", fg="#FCD34D").pack(side=LEFT, padx=(0, 8))
+		self.story_model_var = tk.StringVar(value="claude-sonnet-4-5")
+		self.combo_story_model = ttk.Combobox(row1_frame, textvariable=self.story_model_var, width=25,
+											  values=["正在加载..."],
+											  state="normal", font=("", 11))
+		self.combo_story_model.pack(side=LEFT, padx=(0, 20))
+		
+		# 异步加载模型列表
+		self.after(500, self._load_available_models)
+		
 		# 中间：风格
 		tk.Label(row1_frame, text="🎨 风格:", font=("", 12, "bold"), bg="#2b2b2b", fg="#ffffff").pack(side=LEFT, padx=(0, 8))
 		self.entry_style = tk.Entry(row1_frame, textvariable=self.style, width=45, font=("", 12),
@@ -316,6 +328,9 @@ class StoryUIBuilderMixin:
 									 insertbackground="white", selectbackground="#ffffff", selectforeground="#000000",
 									 highlightthickness=0)
 		self.entry_style.pack(side=LEFT, padx=(0, 6))
+		# 修复Entry颜色问题
+		if hasattr(self, '_fix_entry_colors'):
+			self._fix_entry_colors(self.entry_style)
 		self.btn_add_style = tk.Button(row1_frame, text="➕", command=self._show_style_menu,
 									   font=("", 11, "bold"), bg="#000000", fg="#ffffff", relief=tk.FLAT,
 									   padx=10, pady=4, cursor="hand2", activebackground="#000000", activeforeground="#ffffff")
@@ -367,12 +382,20 @@ class StoryUIBuilderMixin:
 		
 		# 创建一个样式来设置Combobox的颜色
 		style = ttk.Style()
-		style.configure('Chapter.TCombobox', foreground='#ffffff', fieldbackground='#000000', background='#000000', 
-						borderwidth=0, relief='flat')
-		style.map('Chapter.TCombobox', 
-				  fieldbackground=[('readonly', '#000000')],
-				  selectbackground=[('readonly', '#000000')],
-				  selectforeground=[('readonly', '#ffffff')])
+		style.configure(
+			'Chapter.TCombobox',
+			foreground=Theme.TEXT_PRIMARY,
+			fieldbackground=Theme.SURFACE,
+			background=Theme.SURFACE,
+			borderwidth=0,
+			relief='flat'
+		)
+		style.map(
+			'Chapter.TCombobox',
+			fieldbackground=[('readonly', Theme.SURFACE)],
+			selectbackground=[('readonly', Theme.SURFACE)],
+			selectforeground=[('readonly', Theme.TEXT_PRIMARY)]
+		)
 		
 		chapter_frame = tk.Frame(self.story_tab_create, bg="#2b2b2b")
 		chapter_frame.grid(row=2, column=1, sticky="we", padx=(0, 15), pady=(0, 15))
@@ -385,10 +408,10 @@ class StoryUIBuilderMixin:
 		
 		# 配置下拉列表的样式
 		self.option_add('*TCombobox*Listbox.font', ('', 14))
-		self.option_add('*TCombobox*Listbox.foreground', '#ffffff')
-		self.option_add('*TCombobox*Listbox.background', '#000000')
-		self.option_add('*TCombobox*Listbox.selectBackground', '#ffffff')
-		self.option_add('*TCombobox*Listbox.selectForeground', '#000000')
+		self.option_add('*TCombobox*Listbox.foreground', Theme.TEXT_PRIMARY)
+		self.option_add('*TCombobox*Listbox.background', Theme.SURFACE)
+		self.option_add('*TCombobox*Listbox.selectBackground', Theme.PRIMARY)
+		self.option_add('*TCombobox*Listbox.selectForeground', Theme.TEXT_PRIMARY)
 		
 		self.btn_generate_section = tk.Button(chapter_frame, text="📝 生成选中章节", command=self.on_generate_section, 
 											   state=DISABLED, font=("", 12, "bold"), bg="#000000", fg="#ffffff",
@@ -559,3 +582,125 @@ class StoryUIBuilderMixin:
 
 
 	
+
+	
+	def _load_available_models(self):
+		"""异步加载可用的模型列表"""
+		def task():
+			try:
+				import requests
+				
+				# 从配置中获取 API 信息
+				if hasattr(self, 'api_presets') and "自定义" in self.api_presets:
+					api_config = self.api_presets["自定义"]
+					api_key = api_config.get("key", "")
+					base_url = api_config.get("base_url", "")
+					
+					if not api_key or not base_url:
+						print("⚠️  API 配置不完整，使用默认模型列表")
+						self._set_default_models()
+						return
+					
+					base_url = base_url.rstrip("/")
+					candidates = []
+					if base_url.endswith("/v1"):
+						candidates.append(f"{base_url}/models")
+					else:
+						candidates.append(f"{base_url}/v1/models")
+						candidates.append(f"{base_url}/models")
+					
+					# 调用 API 获取模型列表
+					headers = {
+						"Authorization": f"Bearer {api_key}",
+						"User-Agent": "Mozilla/5.0"
+					}
+					last_status = None
+					result = None
+					for url in candidates:
+						try:
+							response = requests.get(url, headers=headers, timeout=10)
+							last_status = response.status_code
+							if response.status_code == 200:
+								result = response.json()
+								break
+						except Exception:
+							continue
+					
+					if result is not None:
+						models = []
+						if isinstance(result, dict):
+							if isinstance(result.get("data"), list):
+								models = [m.get("id") or m.get("name") for m in result["data"] if isinstance(m, dict)]
+							elif isinstance(result.get("models"), list):
+								models = [m.get("id") or m.get("name") for m in result["models"] if isinstance(m, dict)]
+						elif isinstance(result, list):
+							models = [m.get("id") or m.get("name") for m in result if isinstance(m, dict)]
+						
+						models = [m for m in models if m]
+						if models:
+							# 更新故事生成页面的下拉框
+							if hasattr(self, 'combo_story_model'):
+								self._ui(self.combo_story_model.__setitem__, 'values', models)
+								current = self._ui_get(self.story_model_var.get) if hasattr(self, '_ui_get') else self.story_model_var.get()
+								if current not in models:
+									self._ui(self.story_model_var.set, models[0])
+							
+							# 更新人物生成页面的下拉框
+							if hasattr(self, 'combo_char_model'):
+								self._ui(self.combo_char_model.__setitem__, 'values', models)
+								current = self._ui_get(self.char_model_var.get) if hasattr(self, '_ui_get') else self.char_model_var.get()
+								if current not in models:
+									self._ui(self.char_model_var.set, models[0])
+							
+							print(f"✅ 已加载 {len(models)} 个可用模型（故事生成 + 人物生成）")
+						else:
+							print("⚠️  API 响应未包含模型列表，使用默认模型列表")
+							self._set_default_models()
+					else:
+						print(f"⚠️  获取模型列表失败 ({last_status})，使用默认模型列表")
+						self._set_default_models()
+				else:
+					print("⚠️  未找到自定义 API 配置，使用默认模型列表")
+					self._set_default_models()
+					
+			except Exception as e:
+				print(f"⚠️  加载模型列表出错: {e}")
+				self._set_default_models()
+		
+		# 在后台线程中执行
+		threading.Thread(target=task, daemon=True).start()
+	
+	
+	def _set_default_models(self):
+		"""设置默认模型列表（当无法从 API 获取时）"""
+		default_models = [
+			"claude-sonnet-4-5",
+			"claude-sonnet-4-5-20250929",
+			"claude-sonnet-4",
+			"gemini-3-pro-preview",
+			"gemini-3-flash-preview",
+			"gemini-2.5-pro",
+			"gemini-2.5-flash",
+			"gpt-4o",
+			"gpt-4o-mini",
+		]
+		
+		# 更新故事生成页面
+		if hasattr(self, 'combo_story_model'):
+			self._ui(self.combo_story_model.__setitem__, 'values', default_models)
+			
+			# 如果当前值不在列表中，设置为第一个
+			current = self._ui_get(self.story_model_var.get) if hasattr(self, '_ui_get') else self.story_model_var.get()
+			if current not in default_models:
+				self._ui(self.story_model_var.set, default_models[0])
+		
+		# 更新人物生成页面
+		if hasattr(self, 'combo_char_model'):
+			self._ui(self.combo_char_model.__setitem__, 'values', default_models)
+			
+			# 如果当前值不在列表中，设置为第一个
+			current = self._ui_get(self.char_model_var.get) if hasattr(self, '_ui_get') else self.char_model_var.get()
+			if current not in default_models:
+				self._ui(self.char_model_var.set, default_models[0])
+			
+		print(f"📋 使用默认模型列表 ({len(default_models)} 个)")

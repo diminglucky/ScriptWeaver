@@ -74,24 +74,41 @@ def sanitize(s: str) -> str:
 def try_chat_api(key: str, base_url: str, model: str) -> tuple[bool, str]:
 	"""测试聊天API是否可用"""
 	try:
-		from openai import OpenAI
-		client = OpenAI(api_key=key, base_url=base_url, timeout=200)
+		from src.clients.custom_openai_client import create_compatible_client
+		
+		client = create_compatible_client(api_key=key, base_url=base_url, timeout=30)
 		resp = client.chat.completions.create(
 			model=model,
 			messages=[{"role": "user", "content": "ping"}],
 			max_tokens=5
 		)
 		_ok = bool(resp.choices and resp.choices[0].message)
-		return True, "ok"
+		
+		# 返回更详细的成功信息
+		reply = resp.choices[0].message.content if resp.choices else ""
+		return True, f"连接成功! 模型回复: {reply}"
 	except Exception as e:
-		return False, str(e)
+		error_msg = str(e)
+		
+		# 提供更友好的错误提示
+		if "blocked" in error_msg.lower():
+			return False, f"请求被阻止: {error_msg}\n💡 可能原因: API Key无效、IP限制、或模型名称错误"
+		elif "not found" in error_msg.lower() or "404" in error_msg:
+			return False, f"未找到资源: {error_msg}\n💡 可能原因: Base URL路径错误或模型不存在"
+		elif "unauthorized" in error_msg.lower() or "401" in error_msg:
+			return False, f"认证失败: {error_msg}\n💡 可能原因: API Key格式错误或未激活"
+		elif "timeout" in error_msg.lower():
+			return False, f"连接超时: {error_msg}\n💡 可能原因: 网络问题或服务器响应慢"
+		else:
+			return False, error_msg
 
 
 def try_image_api(key: str, base_url: str, model: str) -> tuple[bool, str]:
 	"""测试图片生成API是否可用"""
 	try:
-		from openai import OpenAI
-		client = OpenAI(api_key=key, base_url=base_url, timeout=30)
+		from src.clients.custom_openai_client import create_compatible_client
+		
+		client = create_compatible_client(api_key=key, base_url=base_url, timeout=30)
 		
 		# 根据模型选择合适的测试参数
 		if "dall-e-2" in model.lower():

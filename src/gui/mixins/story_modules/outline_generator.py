@@ -23,17 +23,30 @@ class OutlineGeneratorMixin:
 			messagebox.showwarning("提示", "请先输入创作需求/主题")
 			return
 		
-		# 获取选中的目录生成API配置
-		selected_api = self.outline_gen_api.get() if hasattr(self, 'outline_gen_api') else "DeepSeek"
-		if selected_api not in self.api_presets:
-			messagebox.showerror("错误", f"未找到API预设: {selected_api}")
-			return
+		# 目录生成：根据模型路由选择 API
+		fallback_provider = None
+		if hasattr(self, 'outline_gen_api'):
+			fallback_provider = self.outline_gen_api.get()
+		if not fallback_provider and hasattr(self, 'quick_story_api'):
+			fallback_provider = self.quick_story_api.get()
+		if not fallback_provider and hasattr(self, 'api_preset'):
+			fallback_provider = self.api_preset.get()
+		fallback_model = None
+		if hasattr(self, 'story_model_var'):
+			fallback_model = self.story_model_var.get()
+		elif hasattr(self, 'model'):
+			fallback_model = self.model.get()
 		
-		api_config = self.api_presets[selected_api]
+		api_config = self._resolve_task_api("story_outline", fallback_provider=fallback_provider, fallback_model=fallback_model)
+		selected_api = api_config.get("provider", "")
 		api_key = _sanitize(api_config.get("key", ""))
 		if not api_key:
 			messagebox.showwarning("提示", f"API Key 为空，请在'基础 API 配置'中为 {selected_api} 填写后保存")
 			return
+		
+		# 获取用户选择的模型
+		selected_model = api_config.get("model", "")
+		print(f"🤖 使用模型: {selected_model}")
 		
 		if self.model_only.get():
 			self._generate_outline_model_only(requirement)
@@ -45,10 +58,10 @@ class OutlineGeneratorMixin:
 				need_build = True
 			else:
 				return
-		def task():
+		def task(api_config=api_config, selected_api=selected_api, selected_model=selected_model):
 			try:
 				self.set_busy(True)
-				self.status.set(f"使用 {selected_api} 检索素材并生成目录中...")
+				self._ui(self.status.set, f"使用 {selected_api} 检索素材并生成目录中...")
 				# 更新顶部状态栏
 				if hasattr(self, 'update_header_status'):
 					self.update_header_status("正在生成目录...", "📝")
@@ -69,14 +82,15 @@ class OutlineGeneratorMixin:
 				# 使用选中的API配置
 				if hasattr(self, 'update_header_status'):
 					self.update_header_status("AI生成目录中...", "📝")
+				
 				client = DeepSeekClient(
 					api_key=api_key,
 					base_url=_sanitize(api_config.get("base_url", "")),
-					model=_sanitize(api_config.get("model", "")),
+					model=selected_model,
 				)
 				outline_prompt = self._build_outline_prompt(requirement, contexts, self.category.get())
-				self.output.delete("1.0", END)
-				self.output.insert(END, "生成目录中...\n\n")
+				self._ui(self.output.delete, "1.0", END)
+				self._ui(self.output.insert, END, "生成目录中...\n\n")
 				outline_text = client.chat([
 					{"role": "system", "content": "你是资深知乎创作者与编辑。请先产出结构化目录，不要写正文。"},
 					{"role": "user", "content": outline_prompt},
@@ -86,18 +100,18 @@ class OutlineGeneratorMixin:
 				
 				# 解析章节并更新选择器
 				self.parsed_sections = self._parse_outline_sections(self.current_outline)
-				self._update_section_selector()
+				self._ui(self._update_section_selector)
 				
-				self.output.insert(END, f"目录（共{len(self.parsed_sections)}章，预估字数≈{estimate}字）\n\n{self.current_outline}\n\n")
-				self.status.set("目录已生成")
+				self._ui(self.output.insert, END, f"目录（共{len(self.parsed_sections)}章，预估字数≈{estimate}字）\n\n{self.current_outline}\n\n")
+				self._ui(self.status.set, "目录已生成")
 				# 更新顶部状态栏
 				if hasattr(self, 'update_header_status'):
 					self.update_header_status("目录生成完成", "✅")
 			except Exception as e:
 				import traceback
-				self.output.insert(END, "生成目录出错:\n" + traceback.format_exc() + "\n")
-				messagebox.showerror("错误", str(e))
-				self.status.set("生成目录失败")
+				self._ui(self.output.insert, END, "生成目录出错:\n" + traceback.format_exc() + "\n")
+				self._ui(messagebox.showerror, "错误", str(e))
+				self._ui(self.status.set, "生成目录失败")
 				# 更新顶部状态栏
 				if hasattr(self, 'update_header_status'):
 					self.update_header_status("生成目录失败", "❌")
@@ -117,8 +131,23 @@ class OutlineGeneratorMixin:
 			messagebox.showwarning("提示", "请先输入创作需求/主题")
 			return
 		
-		if not (_sanitize(self.api_key.get())):
-			messagebox.showwarning("提示", "API Key 为空")
+		# 章节生成前置检查：根据模型路由确认 API Key
+		fallback_provider = None
+		if hasattr(self, 'story_gen_api'):
+			fallback_provider = self.story_gen_api.get()
+		if not fallback_provider and hasattr(self, 'quick_story_api'):
+			fallback_provider = self.quick_story_api.get()
+		if not fallback_provider and hasattr(self, 'api_preset'):
+			fallback_provider = self.api_preset.get()
+		fallback_model = None
+		if hasattr(self, 'story_model_var'):
+			fallback_model = self.story_model_var.get()
+		elif hasattr(self, 'model'):
+			fallback_model = self.model.get()
+		
+		api_config = self._resolve_task_api("story_generate", fallback_provider=fallback_provider, fallback_model=fallback_model)
+		if not _sanitize(api_config.get("key", "")):
+			messagebox.showwarning("提示", "API Key 为空，请在设置页配置")
 			return
 		
 		# 获取选中的章节索引
@@ -153,8 +182,8 @@ class OutlineGeneratorMixin:
 					self._generate_single_section_with_contexts(query, contexts, selected_index)
 				except Exception as e:
 					import traceback
-					self.output.insert(END, "\n生成出错:\n" + traceback.format_exc() + "\n")
-					messagebox.showerror("错误", str(e))
+					self._ui(self.output.insert, END, "\n生成出错:\n" + traceback.format_exc() + "\n")
+					self._ui(messagebox.showerror, "错误", str(e))
 				finally:
 					self.set_busy(False)
 			threading.Thread(target=task, daemon=True).start()
@@ -184,23 +213,37 @@ class OutlineGeneratorMixin:
 			try:
 				self.set_busy(True)
 				
-				# 获取选中的目录生成API配置
-				selected_api = self.outline_gen_api.get() if hasattr(self, 'outline_gen_api') else "DeepSeek"
-				if selected_api not in self.api_presets:
-					messagebox.showerror("错误", f"未找到API预设: {selected_api}")
-					return
+				# 目录生成：根据模型路由选择 API
+				fallback_provider = None
+				if hasattr(self, 'outline_gen_api'):
+					fallback_provider = self.outline_gen_api.get()
+				if not fallback_provider and hasattr(self, 'quick_story_api'):
+					fallback_provider = self.quick_story_api.get()
+				if not fallback_provider and hasattr(self, 'api_preset'):
+					fallback_provider = self.api_preset.get()
+				fallback_model = None
+				if hasattr(self, 'story_model_var'):
+					fallback_model = self.story_model_var.get()
+				elif hasattr(self, 'model'):
+					fallback_model = self.model.get()
 				
-				api_config = self.api_presets[selected_api]
+				api_config = self._resolve_task_api("story_outline", fallback_provider=fallback_provider, fallback_model=fallback_model)
+				selected_api = api_config.get("provider", "")
 				api_key = _sanitize(api_config.get("key", ""))
 				
-				self.status.set(f"使用 {selected_api} 生成目录中...")
+				self._ui(self.status.set, f"使用 {selected_api} 生成目录中...")
 				# 更新顶部状态栏
 				if hasattr(self, 'update_header_status'):
 					self.update_header_status("AI生成目录中...", "📝")
+				
+				# 获取用户选择的模型
+				selected_model = api_config.get("model", "")
+				print(f"🤖 使用模型: {selected_model}")
+				
 				client = DeepSeekClient(
 					api_key=api_key,
 					base_url=_sanitize(api_config.get("base_url", "")),
-					model=_sanitize(api_config.get("model", "")),
+					model=selected_model,
 				)
 				target_chars = self.target_chars.get()
 				# 根据目标字数动态决定章节数
@@ -232,8 +275,8 @@ class OutlineGeneratorMixin:
 					"4. 绝地反击\n"
 					"5. 尘埃落定"
 				)
-				self.output.delete("1.0", END)
-				self.output.insert(END, "生成目录中...\n\n")
+				self._ui(self.output.delete, "1.0", END)
+				self._ui(self.output.insert, END, "生成目录中...\n\n")
 				outline_text = client.chat([
 					{"role": "system", "content": "你是资深知乎创作者与编辑。请先产出结构化目录，不要写正文。"},
 					{"role": "user", "content": prompt},
@@ -243,16 +286,16 @@ class OutlineGeneratorMixin:
 				
 				# 解析章节并更新选择器
 				self.parsed_sections = self._parse_outline_sections(self.current_outline)
-				self._update_section_selector()
+				self._ui(self._update_section_selector)
 				
-				self.output.insert(END, f"目录（共{len(self.parsed_sections)}章，预估字数≈{estimate}字）\n\n{self.current_outline}\n\n")
-				self.status.set("目录已生成")
+				self._ui(self.output.insert, END, f"目录（共{len(self.parsed_sections)}章，预估字数≈{estimate}字）\n\n{self.current_outline}\n\n")
+				self._ui(self.status.set, "目录已生成")
 				# 更新顶部状态栏
 				if hasattr(self, 'update_header_status'):
 					self.update_header_status("目录生成完成", "✅")
 			except Exception as e:
-				messagebox.showerror("错误", str(e))
-				self.status.set("生成目录失败")
+				self._ui(messagebox.showerror, "错误", str(e))
+				self._ui(self.status.set, "生成目录失败")
 				# 更新顶部状态栏
 				if hasattr(self, 'update_header_status'):
 					self.update_header_status("生成目录失败", "❌")
@@ -266,8 +309,8 @@ class OutlineGeneratorMixin:
 		total_sections = len(sections)
 		target_per_section = int(target_chars / total_sections)
 		
-		self.output.insert(END, f"📖 开始分段生成（共{total_sections}段，目标总字数{target_chars}字）\n\n")
-		self.output.insert(END, "=" * 50 + "\n\n")
+		self._ui(self.output.insert, END, f"📖 开始分段生成（共{total_sections}段，目标总字数{target_chars}字）\n\n")
+		self._ui(self.output.insert, END, "=" * 50 + "\n\n")
 		
 		accumulated_content = ""
 		style_part = self.style.get().strip()
@@ -275,9 +318,9 @@ class OutlineGeneratorMixin:
 		
 		for idx, section in enumerate(sections):
 			# 更新状态
-			self.status.set(f"生成第 {idx+1}/{total_sections} 段: {section['title']}")
-			self.output.insert(END, f"【正在生成第 {idx+1}/{total_sections} 段】\n\n")
-			self.output.see(END)
+			self._ui(self.status.set, f"生成第 {idx+1}/{total_sections} 段: {section['title']}")
+			self._ui(self.output.insert, END, f"【正在生成第 {idx+1}/{total_sections} 段】\n\n")
+			self._ui(self.output.see, END)
 			# 更新顶部状态栏
 			if hasattr(self, 'update_header_status'):
 				self.update_header_status(f"生成中 ({idx+1}/{total_sections})", "📝")
@@ -301,8 +344,8 @@ class OutlineGeneratorMixin:
 				{"role": "system", "content": "你是资深知乎创作者，擅长结合资料写出有观点、有结构的中文故事。"},
 				{"role": "user", "content": section_prompt},
 			], temperature=self.temperature.get(), max_tokens=int(target_per_section*2.5)):
-				self.output.insert(END, delta)
-				self.output.see(END)
+				self._ui(self.output.insert, END, delta)
+				self._ui(self.output.see, END)
 				section_content += delta
 			
 			# 累积内容（用于下一段的上下文）
@@ -310,14 +353,14 @@ class OutlineGeneratorMixin:
 			
 			# 段落分隔
 			if idx < total_sections - 1:
-				self.output.insert(END, "\n\n")
-				self.output.see(END)
+				self._ui(self.output.insert, END, "\n\n")
+				self._ui(self.output.see, END)
 		
 		# 完成提示
 		final_length = len(accumulated_content)
-		self.output.insert(END, f"\n\n" + "=" * 50 + "\n")
-		self.output.insert(END, f"✅ 生成完成！总字数：{final_length} 字\n")
-		self.status.set(f"生成完成（{final_length} 字）")
+		self._ui(self.output.insert, END, f"\n\n" + "=" * 50 + "\n")
+		self._ui(self.output.insert, END, f"✅ 生成完成！总字数：{final_length} 字\n")
+		self._ui(self.status.set, f"生成完成（{final_length} 字）")
 
 	
 	def _generate_single_section(self, query: str, contexts: list[str], section_index: int) -> None:
@@ -326,25 +369,41 @@ class OutlineGeneratorMixin:
 			try:
 				self.set_busy(True)
 				
-				# 获取选中的故事生成API配置
-				selected_api = self.story_gen_api.get() if hasattr(self, 'story_gen_api') else "DeepSeek"
-				if selected_api not in self.api_presets:
-					messagebox.showerror("错误", f"未找到API预设: {selected_api}")
+				# 章节生成：根据模型路由选择 API
+				fallback_provider = None
+				if hasattr(self, 'story_gen_api'):
+					fallback_provider = self.story_gen_api.get()
+				if not fallback_provider and hasattr(self, 'quick_story_api'):
+					fallback_provider = self.quick_story_api.get()
+				if not fallback_provider and hasattr(self, 'api_preset'):
+					fallback_provider = self.api_preset.get()
+				fallback_model = None
+				if hasattr(self, 'story_model_var'):
+					fallback_model = self.story_model_var.get()
+				elif hasattr(self, 'model'):
+					fallback_model = self.model.get()
+				
+				api_config = self._resolve_task_api("story_generate", fallback_provider=fallback_provider, fallback_model=fallback_model)
+				selected_api = api_config.get("provider", "")
+				api_key = _sanitize(api_config.get("key", ""))
+				if not api_key:
+					self._ui(messagebox.showwarning, "提示", f"API Key 为空，请在'基础 API 配置'中为 {selected_api} 填写后保存")
 					return
 				
-				api_config = self.api_presets[selected_api]
-				api_key = _sanitize(api_config.get("key", ""))
+				# 获取用户选择的模型
+				selected_model = api_config.get("model", "")
+				print(f"🤖 使用模型: {selected_model}")
 				
 				client = DeepSeekClient(
 					api_key=api_key,
 					base_url=_sanitize(api_config.get("base_url", "")),
-					model=_sanitize(api_config.get("model", "")),
+					model=selected_model,
 				)
 				self._do_generate_section(client, query, contexts, section_index)
 			except Exception as e:
 				import traceback
-				self.output.insert(END, "\n生成出错:\n" + traceback.format_exc() + "\n")
-				messagebox.showerror("错误", str(e))
+				self._ui(self.output.insert, END, "\n生成出错:\n" + traceback.format_exc() + "\n")
+				self._ui(messagebox.showerror, "错误", str(e))
 			finally:
 				self.set_busy(False)
 		threading.Thread(target=task, daemon=True).start()
@@ -352,19 +411,35 @@ class OutlineGeneratorMixin:
 	
 	def _generate_single_section_with_contexts(self, query: str, contexts: list[str], section_index: int) -> None:
 		"""生成单个章节（带知识库）"""
-		# 获取选中的故事生成API配置
-		selected_api = self.story_gen_api.get() if hasattr(self, 'story_gen_api') else "DeepSeek"
-		if selected_api not in self.api_presets:
-			messagebox.showerror("错误", f"未找到API预设: {selected_api}")
+		# 章节生成：根据模型路由选择 API
+		fallback_provider = None
+		if hasattr(self, 'story_gen_api'):
+			fallback_provider = self.story_gen_api.get()
+		if not fallback_provider and hasattr(self, 'quick_story_api'):
+			fallback_provider = self.quick_story_api.get()
+		if not fallback_provider and hasattr(self, 'api_preset'):
+			fallback_provider = self.api_preset.get()
+		fallback_model = None
+		if hasattr(self, 'story_model_var'):
+			fallback_model = self.story_model_var.get()
+		elif hasattr(self, 'model'):
+			fallback_model = self.model.get()
+		
+		api_config = self._resolve_task_api("story_generate", fallback_provider=fallback_provider, fallback_model=fallback_model)
+		selected_api = api_config.get("provider", "")
+		api_key = _sanitize(api_config.get("key", ""))
+		if not api_key:
+			self._ui(messagebox.showwarning, "提示", f"API Key 为空，请在'基础 API 配置'中为 {selected_api} 填写后保存")
 			return
 		
-		api_config = self.api_presets[selected_api]
-		api_key = _sanitize(api_config.get("key", ""))
+		# 获取用户选择的模型
+		selected_model = api_config.get("model", "")
+		print(f"🤖 使用模型: {selected_model}")
 		
 		client = DeepSeekClient(
 			api_key=api_key,
 			base_url=_sanitize(api_config.get("base_url", "")),
-			model=_sanitize(api_config.get("model", "")),
+			model=selected_model,
 		)
 		self._do_generate_section(client, query, contexts, section_index)
 	
@@ -379,7 +454,11 @@ class OutlineGeneratorMixin:
 		target_per_section = int(target_chars / total_sections)
 		
 		# 读取当前已有内容作为上下文
-		current_output = self.output.get("1.0", END).strip()
+		current_output = ""
+		try:
+			current_output = (self._ui_get(self.output.get, "1.0", END) or "").strip()
+		except Exception:
+			current_output = ""
 		# 提取已生成的故事内容（排除目录部分）
 		if "目录" in current_output and "\n\n" in current_output:
 			parts = current_output.split("\n\n", 2)
@@ -389,13 +468,13 @@ class OutlineGeneratorMixin:
 				self.generated_content = current_output.split(self.current_outline)[-1].strip()
 		
 		# 更新状态
-		self.status.set(f"生成第 {section_index+1}/{total_sections} 章: {section['title']}")
+		self._ui(self.status.set, f"生成第 {section_index+1}/{total_sections} 章: {section['title']}")
 		# 更新顶部状态栏
 		if hasattr(self, 'update_header_status'):
 			self.update_header_status(f"生成章节 ({section_index+1}/{total_sections})", "📝")
-		self.output.insert(END, f"\n{'='*50}\n")
-		self.output.insert(END, f"【第 {section_index+1}/{total_sections} 章：{section['title']}】\n\n")
-		self.output.see(END)
+		self._ui(self.output.insert, END, f"\n{'='*50}\n")
+		self._ui(self.output.insert, END, f"【第 {section_index+1}/{total_sections} 章：{section['title']}】\n\n")
+		self._ui(self.output.see, END)
 		
 		# 构建提示词
 		section_prompt = self._build_section_prompt(
@@ -416,17 +495,17 @@ class OutlineGeneratorMixin:
 			{"role": "system", "content": "你是资深知乎创作者，擅长结合资料写出有观点、有结构的中文故事。"},
 			{"role": "user", "content": section_prompt},
 		], temperature=self.temperature.get(), max_tokens=int(target_per_section*2.5)):
-			self.output.insert(END, delta)
-			self.output.see(END)
+			self._ui(self.output.insert, END, delta)
+			self._ui(self.output.see, END)
 			section_content += delta
 		
 		# 累积内容
 		self.generated_content += "\n\n" + section_content
 		
 		# 完成提示
-		self.output.insert(END, f"\n\n{'='*50}\n")
-		self.output.insert(END, f"✅ 第 {section_index+1} 章完成！本章字数：{len(section_content)} 字\n")
-		self.status.set(f"第 {section_index+1} 章完成（{len(section_content)} 字）")
+		self._ui(self.output.insert, END, f"\n\n{'='*50}\n")
+		self._ui(self.output.insert, END, f"✅ 第 {section_index+1} 章完成！本章字数：{len(section_content)} 字\n")
+		self._ui(self.status.set, f"第 {section_index+1} 章完成（{len(section_content)} 字）")
 		# 更新顶部状态栏
 		if hasattr(self, 'update_header_status'):
 			self.update_header_status(f"第 {section_index+1} 章完成", "✅")
@@ -441,46 +520,63 @@ class OutlineGeneratorMixin:
 			try:
 				self.set_busy(True)
 				
-				# 获取选中的故事生成API配置
-				selected_api = self.story_gen_api.get() if hasattr(self, 'story_gen_api') else "DeepSeek"
-				if selected_api not in self.api_presets:
-					messagebox.showerror("错误", f"未找到API预设: {selected_api}")
+				# 自动生成章节：根据模型路由选择 API
+				fallback_provider = None
+				if hasattr(self, 'story_gen_api'):
+					fallback_provider = self.story_gen_api.get()
+				if not fallback_provider and hasattr(self, 'quick_story_api'):
+					fallback_provider = self.quick_story_api.get()
+				if not fallback_provider and hasattr(self, 'api_preset'):
+					fallback_provider = self.api_preset.get()
+				fallback_model = None
+				if hasattr(self, 'story_model_var'):
+					fallback_model = self.story_model_var.get()
+				elif hasattr(self, 'model'):
+					fallback_model = self.model.get()
+				
+				api_config = self._resolve_task_api("story_generate", fallback_provider=fallback_provider, fallback_model=fallback_model)
+				selected_api = api_config.get("provider", "")
+				api_key = _sanitize(api_config.get("key", ""))
+				
+				if not api_key:
+					self._ui(messagebox.showwarning, "提示", f"API Key 为空，请在'基础 API 配置'中为 {selected_api} 填写后保存")
 					return
 				
-				api_config = self.api_presets[selected_api]
-				api_key = _sanitize(api_config.get("key", ""))
+				# 获取用户选择的模型
+				selected_model = api_config.get("model", "")
+				print(f"🤖 使用模型: {selected_model}")
 				
 				client = DeepSeekClient(
 					api_key=api_key,
 					base_url=_sanitize(api_config.get("base_url", "")),
-					model=_sanitize(api_config.get("model", "")),
+					model=selected_model,
 				)
 				
 				total_sections = len(self.parsed_sections)
 				for idx in range(start_index, total_sections):
 					# 更新选择器
-					self.section_selector.current(idx)
+					self._ui(self.section_selector.current, idx)
 					
 					# 生成当前章节
 					self._do_generate_section(client, query, contexts, idx)
 					
 					# 如果不是最后一章，添加提示
 					if idx < total_sections - 1:
-						self.output.insert(END, f"\n\n⏳ 准备生成下一章...\n\n")
-						self.output.see(END)
+						self._ui(self.output.insert, END, f"\n\n⏳ 准备生成下一章...\n\n")
+						self._ui(self.output.see, END)
 				
 				# 全部完成
-				self.output.insert(END, f"\n\n{'='*50}\n")
-				self.output.insert(END, f"🎉 全部章节生成完成！共 {total_sections} 章，总字数：{len(self.generated_content)} 字\n")
-				self.status.set(f"全部完成（{len(self.generated_content)} 字）")
+				self._ui(self.output.insert, END, f"\n\n{'='*50}\n")
+				self._ui(self.output.insert, END, f"🎉 全部章节生成完成！共 {total_sections} 章，总字数：{len(self.generated_content)} 字\n")
+				self._ui(self.status.set, f"全部完成（{len(self.generated_content)} 字）")
 				# 更新顶部状态栏
 				if hasattr(self, 'update_header_status'):
 					self.update_header_status("全部章节完成", "✅")
-				messagebox.showinfo("完成", f"所有章节已生成完成！\n\n共 {total_sections} 章，总字数：{len(self.generated_content)} 字")
+				self._ui(messagebox.showinfo, "完成", f"所有章节已生成完成！\n\n共 {total_sections} 章，总字数：{len(self.generated_content)} 字")
 			except Exception as e:
 				import traceback
-				self.output.insert(END, "\n自动生成出错:\n" + traceback.format_exc() + "\n")
-				messagebox.showerror("错误", str(e))
+				self._ui(self.output.insert, END, "\n自动生成出错:\n" + traceback.format_exc() + "\n")
+				self._ui(messagebox.showerror, "错误", str(e))
 				# 更新顶部状态栏
 				if hasattr(self, 'update_header_status'):
 					self.update_header_status("自动生成失败", "❌")
@@ -544,7 +640,12 @@ class OutlineGeneratorMixin:
 						"title": current_section,
 						"items": current_items.copy()
 					})
-				current_section = stripped
+				# 去掉编号前缀，避免重复显示
+				title = stripped
+				title = re.sub(r'^\d+[.、]\s*', '', title)
+				title = re.sub(r'^[一二三四五六七八九十]+[.、]\s*', '', title)
+				title = re.sub(r'^[-•*]\s*', '', title)
+				current_section = title.strip()
 				current_items = []
 			else:
 				# 子项

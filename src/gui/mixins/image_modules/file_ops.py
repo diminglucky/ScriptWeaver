@@ -44,7 +44,10 @@ class FileOperationsMixin:
 			# 获取当前选中的分镜描述作为文件名
 			filename = "image"
 			if hasattr(self, 'parsed_shots') and self.parsed_shots:
-				selection = self.shots_listbox.curselection() if hasattr(self, 'shots_listbox') else ()
+				if hasattr(self, 'shots_listbox') and hasattr(self, '_ui_get'):
+					selection = self._ui_get(self.shots_listbox.curselection) or ()
+				else:
+					selection = self.shots_listbox.curselection() if hasattr(self, 'shots_listbox') else ()
 				if selection and selection[0] >= 0 and selection[0] < len(self.parsed_shots):
 					shot_desc = self.parsed_shots[selection[0]]
 					# 清理文件名：移除特殊字符，只保留中文、英文、数字和空格
@@ -70,7 +73,10 @@ class FileOperationsMixin:
 			import os
 			os.unlink(temp_path)
 			
-			self.status.set(f"✅ 图片已自动保存到项目: {filename}")
+			if hasattr(self, '_ui'):
+				self._ui(self.status.set, f"✅ 图片已自动保存到项目: {filename}")
+			else:
+				self.status.set(f"✅ 图片已自动保存到项目: {filename}")
 			print(f"图片已自动保存: {saved_path}")
 			
 		except Exception as e:
@@ -118,8 +124,20 @@ class FileOperationsMixin:
 		"""自动保存故事到当前项目（如果有）"""
 		if not self.current_project:
 			return
-		
-		story_content = self.output.get("1.0", END).strip()
+
+		if hasattr(self, '_ui_get'):
+			story_content = (self._ui_get(self.output.get, "1.0", END) or "").strip()
+			category = self._ui_get(self.category.get) if hasattr(self, 'category') else None
+			requirement = self._ui_get(self._get_prompt_content) if hasattr(self, '_get_prompt_content') else None
+			style = self._ui_get(self.style.get) if hasattr(self, 'style') else None
+			target_chars = self._ui_get(self.target_chars.get) if hasattr(self, 'target_chars') else None
+		else:
+			story_content = self.output.get("1.0", END).strip()
+			category = self.category.get()
+			requirement = self._get_prompt_content()
+			style = self.style.get()
+			target_chars = self.target_chars.get()
+
 		if not story_content or story_content == "生成中...":
 			return
 		
@@ -127,16 +145,22 @@ class FileOperationsMixin:
 			# 保存故事和参数
 			self.current_project.save_story(
 				story_content,
-				category=self.category.get(),
-				requirement=self._get_prompt_content(),
-				style=self.style.get(),
-				target_chars=self.target_chars.get(),
+				category=category,
+				requirement=requirement,
+				style=style,
+				target_chars=target_chars,
 			)
 			# 在后台更新项目列表（不显示弹窗）
 			if hasattr(self, 'project_tree'):
-				self._refresh_project_list()
+				if hasattr(self, '_ui'):
+					self._ui(self._refresh_project_list)
+				else:
+					self._refresh_project_list()
 			if hasattr(self, 'status'):
-				self.status.set(f"故事已自动保存到项目: {self.current_project.metadata['name']}")
+				if hasattr(self, '_ui'):
+					self._ui(self.status.set, f"故事已自动保存到项目: {self.current_project.metadata['name']}")
+				else:
+					self.status.set(f"故事已自动保存到项目: {self.current_project.metadata['name']}")
 		except Exception as e:
 			# 静默失败，不打扰用户
 			print(f"自动保存失败: {e}")

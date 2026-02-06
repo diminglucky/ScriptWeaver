@@ -23,17 +23,30 @@ class StoryGeneratorMixin:
 			messagebox.showwarning("提示", "请先输入创作需求/主题")
 			return
 		
-		# 获取选中的故事生成API配置
-		selected_api = self.story_gen_api.get() if hasattr(self, 'story_gen_api') else "DeepSeek"
-		if selected_api not in self.api_presets:
-			messagebox.showerror("错误", f"未找到API预设: {selected_api}")
-			return
+		# 故事生成：根据模型路由选择 API
+		fallback_provider = None
+		if hasattr(self, 'story_gen_api'):
+			fallback_provider = self.story_gen_api.get()
+		if not fallback_provider and hasattr(self, 'quick_story_api'):
+			fallback_provider = self.quick_story_api.get()
+		if not fallback_provider and hasattr(self, 'api_preset'):
+			fallback_provider = self.api_preset.get()
+		fallback_model = None
+		if hasattr(self, 'story_model_var'):
+			fallback_model = self.story_model_var.get()
+		elif hasattr(self, 'model'):
+			fallback_model = self.model.get()
 		
-		api_config = self.api_presets[selected_api]
+		api_config = self._resolve_task_api("story_generate", fallback_provider=fallback_provider, fallback_model=fallback_model)
+		selected_api = api_config.get("provider", "")
 		api_key = _sanitize(api_config.get("key", ""))
 		if not api_key:
 			messagebox.showwarning("提示", f"API Key 为空，请在'基础 API 配置'中为 {selected_api} 填写后保存")
 			return
+		
+		# 获取用户选择的模型
+		selected_model = api_config.get("model", "")
+		print(f"🤖 使用模型: {selected_model}")
 		
 		if self.model_only.get():
 			self._generate_model_only(query)
@@ -48,7 +61,7 @@ class StoryGeneratorMixin:
 		def task():
 			try:
 				self.set_busy(True)
-				self.status.set(f"使用 {selected_api} 检索素材并生成正文中...")
+				self._ui(self.status.set, f"使用 {selected_api} 检索素材并生成正文中...")
 				# 更新顶部状态栏
 				if hasattr(self, 'update_header_status'):
 					self.update_header_status("准备生成故事...", "📝")
@@ -69,12 +82,17 @@ class StoryGeneratorMixin:
 				# 使用选中的API配置
 				if hasattr(self, 'update_header_status'):
 					self.update_header_status("AI创作故事中...", "📝")
+				
+				# 获取用户选择的模型
+				selected_model = api_config.get("model", "")
+				print(f"🤖 使用模型: {selected_model}")
+				
 				client = DeepSeekClient(
 					api_key=api_key,
 					base_url=_sanitize(api_config.get("base_url", "")),
-					model=_sanitize(api_config.get("model", "")),
+					model=selected_model,
 				)
-				self.output.delete("1.0", END)
+				self._ui(self.output.delete, "1.0", END)
 				
 				# 检查是否需要分段生成
 				target_chars = self.target_chars.get()
@@ -85,16 +103,16 @@ class StoryGeneratorMixin:
 					self._generate_in_sections(client, query, contexts, sections, target_chars)
 				else:
 					# 一次性生成（原逻辑）
-					self.output.insert(END, "生成中...\n\n")
+					self._ui(self.output.insert, END, "生成中...\n\n")
 					prompt = self._build_prompt(query, contexts, self.category.get(), self.current_outline)
 					for delta in client.stream([
 						{"role": "system", "content": "你是资深知乎创作者，擅长结合资料写出有观点、有结构的中文故事。"},
 						{"role": "user", "content": prompt},
 					], temperature=self.temperature.get(), max_tokens=int(target_chars*2.5)):
-						self.output.insert(END, delta)
-						self.output.see(END)
+						self._ui(self.output.insert, END, delta)
+						self._ui(self.output.see, END)
 				
-				self.status.set("生成完成")
+				self._ui(self.status.set, "生成完成")
 				# 更新顶部状态栏
 				if hasattr(self, 'update_header_status'):
 					self.update_header_status("故事生成完成", "✅")
@@ -102,9 +120,9 @@ class StoryGeneratorMixin:
 				self._auto_save_to_project()
 			except Exception as e:
 				import traceback
-				self.output.insert(END, "生成出错:\n" + traceback.format_exc() + "\n")
-				messagebox.showerror("错误", str(e))
-				self.status.set("生成失败")
+				self._ui(self.output.insert, END, "生成出错:\n" + traceback.format_exc() + "\n")
+				self._ui(messagebox.showerror, "错误", str(e))
+				self._ui(self.status.set, "生成失败")
 				# 更新顶部状态栏
 				if hasattr(self, 'update_header_status'):
 					self.update_header_status("生成故事失败", "❌")
@@ -124,17 +142,30 @@ class StoryGeneratorMixin:
 			messagebox.showwarning("提示", "请先输入创作需求/主题")
 			return
 		
-		# 获取选中的故事生成API配置（与其他方法保持一致）
-		selected_api = self.story_gen_api.get() if hasattr(self, 'story_gen_api') else "DeepSeek"
-		if selected_api not in self.api_presets:
-			messagebox.showerror("错误", f"未找到API预设: {selected_api}")
-			return
+		# 故事生成：根据模型路由选择 API
+		fallback_provider = None
+		if hasattr(self, 'story_gen_api'):
+			fallback_provider = self.story_gen_api.get()
+		if not fallback_provider and hasattr(self, 'quick_story_api'):
+			fallback_provider = self.quick_story_api.get()
+		if not fallback_provider and hasattr(self, 'api_preset'):
+			fallback_provider = self.api_preset.get()
+		fallback_model = None
+		if hasattr(self, 'story_model_var'):
+			fallback_model = self.story_model_var.get()
+		elif hasattr(self, 'model'):
+			fallback_model = self.model.get()
 		
-		api_config = self.api_presets[selected_api]
+		api_config = self._resolve_task_api("story_generate", fallback_provider=fallback_provider, fallback_model=fallback_model)
+		selected_api = api_config.get("provider", "")
 		api_key = _sanitize(api_config.get("key", ""))
 		if not api_key:
 			messagebox.showwarning("提示", f"API Key 为空，请在'基础 API 配置'中为 {selected_api} 填写后保存")
 			return
+		
+		# 获取用户选择的模型
+		selected_model = api_config.get("model", "")
+		print(f"🤖 使用模型: {selected_model}")
 		
 		# 确认开始
 		total_chapters = len(self.parsed_sections)
@@ -178,8 +209,8 @@ class StoryGeneratorMixin:
 					self._auto_generate_all_sections(query, contexts, start_index)
 				except Exception as e:
 					import traceback
-					self.output.insert(END, "\n自动生成出错:\n" + traceback.format_exc() + "\n")
-					messagebox.showerror("错误", str(e))
+					self._ui(self.output.insert, END, "\n自动生成出错:\n" + traceback.format_exc() + "\n")
+					self._ui(messagebox.showerror, "错误", str(e))
 				finally:
 					self.set_busy(False)
 			threading.Thread(target=task, daemon=True).start()
@@ -190,25 +221,39 @@ class StoryGeneratorMixin:
 			try:
 				self.set_busy(True)
 				
-				# 获取选中的故事生成API配置
-				selected_api = self.story_gen_api.get() if hasattr(self, 'story_gen_api') else "DeepSeek"
-				if selected_api not in self.api_presets:
-					messagebox.showerror("错误", f"未找到API预设: {selected_api}")
-					return
+				# 故事生成：根据模型路由选择 API
+				fallback_provider = None
+				if hasattr(self, 'story_gen_api'):
+					fallback_provider = self.story_gen_api.get()
+				if not fallback_provider and hasattr(self, 'quick_story_api'):
+					fallback_provider = self.quick_story_api.get()
+				if not fallback_provider and hasattr(self, 'api_preset'):
+					fallback_provider = self.api_preset.get()
+				fallback_model = None
+				if hasattr(self, 'story_model_var'):
+					fallback_model = self.story_model_var.get()
+				elif hasattr(self, 'model'):
+					fallback_model = self.model.get()
 				
-				api_config = self.api_presets[selected_api]
+				api_config = self._resolve_task_api("story_generate", fallback_provider=fallback_provider, fallback_model=fallback_model)
+				selected_api = api_config.get("provider", "")
 				api_key = _sanitize(api_config.get("key", ""))
 				
-				self.status.set(f"使用 {selected_api} 准备生成...")
+				self._ui(self.status.set, f"使用 {selected_api} 准备生成...")
 				# 更新顶部状态栏
 				if hasattr(self, 'update_header_status'):
 					self.update_header_status("AI创作故事中...", "📝")
+				
+				# 获取用户选择的模型
+				selected_model = api_config.get("model", "")
+				print(f"🤖 使用模型: {selected_model}")
+				
 				client = DeepSeekClient(
 					api_key=api_key,
 					base_url=_sanitize(api_config.get("base_url", "")),
-					model=_sanitize(api_config.get("model", "")),
+					model=selected_model,
 				)
-				self.output.delete("1.0", END)
+				self._ui(self.output.delete, "1.0", END)
 				
 				# 检查是否需要分段生成
 				target_chars = self.target_chars.get()
@@ -219,16 +264,16 @@ class StoryGeneratorMixin:
 					self._generate_in_sections(client, query, [], sections, target_chars)
 				else:
 					# 一次性生成（原逻辑）
-					self.output.insert(END, "生成中...\n\n")
+					self._ui(self.output.insert, END, "生成中...\n\n")
 					prompt = self._build_prompt(query, [], self.category.get(), self.current_outline)
 					for delta in client.stream([
 						{"role": "system", "content": "你是资深知乎创作者，擅长结合资料写出有观点、有结构的中文故事。"},
 						{"role": "user", "content": prompt},
 					], temperature=self.temperature.get(), max_tokens=int(target_chars*2.5)):
-						self.output.insert(END, delta)
-						self.output.see(END)
+						self._ui(self.output.insert, END, delta)
+						self._ui(self.output.see, END)
 				
-				self.status.set("生成完成")
+				self._ui(self.status.set, "生成完成")
 				# 更新顶部状态栏
 				if hasattr(self, 'update_header_status'):
 					self.update_header_status("故事生成完成", "✅")
@@ -236,9 +281,9 @@ class StoryGeneratorMixin:
 				self._auto_save_to_project()
 			except Exception as e:
 				import traceback
-				self.output.insert(END, "\n\n生成出错:\n" + traceback.format_exc() + "\n")
-				messagebox.showerror("错误", str(e))
-				self.status.set("生成失败")
+				self._ui(self.output.insert, END, "\n\n生成出错:\n" + traceback.format_exc() + "\n")
+				self._ui(messagebox.showerror, "错误", str(e))
+				self._ui(self.status.set, "生成失败")
 				# 更新顶部状态栏
 				if hasattr(self, 'update_header_status'):
 					self.update_header_status("生成故事失败", "❌")

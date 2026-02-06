@@ -79,113 +79,121 @@ class StoryConfigMixin:
 	
 	def on_test_story_api(self) -> None:
 		"""测试故事生成API（输出到配置页面的测试日志）"""
-		try:
-			self.set_busy(True)
-			self.status.set("测试故事生成 API 中...")
-			
-			# 确保使用故事配置页面的日志框
-			if not hasattr(self, 'story_test_log'):
-				messagebox.showwarning(
-					"提示", 
-					"请先切换到【故事生成 → 配置】标签页，\n"
-					"以便在该页面查看详细的测试日志。"
-				)
-				return
-			
-			log_widget = self.story_test_log
-			# 清空之前的日志
-			log_widget.delete("1.0", END)
-			import datetime
-			timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-			log_widget.insert(END, f"[{timestamp}] 开始测试故事生成API...\n")
-			
-			from src.utils.text import sanitize as _sanitize, try_chat_api as _try_chat
-			
-			key = _sanitize(self.api_key.get())
-			base = _sanitize(self.base_url.get())
-			model = _sanitize(self.model.get()) or "deepseek-chat"
-			
-			if not key:
-				messagebox.showwarning("警告", "请先填写API Key")
-				self.status.set("测试失败：缺少API Key")
-				log_widget.insert(END, "❌ 错误: 缺少API Key\n")
-				return
-			
-			if not base:
-				messagebox.showwarning("警告", "请先填写Base URL")
-				self.status.set("测试失败：缺少Base URL")
-				log_widget.insert(END, "❌ 错误: 缺少Base URL\n")
-				return
-			
-			# 记录测试参数
-			log_widget.insert(END, f"\n📋 测试参数:\n")
-			log_widget.insert(END, f"  • Model: {model}\n")
-			log_widget.insert(END, f"  • API Key: {'*' * (len(key)-8) + key[-8:] if len(key) > 8 else '***'}\n")
-			
-			candidates = []
-			# try user-provided
-			candidates.append(base.rstrip("/"))
-			# also try toggling /v1 suffix
-			if base.rstrip("/").endswith("/v1"):
-				candidates.append(base.rstrip("/")[:-3])
-			else:
-				candidates.append(base.rstrip("/") + "/v1")
-			
-			log_widget.insert(END, f"\n🔍 尝试的Base URL:\n")
-			
-			tried_msgs: list[str] = []
-			for i, b in enumerate(candidates, 1):
-				log_widget.insert(END, f"\n[{i}/{len(candidates)}] 测试: {b}\n")
-				log_widget.update()
+		def ui_call(func, *args, **kwargs):
+			if hasattr(self, '_ui'):
+				return self._ui(func, *args, **kwargs)
+			return func(*args, **kwargs)
+		
+		def task():
+			log_widget = None
+			try:
+				self.set_busy(True)
+				ui_call(self.status.set, "测试故事生成 API 中...")
 				
-				ok, msg = _try_chat(key, b, model)
-				tried_msgs.append(f"base_url={b} -> {'SUCCESS' if ok else 'FAIL'}: {msg}")
-				
-				if ok:
-					log_widget.insert(END, f"✅ 成功: {msg}\n")
-				else:
-					log_widget.insert(END, f"❌ 失败: {msg}\n")
-				
-				if ok:
-					self.base_url.set(b)
-					log_widget.insert(END, f"\n🎉 测试成功！已自动更新Base URL为: {b}\n")
-					messagebox.showinfo("测试成功", f"故事生成 API 可用\n{b}")
-					self.status.set("故事API可用")
+				# 确保使用故事配置页面的日志框
+				if not hasattr(self, 'story_test_log'):
+					ui_call(
+						messagebox.showwarning,
+						"提示",
+						"请先切换到【故事生成 → 配置】标签页，\n"
+						"以便在该页面查看详细的测试日志。"
+					)
 					return
-			
-			# all failed
-			full_msg = "\n".join(tried_msgs)
-			log_widget.insert(END, "\n" + "="*60 + "\n")
-			log_widget.insert(END, "❌ 故事API测试失败（已尝试所有可能的base_url）\n")
-			log_widget.insert(END, "="*60 + "\n")
-			log_widget.insert(END, full_msg + "\n")
-			log_widget.insert(END, "\n💡 可能的原因:\n")
-			log_widget.insert(END, "  1. API密钥错误或已过期\n")
-			log_widget.insert(END, "  2. 账户余额不足\n")
-			log_widget.insert(END, "  3. Base URL不正确\n")
-			log_widget.insert(END, "  4. 网络连接问题\n")
-			log_widget.insert(END, "  5. 模型名称不支持\n")
-			log_widget.insert(END, "\n建议操作:\n")
-			log_widget.insert(END, "  • 检查API密钥是否正确\n")
-			log_widget.insert(END, "  • 登录服务商网站查看账户余额\n")
-			log_widget.insert(END, "  • 确认Base URL格式正确\n")
-			messagebox.showerror("API 错误", "故事API鉴权失败，请检查密钥/额度/网络/模型。\n详情见配置页面的测试日志。")
-			self.status.set("故事API测试失败")
-		except Exception as e:
-			import traceback
-			if 'log_widget' not in locals():
-				log_widget = getattr(self, 'story_test_log', None)
-			if log_widget:
-				error_trace = traceback.format_exc()
-				log_widget.insert(END, "\n" + "="*60 + "\n")
-				log_widget.insert(END, "💥 故事API测试异常\n")
-				log_widget.insert(END, "="*60 + "\n")
-				log_widget.insert(END, error_trace + "\n")
-			
-			messagebox.showerror("API 错误", f"测试时发生异常:\n{str(e)}\n\n详情见配置页面的测试日志。")
-			self.status.set("故事API测试失败")
-		finally:
-			self.set_busy(False)
+				
+				log_widget = self.story_test_log
+				# 清空之前的日志
+				ui_call(log_widget.delete, "1.0", END)
+				import datetime
+				timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+				ui_call(log_widget.insert, END, f"[{timestamp}] 开始测试故事生成API...\n")
+				
+				from src.utils.text import sanitize as _sanitize, try_chat_api as _try_chat
+				
+				key = _sanitize(self.api_key.get())
+				base = _sanitize(self.base_url.get())
+				model = _sanitize(self.model.get()) or "deepseek-chat"
+				
+				if not key:
+					ui_call(messagebox.showwarning, "警告", "请先填写API Key")
+					ui_call(self.status.set, "测试失败：缺少API Key")
+					ui_call(log_widget.insert, END, "❌ 错误: 缺少API Key\n")
+					return
+				
+				if not base:
+					ui_call(messagebox.showwarning, "警告", "请先填写Base URL")
+					ui_call(self.status.set, "测试失败：缺少Base URL")
+					ui_call(log_widget.insert, END, "❌ 错误: 缺少Base URL\n")
+					return
+				
+				# 记录测试参数
+				ui_call(log_widget.insert, END, f"\n📋 测试参数:\n")
+				ui_call(log_widget.insert, END, f"  • Model: {model}\n")
+				ui_call(log_widget.insert, END, f"  • API Key: {'*' * (len(key)-8) + key[-8:] if len(key) > 8 else '***'}\n")
+				
+				candidates = []
+				# try user-provided
+				candidates.append(base.rstrip("/"))
+				# also try toggling /v1 suffix
+				if base.rstrip("/").endswith("/v1"):
+					candidates.append(base.rstrip("/")[:-3])
+				else:
+					candidates.append(base.rstrip("/") + "/v1")
+				
+				ui_call(log_widget.insert, END, f"\n🔍 尝试的Base URL:\n")
+				
+				tried_msgs: list[str] = []
+				for i, b in enumerate(candidates, 1):
+					ui_call(log_widget.insert, END, f"\n[{i}/{len(candidates)}] 测试: {b}\n")
+					ui_call(log_widget.update)
+					
+					ok, msg = _try_chat(key, b, model)
+					tried_msgs.append(f"base_url={b} -> {'SUCCESS' if ok else 'FAIL'}: {msg}")
+					
+					if ok:
+						ui_call(log_widget.insert, END, f"✅ 成功: {msg}\n")
+					else:
+						ui_call(log_widget.insert, END, f"❌ 失败: {msg}\n")
+					
+					if ok:
+						ui_call(self.base_url.set, b)
+						ui_call(log_widget.insert, END, f"\n🎉 测试成功！已自动更新Base URL为: {b}\n")
+						ui_call(messagebox.showinfo, "测试成功", f"故事生成 API 可用\n{b}")
+						ui_call(self.status.set, "故事API可用")
+						return
+				
+				# all failed
+				full_msg = "\n".join(tried_msgs)
+				ui_call(log_widget.insert, END, "\n" + "="*60 + "\n")
+				ui_call(log_widget.insert, END, "❌ 故事API测试失败（已尝试所有可能的base_url）\n")
+				ui_call(log_widget.insert, END, "="*60 + "\n")
+				ui_call(log_widget.insert, END, full_msg + "\n")
+				ui_call(log_widget.insert, END, "\n💡 可能的原因:\n")
+				ui_call(log_widget.insert, END, "  1. API密钥错误或已过期\n")
+				ui_call(log_widget.insert, END, "  2. 账户余额不足\n")
+				ui_call(log_widget.insert, END, "  3. Base URL不正确\n")
+				ui_call(log_widget.insert, END, "  4. 网络连接问题\n")
+				ui_call(log_widget.insert, END, "  5. 模型名称不支持\n")
+				ui_call(log_widget.insert, END, "\n建议操作:\n")
+				ui_call(log_widget.insert, END, "  • 检查API密钥是否正确\n")
+				ui_call(log_widget.insert, END, "  • 登录服务商网站查看账户余额\n")
+				ui_call(log_widget.insert, END, "  • 确认Base URL格式正确\n")
+				ui_call(messagebox.showerror, "API 错误", "故事API鉴权失败，请检查密钥/额度/网络/模型。\n详情见配置页面的测试日志。")
+				ui_call(self.status.set, "故事API测试失败")
+			except Exception as e:
+				import traceback
+				if log_widget:
+					error_trace = traceback.format_exc()
+					ui_call(log_widget.insert, END, "\n" + "="*60 + "\n")
+					ui_call(log_widget.insert, END, "💥 故事API测试异常\n")
+					ui_call(log_widget.insert, END, "="*60 + "\n")
+					ui_call(log_widget.insert, END, error_trace + "\n")
+				
+				ui_call(messagebox.showerror, "API 错误", f"测试时发生异常:\n{str(e)}\n\n详情见配置页面的测试日志。")
+				ui_call(self.status.set, "故事API测试失败")
+			finally:
+				self.set_busy(False)
+		
+		threading.Thread(target=task, daemon=True).start()
 	
 	
 	def _estimate_chars(self, outline: str) -> int:

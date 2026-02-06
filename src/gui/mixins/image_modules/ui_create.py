@@ -10,6 +10,7 @@ from src.clients.deepseek_client import DeepSeekClient
 from src.clients.image_client import OpenAIImageClient
 from src.utils.text import sanitize as _sanitize
 from ...helpers.image_styles import IMAGE_TYPES, HUNYUAN_STYLE_MAP
+from ...theme import Theme
 
 
 class ImageUICreateTabMixin:
@@ -17,6 +18,11 @@ class ImageUICreateTabMixin:
 	
 	def _build_image_create_tab(self) -> None:
 		"""构建图片创作页面"""
+		T = Theme
+		bg_panel = T.BG_TERTIARY
+		bg_surface = T.SURFACE
+		text_primary = T.TEXT_PRIMARY
+		text_secondary = T.TEXT_SECONDARY
 		# Body two-column layout with better padding
 		body = ttk.Frame(self.image_tab_create)
 		body.pack(fill=BOTH, expand=True, padx=10, pady=10)
@@ -47,16 +53,23 @@ class ImageUICreateTabMixin:
 		self.img_btn_extract_detailed.pack(side=LEFT, padx=(0, 4))
 		
 		# 使用Listbox显示分镜列表
-		shots_list_frame = tk.Frame(grp_shots, bg="#2b2b2b")
+		shots_list_frame = tk.Frame(grp_shots, bg=bg_panel)
 		shots_list_frame.pack(fill="both", expand=True, padx=6, pady=(0, 6))
 		
 		# 添加滚动条
 		shots_scrollbar = ttk.Scrollbar(shots_list_frame, orient="vertical")
-		self.shots_listbox = tk.Listbox(shots_list_frame, font=("", 10), 
-										 yscrollcommand=shots_scrollbar.set,
-										 relief=tk.SOLID, borderwidth=1,
-										 height=8, bg="#1e1e1e", fg="white",
-										 selectbackground="#4CAF50", selectforeground="white")
+		self.shots_listbox = tk.Listbox(
+			shots_list_frame,
+			font=("", 10),
+			yscrollcommand=shots_scrollbar.set,
+			relief=tk.SOLID,
+			borderwidth=1,
+			height=8,
+			bg=bg_surface,
+			fg=text_primary,
+			selectbackground=T.PRIMARY,
+			selectforeground=text_primary,
+		)
 		shots_scrollbar.config(command=self.shots_listbox.yview)
 		
 		self.shots_listbox.pack(side=LEFT, fill=BOTH, expand=True)
@@ -82,7 +95,7 @@ class ImageUICreateTabMixin:
 										   values=IMAGE_TYPES)
 		self.combo_img_type.grid(row=0, column=1, sticky="we", padx=(0, 6), pady=6)
 		# 添加提示文字
-		tk.Label(grp_ctx_add, text="（可手动输入自定义类型）", font=("", 8), fg="gray").grid(row=0, column=2, sticky="w", padx=4)
+		tk.Label(grp_ctx_add, text="（可手动输入自定义类型）", font=("", 8), fg=text_secondary).grid(row=0, column=2, sticky="w", padx=4)
 		
 		tk.Label(grp_ctx_add, text="场景描述:", font=("", 10)).grid(row=1, column=0, sticky="e", padx=(0, 8), pady=6)
 		self.img_entry_scene = ttk.Entry(grp_ctx_add, font=("", 10))
@@ -96,18 +109,30 @@ class ImageUICreateTabMixin:
 		prompt_notebook.pack(fill="both", expand=True, padx=0, pady=0)
 		
 		# 第一个标签页：图片描述
-		tab_img_desc = tk.Frame(prompt_notebook, bg="#2b2b2b")
+		tab_img_desc = tk.Frame(prompt_notebook, bg=bg_panel)
 		prompt_notebook.add(tab_img_desc, text="  💬 图片描述  ")
 		
 		# 提示词输入区域（带✨补全按钮）
-		prompt_input_frame = tk.Frame(tab_img_desc, bg="#2b2b2b")
+		prompt_input_frame = tk.Frame(tab_img_desc, bg=bg_panel)
 		prompt_input_frame.pack(fill="both", expand=True, padx=6, pady=(6, 8))
 		
-		self.img_txt_prompt_cn = tk.Text(prompt_input_frame, height=10, font=("", 10), wrap=tk.WORD, relief=tk.SOLID, borderwidth=1)
+		self.img_txt_prompt_cn = tk.Text(
+			prompt_input_frame,
+			height=10,
+			font=("", 10),
+			wrap=tk.WORD,
+			relief=tk.SOLID,
+			borderwidth=1,
+			bg=bg_surface,
+			fg=text_primary,
+			insertbackground=text_primary,
+			selectbackground=T.PRIMARY,
+			selectforeground=text_primary,
+		)
 		self.img_txt_prompt_cn.pack(side=LEFT, fill="both", expand=True)
 		
 		# ✨ AI补全按钮（竖排在右侧）
-		enhance_frame = tk.Frame(prompt_input_frame, bg="#2b2b2b")
+		enhance_frame = tk.Frame(prompt_input_frame, bg=bg_panel)
 		enhance_frame.pack(side=RIGHT, fill="y", padx=(4, 0))
 		
 		self.btn_enhance_prompt = tk.Button(
@@ -119,7 +144,7 @@ class ImageUICreateTabMixin:
 		self.btn_enhance_prompt.pack(pady=(0, 4))
 		
 		# 添加提示标签
-		tk.Label(enhance_frame, text="AI\n补全", font=("", 8), bg="#2b2b2b", fg="#888").pack()
+		tk.Label(enhance_frame, text="AI\n补全", font=("", 8), bg=bg_panel, fg=text_secondary).pack()
 		
 		rowp = ttk.Frame(tab_img_desc)
 		rowp.pack(fill="x", padx=6, pady=(0, 6))
@@ -131,13 +156,23 @@ class ImageUICreateTabMixin:
 		self.img_btn_clear.pack(side=LEFT, padx=3)
 		
 		# 第二个标签页：即梦AI视频提示词
-		tab_video_prompt = tk.Frame(prompt_notebook, bg="#2b2b2b")
+		tab_video_prompt = tk.Frame(prompt_notebook, bg=bg_panel)
 		prompt_notebook.add(tab_video_prompt, text="  🎬 即梦AI提示词  ")
 		
 		# 视频提示词文本框
-		self.video_prompt_text = tk.Text(tab_video_prompt, height=10, font=("", 10), 
-										 wrap=tk.WORD, relief=tk.SOLID, borderwidth=1,
-										 bg="#1e1e1e", fg="#e0e0e0")
+		self.video_prompt_text = tk.Text(
+			tab_video_prompt,
+			height=10,
+			font=("", 10),
+			wrap=tk.WORD,
+			relief=tk.SOLID,
+			borderwidth=1,
+			bg=bg_surface,
+			fg=text_primary,
+			insertbackground=text_primary,
+			selectbackground=T.PRIMARY,
+			selectforeground=text_primary,
+		)
 		self.video_prompt_text.pack(fill="both", expand=True, padx=6, pady=(0, 8))
 		self.video_prompt_text.insert("1.0", "生成图片后，这里会自动显示适合即梦AI的视频提示词...")
 		self.video_prompt_text.config(state=DISABLED)
@@ -155,20 +190,29 @@ class ImageUICreateTabMixin:
 		self.video_btn_export.pack(side=LEFT)
 		
 		# 提示
-		tk.Label(video_btn_frame, text="← 导出完整制作资料", font=("", 9), fg="#888").pack(side=LEFT, padx=(8, 0))
+		tk.Label(video_btn_frame, text="← 导出完整制作资料", font=("", 9), fg=text_secondary).pack(side=LEFT, padx=(8, 0))
 
 		# Right: 参考人物选择（移到这里，更显眼）
 		grp_ref_characters = ttk.LabelFrame(right, text="🎭 参考人物", padding=(8, 5))
 		grp_ref_characters.pack(fill="both", expand=False, padx=0, pady=(0, 8))
 		
 		# 使用Listbox支持多选
-		ref_list_frame = tk.Frame(grp_ref_characters, bg="#2b2b2b")
+		ref_list_frame = tk.Frame(grp_ref_characters, bg=bg_panel)
 		ref_list_frame.pack(fill="both", expand=True, padx=6, pady=6)
 		
-		self.ref_character_listbox = tk.Listbox(ref_list_frame, height=8, font=("", 10), 
-												selectmode=tk.MULTIPLE, exportselection=False,
-												bg="#1e1e1e", fg="white", selectbackground="#4CAF50",
-												relief=tk.SOLID, borderwidth=1)
+		self.ref_character_listbox = tk.Listbox(
+			ref_list_frame,
+			height=8,
+			font=("", 10),
+			selectmode=tk.MULTIPLE,
+			exportselection=False,
+			bg=bg_surface,
+			fg=text_primary,
+			selectbackground=T.PRIMARY,
+			selectforeground=text_primary,
+			relief=tk.SOLID,
+			borderwidth=1,
+		)
 		self.ref_character_listbox.pack(side=LEFT, fill=BOTH, expand=True)
 		
 		ref_scrollbar = ttk.Scrollbar(ref_list_frame, orient=VERTICAL, command=self.ref_character_listbox.yview)
@@ -207,10 +251,10 @@ class ImageUICreateTabMixin:
 		
 		# 提示标签
 		tk.Label(
-			batch_row, 
-			text="💡 使用角色三视图作为参考，保持人物一致性", 
-			font=("", 9), 
-			fg="#888"
+			batch_row,
+			text="💡 使用角色三视图作为参考，保持人物一致性",
+			font=("", 9),
+			fg=text_secondary,
 		).pack(anchor="w", pady=(4, 0))
 
 		grp_preview = ttk.LabelFrame(right, text="🖼️ 预览", padding=(8, 5))
@@ -225,7 +269,7 @@ class ImageUICreateTabMixin:
 		h_scroll = ttk.Scrollbar(preview_frame, orient="horizontal")
 		
 		# 创建Canvas
-		self.img_canvas = tk.Canvas(preview_frame, bg="#2b2b2b", 
+		self.img_canvas = tk.Canvas(preview_frame, bg=bg_panel, 
 									 yscrollcommand=v_scroll.set,
 									 xscrollcommand=h_scroll.set,
 									 highlightthickness=0)
@@ -243,9 +287,14 @@ class ImageUICreateTabMixin:
 		preview_frame.grid_columnconfigure(0, weight=1)
 		
 		# 在Canvas上创建图片显示区域
-		self.img_preview = ttk.Label(self.img_canvas, text="图片预览区\n\n点击\"生成图片\"后\n图片将显示在这里", 
-									  font=("", 10), foreground="#888888", anchor="center",
-									  background="#2b2b2b")
+		self.img_preview = ttk.Label(
+			self.img_canvas,
+			text="图片预览区\n\n点击\"生成图片\"后\n图片将显示在这里",
+			font=("", 10),
+			foreground=text_secondary,
+			anchor="center",
+			background=bg_panel,
+		)
 		self.img_canvas_window = self.img_canvas.create_window(0, 0, window=self.img_preview, anchor="nw")
 		
 		# 绑定Canvas大小变化事件，自动调整图片显示

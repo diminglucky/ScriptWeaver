@@ -13,6 +13,7 @@ from src.clients.image_client import OpenAIImageClient
 from src.utils.text import sanitize as _sanitize
 from ...helpers.character_prompt_builder import CharacterPromptBuilder
 from ...helpers.character_sheet_builder import CharacterSheetBuilder
+from ...theme import Theme
 
 
 class CharacterSheetMixin:
@@ -46,13 +47,18 @@ class CharacterSheetMixin:
 		layout_dialog = tk.Toplevel(self)
 		layout_dialog.title("选择角色设定表布局")
 		layout_dialog.geometry("500x400")
-		layout_dialog.configure(bg="#2b2b2b")
+		layout_dialog.configure(bg=Theme.BG_SECONDARY)
 		layout_dialog.transient(self)
 		layout_dialog.grab_set()
 		
 		# 标题
-		title_label = tk.Label(layout_dialog, text=f"为 {character_name} 生成角色设定表", 
-							   font=("", 16, "bold"), bg="#2b2b2b", fg="white")
+		title_label = tk.Label(
+			layout_dialog,
+			text=f"为 {character_name} 生成角色设定表",
+			font=("", 16, "bold"),
+			bg=Theme.BG_SECONDARY,
+			fg=Theme.TEXT_PRIMARY,
+		)
 		title_label.pack(pady=15)
 		
 		# 布局选择

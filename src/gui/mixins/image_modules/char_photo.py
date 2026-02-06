@@ -163,6 +163,103 @@ class CharacterPhotoMixin:
 		self.status.set(f"🎨 正在生成\"{character_name}\"的照片 (共{total_count}张)...")
 		if hasattr(self, 'update_header_status'):
 			self.update_header_status(f"生成人物照片...", "🎨")
+
+		# 确保运行时图片配置已同步（即使用户未打开设置页）
+		if hasattr(self, '_sync_img_runtime_from_config'):
+			try:
+				self._sync_img_runtime_from_config()
+			except Exception:
+				pass
+
+		def _resolve_img_runtime():
+			"""解析当前生图使用的 key/base_url/model，避免空模型发请求。"""
+			import os
+			key = self.img_api_key.get().strip() if hasattr(self, 'img_api_key') else ""
+			base_url = self.img_base_url.get().strip() if hasattr(self, 'img_base_url') else ""
+			model = self.img_model.get().strip() if hasattr(self, 'img_model') else ""
+
+			# 优先从当前图片预设读取
+			if not model and hasattr(self, 'img_api_preset') and hasattr(self, 'img_api_presets'):
+				preset_name = self.img_api_preset.get().strip()
+				if preset_name and preset_name in self.img_api_presets:
+					cfg = self.img_api_presets.get(preset_name, {})
+					model = (cfg.get("model") or "").strip()
+					if not key:
+						key = (cfg.get("key") or "").strip()
+					if not base_url:
+						base_url = (cfg.get("base_url") or "").strip()
+
+			# 再尝试从设置页当前值读取
+			if not model and hasattr(self, '_get_current_img_model'):
+				try:
+					model = (self._get_current_img_model() or "").strip()
+				except Exception:
+					pass
+
+			# 最终兜底
+			if not model:
+				model = os.getenv("OPENAI_IMAGE_MODEL", "dall-e-3").strip() or "dall-e-3"
+
+			# 回写到运行时变量，保证后续错误提示可见真实模型
+			if hasattr(self, 'img_model'):
+				try:
+					self.img_model.set(model)
+				except Exception:
+					pass
+
+			return key, base_url, model
+		
+			def _is_safety_block_error(err: Exception) -> bool:
+				err_lower = str(err).lower()
+				return any(k in err_lower for k in ["blocked", "safety", "policy", "moderation", "content_filter"])
+
+			def _is_retryable_model_error(err: Exception) -> bool:
+				err_lower = str(err).lower()
+				return any(k in err_lower for k in [
+					"blocked", "safety", "policy", "moderation", "content_filter",
+					"no capacity", "capacity available", "capacity", "overloaded"
+				])
+
+			def _looks_like_image_model(name: str) -> bool:
+				n = (name or "").strip().lower()
+				if not n:
+					return False
+				if "gemini" in n and "image" in n:
+					return True
+				return any(k in n for k in [
+					"image", "dall-e", "gpt-image", "diffusion", "stable-diffusion",
+					"sdxl", "flux", "recraft", "midjourney", "kandinsky"
+				])
+
+			def _collect_image_model_candidates(primary_model: str) -> list[str]:
+				candidates: list[str] = []
+				def _add(m):
+					val = (m or "").strip()
+					if not val:
+						return
+					if hasattr(self, '_strip_model_label'):
+						try:
+							val = self._strip_model_label(val)
+						except Exception:
+							pass
+					if not _looks_like_image_model(val):
+						return
+					if val not in candidates:
+						candidates.append(val)
+
+				_add(primary_model)
+				if hasattr(self, 'img_api_preset') and hasattr(self, 'img_api_presets'):
+					preset_name = self.img_api_preset.get().strip()
+					if preset_name in self.img_api_presets:
+						cfg = self.img_api_presets.get(preset_name, {})
+						_add(cfg.get("model", ""))
+						models = cfg.get("models", [])
+						if isinstance(models, list):
+							for m in models:
+								_add(str(m))
+				for m in ["gpt-image-1", "dall-e-3", "gemini-3-pro-image"]:
+					_add(m)
+				return candidates
 		
 		def generate_photo_thread():
 			generated_photos = []  # 存储生成的照片信息
@@ -201,7 +298,7 @@ class CharacterPhotoMixin:
 							
 							if not secret_id or not secret_key:
 								print("腾讯混元API密钥未配置")
-								self.after(0, lambda: messagebox.showerror("错误", "请先在配置页面设置腾讯混元API密钥"))
+								self.after(0, lambda: messagebox.showerror("错误", "请先在【设置 → 图片生成 API】配置腾讯混元API密钥"))
 								self.after(0, lambda: self.status.set("❌ 未配置API密钥"))
 								if hasattr(self, 'update_header_status'):
 									self.after(0, lambda: self.update_header_status("未配置API", "❌"))
@@ -227,17 +324,41 @@ class CharacterPhotoMixin:
 							
 							# 针对腾讯混元优化（限制256字符）
 							full_prompt = CharacterPromptBuilder.optimize_for_api(full_prompt, "hunyuan", 256)
+							full_prompt = CharacterPromptBuilder.sanitize_for_image_safety(full_prompt, language="zh")
 							
 							print(f"📝 腾讯混元提示词 ({angle_name}+{expr_name}): {full_prompt}")
+							self._last_character_photo_prompt = full_prompt
 						
 							self.after(0, lambda a=angle_name, e=expr_name: self.status.set(f"🚀 正在调用腾讯混元API生成{a}+{e}照片..."))
 							
 							client = HunyuanImageClient(secret_id=secret_id, secret_key=secret_key)
-							result = client.generate(
-								prompt=full_prompt,
-								resolution="1024:1024",
-								style="201"
-							)
+							try:
+								result = client.generate(
+									prompt=full_prompt,
+									resolution="1024:1024",
+									style="201"
+								)
+							except Exception as first_err:
+								if not _is_safety_block_error(first_err):
+									raise
+									retry_prompt = CharacterPromptBuilder.build_retry_prompt(
+										description=description,
+										style="证件照",
+										view_angle="front",
+										expression="neutral",
+										composition="upper_body",
+										language="zh",
+									)
+								print(f"⚠️ 混元触发策略拦截，使用安全提示词重试：{retry_prompt[:200]}")
+								self._last_character_photo_prompt = retry_prompt
+								self.after(0, lambda a=angle_name, e=expr_name: self.status.set(
+									f"⚠️ {a}+{e}触发策略拦截，正在安全重试..."
+								))
+								result = client.generate(
+									prompt=retry_prompt,
+									resolution="1024:1024",
+									style="201"
+								)
 							
 							# 解析base64图片
 							img_base64 = result["ResultImage"]
@@ -247,50 +368,83 @@ class CharacterPhotoMixin:
 						else:
 							# 使用OpenAI DALL-E或兼容API
 							print(f"使用OpenAI或兼容API - {angle_name}视图 + {expr_name}表情")
-							api_key = self.img_api_key.get()
-							base_url = self.img_base_url.get() if hasattr(self, 'img_base_url') and self.img_base_url.get() else None
-							model = self.img_model.get() if hasattr(self, 'img_model') else "dall-e-3"
+							api_key, base_url, model = _resolve_img_runtime()
+							base_url = base_url or None
+							model_lower = model.lower() if model else ""
+							is_gemini_image = "gemini" in model_lower
+							self._last_effective_img_model = model
 							
 							print(f"API Key存在: {bool(api_key)}, Base URL: {base_url}, Model: {model}")
 							
 							if not api_key:
 								print("图片API密钥未配置")
-								self.after(0, lambda: messagebox.showerror("错误", "请先在'图片生成-配置'页面设置API密钥"))
+								self.after(0, lambda: messagebox.showerror("错误", "请先在【设置 → 图片生成 API】配置API密钥"))
 								self.after(0, lambda: self.status.set("❌ 未配置API密钥"))
 								if hasattr(self, 'update_header_status'):
 									self.after(0, lambda: self.update_header_status("未配置API", "❌"))
 								return
 							
-							# 🎯 使用专业的提示词构建器（英文版，使用当前角度、表情、变体和一致性优化）
-							composition = "upper_body" if style == "证件照" else "full_body"
-							
-							full_prompt = CharacterPromptBuilder.build_character_photo_prompt(
-								description=description,
-								style=style,
-								view_angle=angle,  # 使用当前循环的角度
-								expression=expr,   # 使用当前循环的表情
-								composition=composition,
-								extra_details=extra_desc,
-								language="en",
-								default_nationality="chinese",
-								variant=variant_value,
-								variant_mode=variant_mode,
-								consistency_level=consistency_level,  # 使用用户选择的一致性级别
-								batch_type=batch_type  # 传递批量类型
-							)
-							
-							# 针对OpenAI优化（DALL-E 3建议1000字符内）
-							full_prompt = CharacterPromptBuilder.optimize_for_api(full_prompt, "openai", 1000)
+							# Gemini网关对长提示词更敏感，走简化中文提示词路径
+							if is_gemini_image:
+								appearance_only = CharacterPromptBuilder.extract_appearance_only(description)
+								compact_prompt = (
+									f"写实人像照片，成年人，{appearance_only}，{angle_name}视角，{expr_name}表情，"
+									"上半身，纯色背景，自然光，高清"
+								)
+								full_prompt = CharacterPromptBuilder.sanitize_for_image_safety(compact_prompt, language="zh")
+								full_prompt = CharacterPromptBuilder.optimize_for_api(full_prompt, "openai", 320)
+							else:
+								# 🎯 使用专业的提示词构建器（英文版，使用当前角度、表情、变体和一致性优化）
+								composition = "upper_body" if style == "证件照" else "full_body"
+								
+								full_prompt = CharacterPromptBuilder.build_character_photo_prompt(
+									description=description,
+									style=style,
+									view_angle=angle,  # 使用当前循环的角度
+									expression=expr,   # 使用当前循环的表情
+									composition=composition,
+									extra_details=extra_desc,
+									language="en",
+									default_nationality="chinese",
+									variant=variant_value,
+									variant_mode=variant_mode,
+									consistency_level=consistency_level,  # 使用用户选择的一致性级别
+									batch_type=batch_type  # 传递批量类型
+								)
+								
+								# 针对OpenAI优化（DALL-E 3建议1000字符内）
+								full_prompt = CharacterPromptBuilder.optimize_for_api(full_prompt, "openai", 1000)
+								full_prompt = CharacterPromptBuilder.sanitize_for_image_safety(full_prompt, language="en")
 							
 							print(f"📝 OpenAI提示词 ({angle_name}+{expr_name}): {full_prompt[:200]}...")
+							self._last_character_photo_prompt = full_prompt
 						
 							self.after(0, lambda a=angle_name, e=expr_name: self.status.set(f"🚀 正在调用图片API生成{a}+{e}照片..."))
 							
 							print(f"创建OpenAIImageClient...")
 							client = OpenAIImageClient(api_key=api_key, base_url=base_url, model=model)
 							print(f"调用generate方法...")
-							results = client.generate(full_prompt, size="1024x1024")
-							print(f"收到结果: {len(results) if results else 0} 张图片")
+							try:
+								results = client.generate(full_prompt, size="1024x1024")
+							except Exception as first_err:
+								if not _is_safety_block_error(first_err):
+									raise
+								retry_lang = "zh" if is_gemini_image else "en"
+								retry_prompt = CharacterPromptBuilder.build_retry_prompt(
+									description=description,
+									style="证件照" if retry_lang == "zh" else "ID photo",
+									view_angle="front",
+									expression="neutral",
+									composition="upper_body",
+									language=retry_lang,
+								)
+								print(f"⚠️ OpenAI触发策略拦截，使用安全提示词重试：{retry_prompt[:220]}")
+								self._last_character_photo_prompt = retry_prompt
+								self.after(0, lambda a=angle_name, e=expr_name: self.status.set(
+									f"⚠️ {a}+{e}触发策略拦截，正在安全重试..."
+								))
+								results = client.generate(retry_prompt, size="1024x1024")
+								print(f"收到结果: {len(results) if results else 0} 张图片")
 							
 							# 获取第一张图片
 							if results:
@@ -403,16 +557,45 @@ class CharacterPhotoMixin:
 			except Exception as e:
 				import traceback
 				error_detail = traceback.format_exc()
-				error_msg = f"生成照片失败: {str(e)}"
+				raw_reason = str(e).strip()
+				error_msg = f"生成照片失败: {raw_reason}"
 				print(f"\n{'='*60}\n生成人物照片时发生错误：\n{error_detail}\n{'='*60}\n")
 				
 				# 显示更详细的错误信息
-				if "401" in str(e) or "authentication" in str(e).lower():
+				err_lower = raw_reason.lower()
+				current_model = getattr(self, "_last_effective_img_model", "")
+				if not current_model and hasattr(self, 'img_model'):
+					current_model = self.img_model.get().strip()
+				current_base_url = self.img_base_url.get() if hasattr(self, "img_base_url") else ""
+				if "no capacity" in err_lower or "capacity available" in err_lower or "capacity" in err_lower:
+					error_msg = (
+						"图片服务当前容量不足（不是提示词违规）。"
+						f"\n模型：{current_model or '未知'}"
+						f"\nBase URL：{current_base_url or '默认'}"
+						f"\n原始原因：{raw_reason[:220]}"
+					)
+				elif "blocked" in err_lower or "safety" in err_lower or "policy" in err_lower:
+					error_msg = (
+						"请求被安全策略拦截（已自动安全重试一次仍失败）。"
+						f"\n模型：{current_model or '未知'}"
+						f"\nBase URL：{current_base_url or '默认'}"
+						f"\n原始原因：{raw_reason[:220]}"
+					)
+				elif "401" in str(e) or "authentication" in err_lower:
 					error_msg = "API密钥无效或已过期，请检查配置"
-				elif "timeout" in str(e).lower():
+				elif "timeout" in err_lower:
 					error_msg = "API请求超时，请检查网络连接"
-				elif "rate" in str(e).lower() or "quota" in str(e).lower():
+				elif "rate" in err_lower or "quota" in err_lower:
 					error_msg = "API配额用尽或请求频率过高"
+
+				if hasattr(self, 'settings_log'):
+					def _log_error():
+						self.settings_log.insert(END, f"\n❌ 人物照片生成失败: {raw_reason}\n")
+						if hasattr(self, '_last_character_photo_prompt'):
+							last_prompt = getattr(self, '_last_character_photo_prompt', '')
+							self.settings_log.insert(END, f"📝 最后提示词: {last_prompt[:320]}\n")
+						self.settings_log.see(END)
+					self.after(0, _log_error)
 				
 				self.after(0, lambda msg=error_msg: messagebox.showerror("生成失败", msg))
 				self.after(0, lambda: self.status.set("❌ 生成照片失败"))
@@ -678,6 +861,7 @@ class CharacterPhotoMixin:
 				
 				# 构建三视图组合提示词（借鉴自 DirectorAI）
 				turnaround_prompt = self._build_turnaround_prompt(description)
+				turnaround_prompt = CharacterPromptBuilder.sanitize_for_image_safety(turnaround_prompt, language="en")
 				print(f"📝 三视图提示词: {turnaround_prompt[:200]}...")
 				
 				# 获取图片风格
@@ -692,38 +876,75 @@ class CharacterPhotoMixin:
 					secret_key = self.hunyuan_secret_key.get() if hasattr(self, 'hunyuan_secret_key') else ""
 					
 					if not secret_id or not secret_key:
-						self.after(0, lambda: messagebox.showerror("错误", "请先配置腾讯混元API密钥"))
+						self.after(0, lambda: messagebox.showerror("错误", "请先在【设置 → 图片生成 API】配置腾讯混元API密钥"))
 						return
 					
 					# 优化提示词
 					optimized_prompt = CharacterPromptBuilder.optimize_for_api(turnaround_prompt, "hunyuan", 256)
+					optimized_prompt = CharacterPromptBuilder.sanitize_for_image_safety(optimized_prompt, language="zh")
 					
 					self.after(0, lambda: self.status.set("🚀 正在调用腾讯混元API..."))
 					
 					client = HunyuanImageClient(secret_id=secret_id, secret_key=secret_key)
-					result = client.generate(
-						prompt=optimized_prompt,
-						resolution="1024:1024",
-						style="201"
-					)
+					try:
+						result = client.generate(
+							prompt=optimized_prompt,
+							resolution="1024:1024",
+							style="201"
+						)
+					except Exception as first_err:
+						if "blocked" not in str(first_err).lower() and "safety" not in str(first_err).lower():
+							raise
+						retry_prompt = CharacterPromptBuilder.build_retry_prompt(
+							description=description,
+							style=style,
+							view_angle="front",
+							expression="neutral",
+							composition="upper_body",
+							language="zh",
+						)
+						result = client.generate(
+							prompt=retry_prompt,
+							resolution="1024:1024",
+							style="201"
+						)
 					
 					img_base64 = result["ResultImage"]
 					img_data = base64.b64decode(img_base64)
 					img = Image.open(BytesIO(img_data))
 				else:
 					# 使用OpenAI
-					api_key = self.img_api_key.get()
-					base_url = self.img_base_url.get() if hasattr(self, 'img_base_url') and self.img_base_url.get() else None
-					model = self.img_model.get() if hasattr(self, 'img_model') else "dall-e-3"
+					api_key = self.img_api_key.get().strip() if hasattr(self, 'img_api_key') else ""
+					base_url = self.img_base_url.get().strip() if hasattr(self, 'img_base_url') else ""
+					model = self.img_model.get().strip() if hasattr(self, 'img_model') else ""
+					if not model and hasattr(self, 'img_api_preset') and hasattr(self, 'img_api_presets'):
+						preset_name = self.img_api_preset.get().strip()
+						if preset_name in self.img_api_presets:
+							model = (self.img_api_presets[preset_name].get("model") or "").strip()
+					model = model or "dall-e-3"
+					base_url = base_url or None
 					
 					if not api_key:
-						self.after(0, lambda: messagebox.showerror("错误", "请先配置图片API密钥"))
+						self.after(0, lambda: messagebox.showerror("错误", "请先在【设置 → 图片生成 API】配置API密钥"))
 						return
 					
 					self.after(0, lambda: self.status.set("🚀 正在调用图片API..."))
 					
 					client = OpenAIImageClient(api_key=api_key, base_url=base_url, model=model)
-					results = client.generate(turnaround_prompt, size="1024x1024")
+					try:
+						results = client.generate(turnaround_prompt, size="1024x1024")
+					except Exception as first_err:
+						if "blocked" not in str(first_err).lower() and "safety" not in str(first_err).lower():
+							raise
+						retry_prompt = CharacterPromptBuilder.build_retry_prompt(
+							description=description,
+							style=style,
+							view_angle="front",
+							expression="neutral",
+							composition="upper_body",
+							language="en",
+						)
+						results = client.generate(retry_prompt, size="1024x1024")
 					
 					if results:
 						img = results[0].image

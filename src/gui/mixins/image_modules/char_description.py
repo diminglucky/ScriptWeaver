@@ -12,6 +12,7 @@ import threading
 
 from ...models.character import Character, CharacterProfile, VisualFeatures, CharacterDNA
 from ...services.ai_service import create_ai_service
+from ...helpers.character_prompt_builder import CharacterPromptBuilder
 
 
 class CharacterDescriptionMixin:
@@ -44,8 +45,27 @@ class CharacterDescriptionMixin:
         
         story_text = self.output.get("1.0", END).strip()
         
-        selected_api = self.outline_gen_api.get() if hasattr(self, 'outline_gen_api') else "DeepSeek"
-        ai_service = create_ai_service(self.api_presets, selected_api)
+        # 外貌设计：根据模型路由选择 API
+        fallback_provider = None
+        if hasattr(self, 'quick_story_api'):
+            fallback_provider = self.quick_story_api.get()
+        if not fallback_provider and hasattr(self, 'api_preset'):
+            fallback_provider = self.api_preset.get()
+        fallback_model = None
+        if hasattr(self, 'char_model_var'):
+            fallback_model = self.char_model_var.get()
+        elif hasattr(self, 'story_model_var'):
+            fallback_model = self.story_model_var.get()
+        elif hasattr(self, 'model'):
+            fallback_model = self.model.get()
+        
+        api_config = self._resolve_task_api("character_description", fallback_provider=fallback_provider, fallback_model=fallback_model)
+        selected_api = api_config.get("provider", "")
+        selected_model = api_config.get("model", "")
+        if selected_model:
+            print(f"🤖 使用模型: {selected_model}")
+        
+        ai_service = create_ai_service({"__route__": api_config}, "__route__")
         if not ai_service:
             messagebox.showwarning("提示", "API Key 为空，请在配置页面设置")
             return
@@ -64,9 +84,12 @@ class CharacterDescriptionMixin:
                     story_text=story_text
                 )
                 
-                description = result.get("description", "")
+                raw_description = result.get("description", "")
+                description = CharacterPromptBuilder.extract_appearance_only(raw_description)
                 visual_data = result.get("visual_features", {})
-                dna_prompt = result.get("dna_prompt", "")
+                raw_dna_prompt = result.get("dna_prompt", "")
+                dna_prompt = CharacterPromptBuilder.extract_appearance_only(raw_dna_prompt)
+                dna_prompt = CharacterPromptBuilder.sanitize_for_image_safety(dna_prompt, language="en")
                 
                 # 更新角色数据
                 if isinstance(char, Character):
@@ -121,6 +144,7 @@ class CharacterDescriptionMixin:
                 self.after(0, lambda: self.status.set("❌ 设计失败"))
             finally:
                 self.after(0, lambda: self.char_btn_gen_desc.config(state=NORMAL))
+                pass
         
         threading.Thread(target=design_thread, daemon=True).start()
     

@@ -313,10 +313,14 @@ class VideoPromptMixin:
 			import subprocess, platform
 			try:
 				s = platform.system()
-				if s == "Darwin": subprocess.run(["open", str(export_dir)])
-				elif s == "Windows": subprocess.run(["explorer", str(export_dir)])
-				elif s == "Linux": subprocess.run(["xdg-open", str(export_dir)])
-			except: pass
+				if s == "Darwin": 
+					subprocess.run(["open", str(export_dir)], check=False)
+				elif s == "Windows": 
+					subprocess.run(["explorer", str(export_dir)], check=False)
+				elif s == "Linux": 
+					subprocess.run(["xdg-open", str(export_dir)], check=False)
+			except (subprocess.SubprocessError, FileNotFoundError) as e:
+				print(f"无法自动打开目录: {e}")
 			
 			messagebox.showinfo(
 				"导出成功",
