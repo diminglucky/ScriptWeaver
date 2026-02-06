@@ -672,6 +672,114 @@ class SettingsMixin:
         if hasattr(self, '_load_quick_api_switch'):
             self._load_quick_api_switch()
 
+    def _load_model_routing_from_file(self) -> None:
+        """从文件加载模型路由配置"""
+        try:
+            import json
+            from pathlib import Path
+
+            path = Path("model_routing.json")
+            if not path.exists():
+                self.model_routing = {}
+                self._model_routing_loaded = True
+                return
+
+            with open(path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            self.model_routing = data if isinstance(data, dict) else {}
+            self._model_routing_loaded = True
+        except Exception:
+            self.model_routing = {}
+            self._model_routing_loaded = True
+
+    def _save_model_routing_to_file(self) -> None:
+        """保存模型路由配置到文件"""
+        try:
+            import json
+
+            routing = self.model_routing if isinstance(getattr(self, "model_routing", {}), dict) else {}
+            with open("model_routing.json", "w", encoding="utf-8") as f:
+                json.dump(routing, f, ensure_ascii=False, indent=2)
+        except Exception:
+            # 路由保存失败不应阻断主流程
+            pass
+
+    def _ensure_model_routing_loaded(self) -> None:
+        """确保模型路由已加载并包含默认任务键"""
+        if getattr(self, "_model_routing_loaded", False):
+            if not isinstance(getattr(self, "model_routing", None), dict):
+                self.model_routing = {}
+            return
+
+        self._load_model_routing_from_file()
+        if not isinstance(getattr(self, "model_routing", None), dict):
+            self.model_routing = {}
+
+        for task_key, _label in MODEL_ROUTING_TASKS:
+            if task_key not in self.model_routing:
+                self.model_routing[task_key] = {"provider": "", "model": ""}
+
+        self._model_routing_loaded = True
+
+    def _get_task_route(self, task_key: str) -> dict:
+        """获取任务路由配置"""
+        self._ensure_model_routing_loaded()
+        route = self.model_routing.get(task_key, {}) if isinstance(self.model_routing, dict) else {}
+        return route if isinstance(route, dict) else {}
+
+    def _resolve_task_api(self, task_key: str, fallback_provider: str | None = None, fallback_model: str | None = None) -> dict:
+        """解析任务应使用的 API 配置（provider/key/base_url/model）"""
+        self._ensure_model_routing_loaded()
+
+        route = self._get_task_route(task_key)
+        provider = (route.get("provider", "") if isinstance(route, dict) else "").strip()
+        if not provider:
+            provider = (fallback_provider or "").strip()
+        if not provider and hasattr(self, "settings_api_provider"):
+            provider = self.settings_api_provider.get().strip()
+        if not provider and hasattr(self, "api_preset"):
+            provider = self.api_preset.get().strip()
+        if not provider:
+            provider = "DeepSeek"
+
+        provider_cfg = {}
+        if hasattr(self, "api_providers") and provider in self.api_providers:
+            provider_cfg = self.api_providers.get(provider, {}) or {}
+        elif hasattr(self, "api_presets") and provider in self.api_presets:
+            provider_cfg = self.api_presets.get(provider, {}) or {}
+
+        key = str(provider_cfg.get("key", "") or "").strip()
+        base_url = str(provider_cfg.get("base_url", "") or "").strip()
+
+        route_model = ""
+        if isinstance(route, dict):
+            route_model = str(route.get("model", "") or "").strip()
+        if hasattr(self, "_strip_model_label"):
+            route_model = self._strip_model_label(route_model)
+
+        model = route_model
+        if not model:
+            cfg_model = str(provider_cfg.get("model", "") or "").strip()
+            if hasattr(self, "_strip_model_label"):
+                cfg_model = self._strip_model_label(cfg_model)
+            model = cfg_model
+        if not model:
+            models = provider_cfg.get("models", []) if isinstance(provider_cfg, dict) else []
+            if isinstance(models, list) and models:
+                first_model = str(models[0]).strip()
+                model = self._strip_model_label(first_model) if hasattr(self, "_strip_model_label") else first_model
+        if not model:
+            model = self._strip_model_label((fallback_model or "").strip()) if hasattr(self, "_strip_model_label") else (fallback_model or "").strip()
+        if not model:
+            model = "deepseek-chat"
+
+        return {
+            "provider": provider,
+            "key": key,
+            "base_url": base_url,
+            "model": model,
+        }
+
     def _strip_model_label(self, model: str) -> str:
         """去除模型前缀标签（📝 文本 / 🖼️ 图像）"""
         if not model:

@@ -26,12 +26,12 @@ def main():
     try:
         # 尝试导入现代化UI
         from src.gui.modern_app import ModernApp
-        print("🚀 启动 AI Story Creator Pro (现代化UI版本)...")
+        print("[INFO] 启动 AI Story Creator Pro (现代化UI版本)...")
         app = ModernApp()
         app.mainloop()
     except ImportError as e:
-        print(f"⚠️ 无法加载现代化UI: {e}")
-        print("正在回退到经典版本...")
+        print(f"[WARN] 无法加载现代化UI: {e}")
+        print("[INFO] 正在回退到经典版本...")
         
         # 回退到经典版本
         from src.gui_app import App

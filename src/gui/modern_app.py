@@ -831,26 +831,26 @@ class ModernApp(tk.Tk, ProjectMixin, StoryMixin, ImageMixin, KbMixin, ConfigMixi
             outline_api = os.getenv("STORY_OUTLINE_GEN_API", "DeepSeek")
             if hasattr(self, 'outline_gen_api'):
                 self.outline_gen_api.set(outline_api)
-                print(f"✅ 已加载目录生成API: {outline_api}")
+                print(f"[OK] 已加载目录生成API: {outline_api}")
             
             story_api = os.getenv("STORY_STORY_GEN_API", "DeepSeek")
             if hasattr(self, 'story_gen_api'):
                 self.story_gen_api.set(story_api)
-                print(f"✅ 已加载故事生成API: {story_api}")
+                print(f"[OK] 已加载故事生成API: {story_api}")
             
             # 更新故事创作功能API下拉框的选项
             if hasattr(self, 'api_presets') and hasattr(self, 'combo_outline_gen_api'):
                 api_list = list(self.api_presets.keys())
                 self.combo_outline_gen_api['values'] = api_list
                 self.combo_story_gen_api['values'] = api_list
-                print(f"✅ 已更新API选项列表: {api_list}")
+                print(f"[OK] 已更新API选项列表: {api_list}")
             
             # 同步到快速切换区域
             if hasattr(self, 'quick_story_api'):
                 self.quick_story_api.set(story_api)
-                print(f"✅ 已同步到快速切换: {story_api}")
+                print(f"[OK] 已同步到快速切换: {story_api}")
                 
         except Exception as e:
-            print(f"❌ 加载故事API选择失败: {e}")
+            print(f"[ERROR] 加载故事API选择失败: {e}")
             import traceback
             traceback.print_exc()

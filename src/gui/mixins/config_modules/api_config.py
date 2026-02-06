@@ -192,7 +192,8 @@ class APIConfigMixin:
 			# 加载上次使用的预设
 			last_preset = os.getenv("IMG_API_PRESET")
 			if last_preset and last_preset in self.img_api_presets:
-				self.img_api_preset.set(last_preset)
+				if hasattr(self, 'img_api_preset'):
+					self.img_api_preset.set(last_preset)
 				# 自动填充该预设的配置
 				preset_config = self.img_api_presets[last_preset]
 				
@@ -200,7 +201,7 @@ class APIConfigMixin:
 				provider = preset_config.get("provider", "openai")
 				if hasattr(self, 'img_api_type'):
 					self.img_api_type.set(provider)
-					print(f"🔧 启动时已设置图片API类型为: {provider} (预设: {last_preset})")
+					print(f"[INFO] 启动时已设置图片API类型为: {provider} (预设: {last_preset})")
 				
 				if preset_config.get("key"):
 					self.img_api_key.set(preset_config["key"])
