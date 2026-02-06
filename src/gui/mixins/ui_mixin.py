@@ -5,6 +5,7 @@ Ui相关功能模块
 from tkinter import BOTH, LEFT, RIGHT, DISABLED, NORMAL, END, messagebox, filedialog
 import tkinter as tk
 from tkinter import ttk
+from ..theme import Theme
 
 
 class UiMixin:
@@ -15,10 +16,10 @@ class UiMixin:
         self.notebook = ttk.Notebook(self)
         self.notebook.pack(fill=BOTH, expand=True, padx=10, pady=(10, 8))
         
-        self.page_project = tk.Frame(self.notebook, bg="#2b2b2b")
-        self.page_story = tk.Frame(self.notebook, bg="#2b2b2b")
-        self.page_image = tk.Frame(self.notebook, bg="#2b2b2b")
-        self.page_settings = tk.Frame(self.notebook, bg="#2b2b2b")
+        self.page_project = tk.Frame(self.notebook, bg=Theme.BG_SECONDARY)
+        self.page_story = tk.Frame(self.notebook, bg=Theme.BG_SECONDARY)
+        self.page_image = tk.Frame(self.notebook, bg=Theme.BG_SECONDARY)
+        self.page_settings = tk.Frame(self.notebook, bg=Theme.BG_SECONDARY)
         
         self.notebook.add(self.page_project, text="  📁 项目管理  ")
         self.notebook.add(self.page_story, text="  📝 故事生成  ")

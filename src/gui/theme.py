@@ -209,7 +209,9 @@ class ThemeManager:
             if self._config_path.exists():
                 with open(self._config_path, 'r') as f:
                     config = json.load(f)
-                    if config.get('theme') == 'light':
+                    if config.get('theme') == 'dark':
+                        self._current_theme = DarkTheme
+                    elif config.get('theme') == 'light':
                         self._current_theme = LightTheme
         except Exception:
             pass

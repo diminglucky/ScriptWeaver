@@ -350,6 +350,11 @@ class ModernApp(tk.Tk, ProjectMixin, StoryMixin, ImageMixin, KbMixin, ConfigMixi
             borderwidth=1,
             insertcolor=Theme.TEXT_PRIMARY
         )
+        self.ttk_style.map(
+            "TEntry",
+            fieldbackground=[("disabled", Theme.BG_SECONDARY), ("!disabled", Theme.BG_TERTIARY)],
+            foreground=[("disabled", Theme.TEXT_DISABLED), ("!disabled", Theme.TEXT_PRIMARY)],
+        )
         
         # 配置Combobox
         self.ttk_style.configure(
@@ -360,6 +365,49 @@ class ModernApp(tk.Tk, ProjectMixin, StoryMixin, ImageMixin, KbMixin, ConfigMixi
             borderwidth=1,
             arrowcolor=Theme.TEXT_SECONDARY
         )
+        self.ttk_style.map(
+            "TCombobox",
+            fieldbackground=[
+                ("readonly", Theme.BG_TERTIARY),
+                ("disabled", Theme.BG_SECONDARY),
+                ("!disabled", Theme.BG_TERTIARY),
+            ],
+            background=[
+                ("readonly", Theme.BG_TERTIARY),
+                ("disabled", Theme.BG_SECONDARY),
+                ("!disabled", Theme.BG_TERTIARY),
+            ],
+            foreground=[
+                ("readonly", Theme.TEXT_PRIMARY),
+                ("disabled", Theme.TEXT_DISABLED),
+                ("!disabled", Theme.TEXT_PRIMARY),
+            ],
+            selectbackground=[("readonly", Theme.PRIMARY), ("!readonly", Theme.PRIMARY)],
+            selectforeground=[("readonly", Theme.TEXT_PRIMARY), ("!readonly", Theme.TEXT_PRIMARY)],
+            arrowcolor=[("disabled", Theme.TEXT_DISABLED), ("!disabled", Theme.TEXT_SECONDARY)],
+        )
+
+        # 配置Spinbox（避免深色主题下白底）
+        self.ttk_style.configure(
+            "TSpinbox",
+            fieldbackground=Theme.BG_TERTIARY,
+            background=Theme.BG_TERTIARY,
+            foreground=Theme.TEXT_PRIMARY,
+            borderwidth=1,
+            arrowcolor=Theme.TEXT_SECONDARY,
+        )
+        self.ttk_style.map(
+            "TSpinbox",
+            fieldbackground=[("disabled", Theme.BG_SECONDARY), ("!disabled", Theme.BG_TERTIARY)],
+            foreground=[("disabled", Theme.TEXT_DISABLED), ("!disabled", Theme.TEXT_PRIMARY)],
+            arrowcolor=[("disabled", Theme.TEXT_DISABLED), ("!disabled", Theme.TEXT_SECONDARY)],
+        )
+
+        # 下拉弹窗列表颜色
+        self.option_add("*TCombobox*Listbox*Background", Theme.BG_TERTIARY)
+        self.option_add("*TCombobox*Listbox*Foreground", Theme.TEXT_PRIMARY)
+        self.option_add("*TCombobox*Listbox*selectBackground", Theme.PRIMARY)
+        self.option_add("*TCombobox*Listbox*selectForeground", Theme.TEXT_PRIMARY)
     
     def _create_modern_header(self):
         """创建现代化顶部标题栏 - 专业设计"""
