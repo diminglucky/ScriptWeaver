@@ -6,11 +6,13 @@ from tkinter import ttk
 import threading
 import re
 from pathlib import Path
-from dotenv import load_dotenv
+try:
+	from dotenv import load_dotenv
+except Exception:  # pragma: no cover - optional dependency
+	def load_dotenv(*args, **kwargs):
+		return False
 
 from src.clients.deepseek_client import DeepSeekClient
-from src.kb.ingest import KnowledgeBaseIngestor, IngestConfig
-from src.kb.search import KnowledgeBaseSearcher, SearchConfig
 from src.utils.text import sanitize as _sanitize
 
 
@@ -53,8 +55,10 @@ class StoryConfigMixin:
 		"""保存故事创作功能API配置（目录生成和故事生成）"""
 		try:
 			from pathlib import Path
-			from dotenv import find_dotenv, set_key
-			from dotenv import load_dotenv
+			try:
+				from dotenv import find_dotenv, set_key, load_dotenv
+			except Exception:
+				from src.gui.mixins.config_modules.api_config import find_dotenv, set_key, load_dotenv
 			
 			env_path_str = find_dotenv(usecwd=True)
 			if not env_path_str:

@@ -3,15 +3,24 @@
 from tkinter import BOTH, LEFT, RIGHT, DISABLED, NORMAL, END, messagebox, filedialog, scrolledtext
 import tkinter as tk
 from tkinter import ttk
+import logging
 import threading
 import re
 from pathlib import Path
-from dotenv import load_dotenv
+try:
+	from dotenv import load_dotenv
+except Exception:  # pragma: no cover - optional dependency
+	def load_dotenv(*args, **kwargs):
+		return False
 
 from src.clients.deepseek_client import DeepSeekClient
-from src.kb.ingest import KnowledgeBaseIngestor, IngestConfig
-from src.kb.search import KnowledgeBaseSearcher, SearchConfig
 from src.utils.text import sanitize as _sanitize
+
+logger = logging.getLogger(__name__)
+
+
+def print(*args, **kwargs):  # type: ignore[override]
+	logger.info(" ".join(str(a) for a in args))
 
 
 class OutlineGeneratorMixin:
@@ -65,6 +74,8 @@ class OutlineGeneratorMixin:
 				# 更新顶部状态栏
 				if hasattr(self, 'update_header_status'):
 					self.update_header_status("正在生成目录...", "📝")
+				from src.kb.ingest import IngestConfig, KnowledgeBaseIngestor
+				from src.kb.search import KnowledgeBaseSearcher, SearchConfig
 				
 				load_dotenv()
 				if need_build:
@@ -172,6 +183,8 @@ class OutlineGeneratorMixin:
 			def task():
 				try:
 					self.set_busy(True)
+					from src.kb.ingest import IngestConfig, KnowledgeBaseIngestor
+					from src.kb.search import KnowledgeBaseSearcher, SearchConfig
 					load_dotenv()
 					if need_build:
 						cfg = IngestConfig(data_root=Path(self.data_dir.get()), index_dir=Path(self.index_dir.get()))
@@ -245,36 +258,7 @@ class OutlineGeneratorMixin:
 					base_url=_sanitize(api_config.get("base_url", "")),
 					model=selected_model,
 				)
-				target_chars = self.target_chars.get()
-				# 根据目标字数动态决定章节数
-				if target_chars <= 3000:
-					suggested_sections = "3-4"
-				elif target_chars <= 8000:
-					suggested_sections = "4-6"
-				elif target_chars <= 15000:
-					suggested_sections = "6-8"
-				else:
-					suggested_sections = "8-10"
-				
-				prompt = (
-					"请产出一个简洁的写作目录（仅目录，不要正文）。\n\n"
-					"【核心要求】\n"
-					f"- 只输出 {suggested_sections} 个主要章节标题，不要子标题、不要要点列表\n"
-					"- 每个章节用数字编号（1. 2. 3. ...）\n"
-					"- 章节名简短有力（5-10字），能体现故事发展\n"
-					"- 结构要符合：开端 → 发展 → 高潮 → 结局\n"
-					"- 不要写\"第一章\"、\"第二章\"，直接写章节内容主题\n\n"
-					f"【创作信息】\n"
-					f"- 主题/需求：{requirement}\n"
-					f"- 种类：{self.category.get()}\n"
-					f"- 目标字数：{target_chars}字\n\n"
-					"请直接输出章节列表，格式如下：\n"
-					"1. 平静的开端\n"
-					"2. 意外降临\n"
-					"3. 危机爆发\n"
-					"4. 绝地反击\n"
-					"5. 尘埃落定"
-				)
+				prompt = self._build_outline_prompt(requirement, [], self.category.get())
 				self._ui(self.output.delete, "1.0", END)
 				self._ui(self.output.insert, END, "生成目录中...\n\n")
 				outline_text = client.chat([
@@ -457,7 +441,8 @@ class OutlineGeneratorMixin:
 		current_output = ""
 		try:
 			current_output = (self._ui_get(self.output.get, "1.0", END) or "").strip()
-		except Exception:
+		except Exception as e:
+			logger.debug("read current output failed, use empty content: %s", e)
 			current_output = ""
 		# 提取已生成的故事内容（排除目录部分）
 		if "目录" in current_output and "\n\n" in current_output:

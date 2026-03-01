@@ -5,7 +5,11 @@ from pathlib import Path
 from typing import List
 
 import typer
-from dotenv import load_dotenv
+try:
+	from dotenv import load_dotenv
+except Exception:  # pragma: no cover - optional dependency
+	def load_dotenv(*args, **kwargs):
+		return False
 from rich.console import Console
 from rich.markdown import Markdown
 

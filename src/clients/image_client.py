@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import os
+import logging
 import requests
 from dataclasses import dataclass
 from io import BytesIO
@@ -9,7 +10,9 @@ from typing import List, Optional, Tuple
 
 from PIL import Image
 from openai import OpenAI
+from .custom_openai_client import create_compatible_client
 
+logger = logging.getLogger(__name__)
 
 @dataclass
 class ImageResult:
@@ -30,7 +33,18 @@ class OpenAIImageClient:
         key = api_key or os.getenv("OPENAI_API_KEY", "")
         if not key:
             raise RuntimeError("Missing OPENAI_API_KEY for image generation")
-        self.client = OpenAI(api_key=key, base_url=base_url, timeout=timeout_seconds)
+        # Use the compatibility client first to avoid Cloudflare/WAF false blocks
+        # caused by OpenAI SDK-specific headers on some third-party gateways.
+        resolved_base_url = (base_url or os.getenv("OPENAI_BASE_URL", "")).strip() or "https://api.openai.com/v1"
+        try:
+            self.client = create_compatible_client(
+                api_key=key,
+                base_url=resolved_base_url,
+                timeout=float(timeout_seconds),
+            )
+        except Exception:
+            # Fallback to the default SDK client for maximum compatibility.
+            self.client = OpenAI(api_key=key, base_url=base_url, timeout=timeout_seconds)
         self.model = model
 
     def generate(self, prompt: str, *, seed: Optional[int] = None, size: str = "1024x1024", n: int = 1) -> List[ImageResult]:
@@ -137,7 +151,8 @@ class OpenAIImageClient:
                     return results
                 else:
                     raise
-        except Exception:
+        except Exception as e:
+            logger.debug("images.edits unavailable, fallback to images.generate: %s", e)
             # Fallback to pure text prompt if edits unsupported
             return self.generate(prompt=prompt, size=size, n=1)
 

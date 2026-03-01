@@ -16,7 +16,10 @@
    方法二：使用.env文件
    - 复制.env.example为.env
    - 编辑.env文件，填入您的API密钥：
-     DEEPSEEK_API_KEY=your_api_key_here
+     API_PRESET=DeepSeek
+     STORY_DeepSeek_KEY=your_api_key_here
+     STORY_DeepSeek_BASE_URL=https://api.deepseek.com/v1
+     STORY_DeepSeek_MODEL=deepseek-chat
 
 3. 准备文本素材
    - 在data/raw/文件夹中放入您的文本素材（.txt或.md文件）
@@ -118,9 +121,10 @@ A: 下载新版本后，可以复制旧版本的以下文件到新版本：
 
 🔧 自定义API配置
    可以在.env文件中配置：
-   - DEEPSEEK_API_KEY：API密钥
-   - DEEPSEEK_BASE_URL：API地址（可选）
-   - DEEPSEEK_MODEL：使用的模型（可选）
+   - STORY_DeepSeek_KEY：API密钥
+   - STORY_DeepSeek_BASE_URL：API地址（可选）
+   - STORY_DeepSeek_MODEL：使用的模型（可选）
+   - （兼容）DEEPSEEK_API_KEY / DEEPSEEK_BASE_URL / DEEPSEEK_MODEL
 
 🎨 图片生成配置
    可以自定义图片API设置：

@@ -110,22 +110,19 @@ class SettingsMixin:
                     canvas.yview_scroll(-1, "units")
                 elif event.num == 5:
                     canvas.yview_scroll(1, "units")
-            
-            def _bind_mousewheel(event):
-                canvas.bind_all("<MouseWheel>", _on_mousewheel)
-                canvas.bind_all("<Button-4>", _on_mousewheel)
-                canvas.bind_all("<Button-5>", _on_mousewheel)
-            
-            def _unbind_mousewheel(event):
-                canvas.unbind_all("<MouseWheel>")
-                canvas.unbind_all("<Button-4>")
-                canvas.unbind_all("<Button-5>")
-            
-            canvas.bind("<Enter>", _bind_mousewheel)
-            canvas.bind("<Leave>", _unbind_mousewheel)
-            
+
+            def _bind_mousewheel_recursive(widget):
+                widget.bind("<MouseWheel>", _on_mousewheel)
+                widget.bind("<Button-4>", _on_mousewheel)
+                widget.bind("<Button-5>", _on_mousewheel)
+                for child in widget.winfo_children():
+                    _bind_mousewheel_recursive(child)
+
             canvas.pack(side="left", fill="both", expand=True)
             scrollbar.pack(side="right", fill="y")
+
+            # 仅在当前设置页面容器内绑定滚轮，避免污染全局事件绑定。
+            _bind_mousewheel_recursive(tab)
             
             return inner
         
@@ -400,13 +397,21 @@ class SettingsMixin:
             bg=Theme.BG_SECONDARY,
             fg="#90CAF9",
             font=("", 10),
-        ).grid(row=0, column=0, columnspan=4, sticky="w", padx=8, pady=(0, 10))
+        ).grid(row=0, column=0, columnspan=4, sticky="w", padx=8, pady=(0, 4))
+
+        tk.Label(
+            grp_routing,
+            text="🎨 最终出图模型请到：设置 -> 图片生成 API -> 模型（并保存配置）",
+            bg=Theme.BG_SECONDARY,
+            fg="#F59E0B",
+            font=("", 10, "bold"),
+        ).grid(row=1, column=0, columnspan=4, sticky="w", padx=8, pady=(0, 10))
 
         # 记录路由变量与控件
         self.model_route_vars = {}
         provider_names = list(self.api_providers.keys()) if hasattr(self, 'api_providers') else ["DeepSeek"]
 
-        for idx, (task_key, task_label) in enumerate(MODEL_ROUTING_TASKS, start=1):
+        for idx, (task_key, task_label) in enumerate(MODEL_ROUTING_TASKS, start=2):
             row = idx
             tk.Label(grp_routing, text=task_label, bg=Theme.BG_SECONDARY, fg=Theme.TEXT_PRIMARY,
                      font=("", 10, "bold")).grid(row=row, column=0, sticky="e", padx=(8, 6), pady=4)
@@ -445,7 +450,7 @@ class SettingsMixin:
             }
 
         route_btn_frame = tk.Frame(grp_routing, bg=Theme.BG_SECONDARY)
-        route_btn_frame.grid(row=len(MODEL_ROUTING_TASKS) + 1, column=0, columnspan=4, pady=(10, 5))
+        route_btn_frame.grid(row=len(MODEL_ROUTING_TASKS) + 2, column=0, columnspan=4, pady=(10, 5))
         tk.Button(
             route_btn_frame,
             text="💾 保存模型路由",
@@ -751,6 +756,13 @@ class SettingsMixin:
         key = str(provider_cfg.get("key", "") or "").strip()
         base_url = str(provider_cfg.get("base_url", "") or "").strip()
 
+        # Backward compatibility: allow legacy DeepSeek env vars when routing key is empty.
+        if provider == "DeepSeek":
+            if not key:
+                key = os.getenv("DEEPSEEK_API_KEY", "").strip()
+            if not base_url:
+                base_url = os.getenv("DEEPSEEK_BASE_URL", "").strip()
+
         route_model = ""
         if isinstance(route, dict):
             route_model = str(route.get("model", "") or "").strip()
@@ -770,6 +782,8 @@ class SettingsMixin:
                 model = self._strip_model_label(first_model) if hasattr(self, "_strip_model_label") else first_model
         if not model:
             model = self._strip_model_label((fallback_model or "").strip()) if hasattr(self, "_strip_model_label") else (fallback_model or "").strip()
+        if not model and provider == "DeepSeek":
+            model = os.getenv("DEEPSEEK_MODEL", "").strip()
         if not model:
             model = "deepseek-chat"
 
@@ -1396,6 +1410,13 @@ class SettingsMixin:
             set_key(str(env_path), f"STORY_{safe_preset_name}_KEY", key)
             set_key(str(env_path), f"STORY_{safe_preset_name}_BASE_URL", base_url)
             set_key(str(env_path), f"STORY_{safe_preset_name}_MODEL", model)
+            if hasattr(self, 'target_chars'):
+                try:
+                    chars_value = int(self.target_chars.get())
+                except Exception:
+                    chars_value = 1800
+                chars_value = max(500, min(30000, chars_value))
+                set_key(str(env_path), "TARGET_CHARS", str(chars_value))
 
             if hasattr(self, 'quick_story_api'):
                 self.quick_story_api.set(provider_name)
@@ -1643,6 +1664,13 @@ class SettingsMixin:
             # 保存图片生成 API 选择
             image_api = self.quick_image_api.get()
             set_key(str(env_path), "IMAGE_GEN_API", image_api)
+            if hasattr(self, 'target_chars'):
+                try:
+                    chars_value = int(self.target_chars.get())
+                except Exception:
+                    chars_value = 1800
+                chars_value = max(500, min(30000, chars_value))
+                set_key(str(env_path), "TARGET_CHARS", str(chars_value))
             
             # 同步到其他页面的变量
             if hasattr(self, 'outline_gen_api'):
@@ -1671,11 +1699,37 @@ class SettingsMixin:
             story_api = os.getenv("STORY_OUTLINE_GEN_API", "DeepSeek")
             if hasattr(self, 'quick_story_api'):
                 self.quick_story_api.set(story_api)
+            if hasattr(self, 'settings_api_provider') and hasattr(self, 'api_providers'):
+                if story_api in self.api_providers:
+                    self.settings_api_provider.set(story_api)
+            if hasattr(self, 'api_preset') and hasattr(self, 'api_presets'):
+                if story_api in self.api_presets:
+                    self.api_preset.set(story_api)
             
             # 加载图片生成 API
-            image_api = os.getenv("IMAGE_GEN_API", "OpenAI (DALL-E)")
+            image_api = os.getenv("IMAGE_GEN_API", "") or os.getenv("IMG_API_PRESET", "OpenAI (DALL-E)")
             if hasattr(self, 'quick_image_api'):
                 self.quick_image_api.set(image_api)
+            if hasattr(self, 'target_chars'):
+                chars_raw = (os.getenv("TARGET_CHARS", "") or "").strip()
+                if chars_raw:
+                    try:
+                        chars_value = int(chars_raw)
+                        chars_value = max(500, min(30000, chars_value))
+                        self.target_chars.set(chars_value)
+                    except Exception:
+                        pass
+            if hasattr(self, 'settings_img_provider') and hasattr(self, 'img_api_providers'):
+                if image_api in self.img_api_providers:
+                    self.settings_img_provider.set(image_api)
+            if hasattr(self, 'img_api_preset') and hasattr(self, 'img_api_presets'):
+                if image_api in self.img_api_presets:
+                    self.img_api_preset.set(image_api)
+            if hasattr(self, 'char_draw_api_var') and image_api:
+                try:
+                    self.char_draw_api_var.set(image_api)
+                except Exception:
+                    pass
             if hasattr(self, '_sync_img_runtime_from_config'):
                 self._sync_img_runtime_from_config(image_api)
             
@@ -1687,6 +1741,20 @@ class SettingsMixin:
             if hasattr(self, 'img_api_providers') and hasattr(self, 'combo_quick_image_api'):
                 img_api_list = list(self.img_api_providers.keys())
                 self.combo_quick_image_api['values'] = img_api_list
+                if hasattr(self, 'combo_char_draw_api'):
+                    self.combo_char_draw_api['values'] = img_api_list
+                    if hasattr(self, 'char_draw_api_var'):
+                        current_char_api = self.char_draw_api_var.get().strip()
+                        if image_api in img_api_list:
+                            self.char_draw_api_var.set(image_api)
+                        elif img_api_list and current_char_api not in img_api_list:
+                            self.char_draw_api_var.set(img_api_list[0])
+
+            # 刷新设置页输入框显示，避免界面仍显示默认 OpenAI
+            if hasattr(self, '_on_settings_provider_change'):
+                self._on_settings_provider_change()
+            if hasattr(self, '_on_settings_img_provider_change'):
+                self._on_settings_img_provider_change()
             
             print(f"[OK] 已加载快速 API 切换: 故事={story_api}, 图片={image_api}")
         except Exception as e:

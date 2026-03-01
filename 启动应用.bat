@@ -1,34 +1,29 @@
 @echo off
-REM AI Story Creator Pro 快速启动脚本 (Windows)
+setlocal
+chcp 65001 >nul
 
-echo.
-echo 🎨 AI Story Creator Pro - 智能故事创作平台
-echo ==========================================
-echo.
-echo 正在启动应用...
-echo.
+cd /d "%~dp0"
 
-REM 检查Python
-python --version >nul 2>&1
-if errorlevel 1 (
-    echo ❌ 错误: 未安装Python
-    echo    请从 https://www.python.org/ 下载安装
+set "PYTHON_CMD="
+where py >nul 2>nul
+if %ERRORLEVEL%==0 (
+    set "PYTHON_CMD=py -3"
+) else (
+    where python >nul 2>nul
+    if %ERRORLEVEL%==0 (
+        set "PYTHON_CMD=python"
+    )
+)
+
+if "%PYTHON_CMD%"=="" (
+    echo [ERROR] Python not found in PATH.
     pause
     exit /b 1
 )
 
-REM 显示Python版本
-for /f "tokens=2" %%i in ('python --version 2^>^&1') do set PYTHON_VERSION=%%i
-echo ✓ Python版本: %PYTHON_VERSION%
-
-REM 启动应用
-echo.
-echo ✨ 启动现代化UI界面...
-echo.
-
-python run_modern_app.py
+echo Starting AI Story Creator Pro...
+%PYTHON_CMD% run_modern_app.py
 
 echo.
-echo 应用已关闭
+echo Application exited.
 pause
-

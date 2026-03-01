@@ -5,12 +5,16 @@ import tkinter as tk
 from tkinter import ttk
 import os
 from PIL import Image, ImageTk
+import logging
 
 from src.clients.deepseek_client import DeepSeekClient
 from src.clients.image_client import OpenAIImageClient
 from src.utils.text import sanitize as _sanitize
 from ...helpers.image_styles import IMAGE_TYPES, HUNYUAN_STYLE_MAP
 from ...theme import Theme
+
+
+logger = logging.getLogger(__name__)
 
 
 class ImageUICharacterTabMixin:
@@ -125,6 +129,45 @@ class ImageUICharacterTabMixin:
 											 values=["正在加载..."],
 											 state="readonly", font=("", 10))
 		self.combo_char_model.pack(side=LEFT, fill="x", expand=True)
+		
+		# Character photo generation API selector
+		draw_api_row = ttk.Frame(btn_frame)
+		draw_api_row.pack(fill="x", pady=(6, 0))
+		tk.Label(draw_api_row, text="绘图API:", font=("", 10, "bold"), bg=bg_panel, fg=Theme.TEXT_PRIMARY).pack(side=LEFT, padx=(0, 6))
+		if hasattr(self, 'img_api_providers') and self.img_api_providers:
+			provider_names = list(self.img_api_providers.keys())
+		elif hasattr(self, 'img_api_presets') and self.img_api_presets:
+			provider_names = list(self.img_api_presets.keys())
+		else:
+			provider_names = []
+		default_provider = ""
+		if hasattr(self, 'quick_image_api'):
+			default_provider = (self.quick_image_api.get() or "").strip()
+		if not default_provider and hasattr(self, 'img_api_preset'):
+			default_provider = (self.img_api_preset.get() or "").strip()
+		if not default_provider and provider_names:
+			default_provider = provider_names[0]
+		if provider_names and default_provider not in provider_names:
+			default_provider = provider_names[0]
+		self.char_draw_api_var = tk.StringVar(value=default_provider)
+		self.combo_char_draw_api = ttk.Combobox(
+			draw_api_row,
+			textvariable=self.char_draw_api_var,
+			width=20,
+			values=provider_names if provider_names else [""],
+			state="readonly",
+			font=("", 10),
+		)
+		self.combo_char_draw_api.pack(side=LEFT, fill="x", expand=True)
+		self.combo_char_draw_api.bind("<<ComboboxSelected>>", self._on_character_draw_api_changed)
+		tk.Label(
+			btn_frame,
+			text="图片模型请在 设置 -> 图片生成 API -> 模型 中选择并保存。",
+			font=("", 9),
+			fg=text_secondary,
+			bg=bg_panel,
+			anchor="w",
+		).pack(fill="x", pady=(4, 0))
 		
 		# 人物列表框（使用Listbox）
 		list_frame = ttk.Frame(grp_characters)
@@ -519,8 +562,8 @@ class ImageUICharacterTabMixin:
 			try:
 				for child in widget.winfo_children():
 					_bind_mousewheel_recursive(child)
-			except Exception:
-				pass
+			except Exception as e:
+				logger.debug("Failed to bind mousewheel recursively on %s: %s", widget, e)
 		
 		# 延迟绑定，确保所有子控件已创建
 		self.after(100, lambda: _bind_mousewheel_recursive(self._char_scroll_right_frame))
@@ -528,7 +571,25 @@ class ImageUICharacterTabMixin:
 		self._char_scroll_canvas.bind("<MouseWheel>", self._char_scroll_mousewheel_func)
 		self._char_scroll_canvas.bind("<Button-4>", self._char_scroll_mousewheel_func)
 		self._char_scroll_canvas.bind("<Button-5>", self._char_scroll_mousewheel_func)
-	
-	
-	
 
+	def _on_character_draw_api_changed(self, _event=None) -> None:
+		"""Sync runtime image API when the character-tab image provider changes."""
+		provider_name = ""
+		if hasattr(self, 'char_draw_api_var'):
+			provider_name = (self.char_draw_api_var.get() or "").strip()
+		if not provider_name:
+			return
+
+		try:
+			if hasattr(self, 'quick_image_api'):
+				self.quick_image_api.set(provider_name)
+			if hasattr(self, 'img_api_preset'):
+				self.img_api_preset.set(provider_name)
+			if hasattr(self, '_sync_img_runtime_from_config'):
+				self._sync_img_runtime_from_config(provider_name)
+			if hasattr(self, 'status'):
+				current_model = self.img_model.get().strip() if hasattr(self, 'img_model') else ""
+				model_hint = f" ({current_model})" if current_model else ""
+				self.status.set(f"已切换绘图API: {provider_name}{model_hint}")
+		except Exception as e:
+			logger.debug("failed to switch character draw api: %s", e)

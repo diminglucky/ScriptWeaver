@@ -4,9 +4,33 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Tuple
 
-import faiss  # type: ignore
 import numpy as np
-from sentence_transformers import SentenceTransformer
+
+
+def _load_kb_backends():
+	"""Load optional KB backends lazily so app startup is platform-safe."""
+	missing: list[str] = []
+	try:
+		import faiss  # type: ignore
+	except Exception:
+		faiss = None
+		missing.append("faiss-cpu")
+
+	try:
+		from sentence_transformers import SentenceTransformer  # type: ignore
+	except Exception:
+		SentenceTransformer = None
+		missing.append("sentence-transformers")
+
+	if missing:
+		pkgs = ", ".join(missing)
+		raise RuntimeError(
+			"知识库依赖缺失，暂时无法检索索引。"
+			f"\n缺失包: {pkgs}"
+			"\n请先安装后再试: pip install sentence-transformers faiss-cpu"
+		)
+
+	return faiss, SentenceTransformer
 
 
 @dataclass
@@ -19,7 +43,9 @@ class SearchConfig:
 class KnowledgeBaseSearcher:
 	def __init__(self, config: SearchConfig) -> None:
 		self.config = config
-		self.model = SentenceTransformer(config.embedding_model_name)
+		faiss_backend, sentence_transformer_cls = _load_kb_backends()
+		self._faiss = faiss_backend
+		self.model = sentence_transformer_cls(config.embedding_model_name)
 		self._load()
 
 	def _load(self) -> None:
@@ -28,7 +54,7 @@ class KnowledgeBaseSearcher:
 		meta_path = self.config.index_dir / "meta.npy"
 		if not index_path.exists():
 			raise RuntimeError(f"Index file missing: {index_path}")
-		self.index = faiss.read_index(str(index_path))
+		self.index = self._faiss.read_index(str(index_path))
 		self.chunks: List[str] = list(np.load(chunks_path, allow_pickle=True))
 		self.metas: List[Tuple[str, int]] = list(np.load(meta_path, allow_pickle=True))
 

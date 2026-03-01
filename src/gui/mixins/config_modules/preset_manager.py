@@ -1,281 +1,222 @@
-"""Config功能模块"""
+"""Config preset manager mixin."""
 
-from tkinter import messagebox, filedialog
-import tkinter as tk
+from __future__ import annotations
+
 import json
+import logging
 from pathlib import Path
+from tkinter import messagebox
+
+
+logger = logging.getLogger(__name__)
 
 
 class PresetManagerMixin:
-	"""Config preset_manager 功能"""
-	
-	def _on_api_preset_selected(self, event=None) -> None:
-		"""当选择API预设时，自动填充配置（包括已保存的API Key）"""
-		preset_name = self.api_preset.get()
-		if preset_name in self.api_presets:
-			preset = self.api_presets[preset_name]
-			
-			# 填充Base URL（如果预设有配置或已保存）
-			if preset.get("base_url"):
-				self.base_url.set(preset["base_url"])
-			
-			# 填充Model（如果预设有配置或已保存）
-			if preset.get("model"):
-				self.model.set(preset["model"])
-			
-			# 填充API Key（如果已保存）
-			if preset.get("key"):
-				self.api_key.set(preset["key"])
-			
-			if hasattr(self, 'status'):
-				self.status.set(f"已选择 {preset_name} API预设")
-	
-	
-	def _on_img_api_preset_selected(self, event=None) -> None:
-		"""当选择图片API预设时，自动填充配置（包括已保存的API Key）"""
-		preset_name = self.img_api_preset.get()
-		if preset_name in self.img_api_presets:
-			preset = self.img_api_presets[preset_name]
-			
-			# 设置API类型（根据预设的provider字段）
-			provider = preset.get("provider", "openai")
-			if hasattr(self, 'img_api_type'):
-				self.img_api_type.set(provider)
-				print(f"🔧 已设置图片API类型为: {provider} (预设: {preset_name})")
-			
-			# 填充Base URL（如果预设有配置或已保存）
-			if preset.get("base_url"):
-				self.img_base_url.set(preset["base_url"])
-			
-			# 填充Model（如果预设有配置或已保存）
-			if preset.get("model"):
-				self.img_model.set(preset["model"])
-			
-			# 填充API Key（如果已保存）
-			if preset.get("key"):
-				self.img_api_key.set(preset["key"])
-			
-			# 填充SecretKey（仅腾讯混元）
-			if preset.get("secret_key"):
-				self.img_secret_key.set(preset["secret_key"])
-			else:
-				self.img_secret_key.set("")  # 清空SecretKey字段
-	
-	
-	def _load_custom_presets(self) -> None:
-		"""加载用户自定义的API预设"""
-		custom_presets_file = Path("custom_api_presets.json")
-		if custom_presets_file.exists():
-			try:
-				import json
-				with open(custom_presets_file, 'r', encoding='utf-8') as f:
-					custom_presets = json.load(f)
-					self.api_presets.update(custom_presets)
-			except Exception:
-				pass  # 加载失败则跳过
-	
-	
-	def _save_custom_preset(self) -> None:
-		"""保存当前配置为自定义预设"""
-		from tkinter import simpledialog
-		preset_name = simpledialog.askstring(
-			"保存自定义预设",
-			"请输入预设名称（例如：我的DeepSeek、公司API等）：",
-			parent=self
-		)
-		
-		if not preset_name:
-			return
-		
-		# 检查是否覆盖内置预设
-		built_in_presets = ["DeepSeek", "OpenAI", "Azure OpenAI", "Moonshot (月之暗面)", 
-						"智谱AI (GLM)", "百度文心", "阿里通义", "自定义"]
-		if preset_name in built_in_presets:
-			messagebox.showwarning("警告", "不能覆盖内置预设，请使用其他名称")
-			return
-		
-		# 保存当前配置
-		self.api_presets[preset_name] = {
-			"base_url": self.base_url.get(),
-			"model": self.model.get(),
-			"key": self.api_key.get()
-		}
-		
-		# 保存到文件
-		try:
-			import json
-			custom_presets_file = Path("custom_api_presets.json")
-			# 只保存自定义预设，不保存内置的
-			custom_presets = {k: v for k, v in self.api_presets.items() if k not in built_in_presets}
-			with open(custom_presets_file, 'w', encoding='utf-8') as f:
-				json.dump(custom_presets, f, ensure_ascii=False, indent=2)
-			
-			# 更新下拉框
-			self.combo_api_preset['values'] = list(self.api_presets.keys())
-			self.api_preset.set(preset_name)
-			
-			messagebox.showinfo("成功", f"已保存自定义预设: {preset_name}")
-			if hasattr(self, 'status'):
-				self.status.set(f"已保存自定义预设: {preset_name}")
-		except Exception as e:
-			messagebox.showerror("错误", f"保存失败: {str(e)}")
-	
-	
-	def _delete_custom_preset(self) -> None:
-		"""删除自定义API预设"""
-		current_preset = self.api_preset.get()
-		
-		# 检查是否是内置预设
-		built_in_presets = ["DeepSeek", "OpenAI", "Azure OpenAI", "Moonshot (月之暗面)", 
-						"智谱AI (GLM)", "百度文心", "阿里通义", "自定义"]
-		
-		if current_preset in built_in_presets:
-			messagebox.showwarning("无法删除", "不能删除内置预设，只能删除自定义预设")
-			return
-		
-		if not current_preset:
-			messagebox.showwarning("提示", "请先选择要删除的自定义预设")
-			return
-		
-		# 确认删除
-		result = messagebox.askyesno("确认删除", f"确定要删除自定义预设 '{current_preset}' 吗？")
-		if not result:
-			return
-		
-		try:
-			import json
-			# 从内存中删除
-			if current_preset in self.api_presets:
-				del self.api_presets[current_preset]
-			
-			# 更新文件
-			custom_presets_file = Path("custom_api_presets.json")
-			custom_presets = {k: v for k, v in self.api_presets.items() if k not in built_in_presets}
-			
-			if custom_presets:
-				with open(custom_presets_file, 'w', encoding='utf-8') as f:
-					json.dump(custom_presets, f, ensure_ascii=False, indent=2)
-			else:
-				# 如果没有自定义预设了，删除文件
-				if custom_presets_file.exists():
-					custom_presets_file.unlink()
-			
-			# 更新下拉框
-			self.combo_api_preset['values'] = list(self.api_presets.keys())
-			# 切换到自定义预设
-			self.api_preset.set("自定义")
-			self._on_api_preset_selected(None)
-			
-			messagebox.showinfo("成功", f"已删除自定义预设: {current_preset}")
-			if hasattr(self, 'status'):
-				self.status.set(f"已删除自定义预设: {current_preset}")
-		except Exception as e:
-			messagebox.showerror("错误", f"删除失败: {str(e)}")
-	
-	
-	def _load_custom_image_presets(self) -> None:
-		"""加载用户自定义的图片API预设"""
-		custom_presets_file = Path("custom_image_api_presets.json")
-		if custom_presets_file.exists():
-			try:
-				import json
-				with open(custom_presets_file, 'r', encoding='utf-8') as f:
-					custom_presets = json.load(f)
-					self.img_api_presets.update(custom_presets)
-			except Exception:
-				pass  # 加载失败则跳过
-	
-	
-	def _save_custom_image_preset(self) -> None:
-		"""保存当前图片API配置为自定义预设"""
-		from tkinter import simpledialog
-		preset_name = simpledialog.askstring(
-			"保存自定义图片API预设",
-			"请输入预设名称（例如：我的DALL-E、公司图片API等）：",
-			parent=self
-		)
-		
-		if not preset_name:
-			return
-		
-		# 检查是否覆盖内置预设
-		built_in_presets = ["OpenAI (DALL-E)", "腾讯混元", "Azure OpenAI", "Stability AI", "Midjourney API", "自定义"]
-		if preset_name in built_in_presets:
-			messagebox.showwarning("警告", "不能覆盖内置预设，请使用其他名称")
-			return
-		
-		# 保存当前配置
-		self.img_api_presets[preset_name] = {
-			"base_url": self.img_base_url.get(),
-			"model": self.img_model.get(),
-			"key": self.img_api_key.get()
-		}
-		
-		# 保存到文件
-		try:
-			import json
-			custom_presets_file = Path("custom_image_api_presets.json")
-			# 只保存自定义预设，不保存内置的
-			custom_presets = {k: v for k, v in self.img_api_presets.items() if k not in built_in_presets}
-			with open(custom_presets_file, 'w', encoding='utf-8') as f:
-				json.dump(custom_presets, f, ensure_ascii=False, indent=2)
-			
-			# 更新下拉框
-			self.combo_img_api_preset['values'] = list(self.img_api_presets.keys())
-			self.img_api_preset.set(preset_name)
-			
-			messagebox.showinfo("成功", f"已保存自定义图片API预设: {preset_name}")
-		except Exception as e:
-			messagebox.showerror("错误", f"保存失败: {str(e)}")
-	
-	
-	def _delete_custom_image_preset(self) -> None:
-		"""删除自定义图片API预设"""
-		current_preset = self.img_api_preset.get()
-		
-		# 检查是否是内置预设
-		built_in_presets = ["OpenAI (DALL-E)", "腾讯混元", "Azure OpenAI", "Stability AI", "Midjourney API", "自定义"]
-		
-		if current_preset in built_in_presets:
-			messagebox.showwarning("无法删除", "不能删除内置预设，只能删除自定义预设")
-			return
-		
-		if not current_preset:
-			messagebox.showwarning("提示", "请先选择要删除的自定义预设")
-			return
-		
-		# 确认删除
-		result = messagebox.askyesno("确认删除", f"确定要删除自定义图片API预设 '{current_preset}' 吗？")
-		if not result:
-			return
-		
-		try:
-			import json
-			# 从内存中删除
-			if current_preset in self.img_api_presets:
-				del self.img_api_presets[current_preset]
-			
-			# 更新文件
-			custom_presets_file = Path("custom_image_api_presets.json")
-			custom_presets = {k: v for k, v in self.img_api_presets.items() if k not in built_in_presets}
-			
-			if custom_presets:
-				with open(custom_presets_file, 'w', encoding='utf-8') as f:
-					json.dump(custom_presets, f, ensure_ascii=False, indent=2)
-			else:
-				# 如果没有自定义预设了，删除文件
-				if custom_presets_file.exists():
-					custom_presets_file.unlink()
-			
-			# 更新下拉框
-			self.combo_img_api_preset['values'] = list(self.img_api_presets.keys())
-			# 切换到自定义预设
-			self.img_api_preset.set("自定义")
-			self._on_img_api_preset_selected(None)
-			
-			messagebox.showinfo("成功", f"已删除自定义图片API预设: {current_preset}")
-		except Exception as e:
-			messagebox.showerror("错误", f"删除失败: {str(e)}")
-	
+    """Preset selection and custom preset CRUD helpers."""
 
-	
+    _CUSTOM_API_FILE = Path("custom_api_presets.json")
+    _CUSTOM_IMAGE_API_FILE = Path("custom_image_api_presets.json")
+
+    def _on_api_preset_selected(self, event=None) -> None:
+        """Populate story API fields from selected preset."""
+        preset_name = self.api_preset.get()
+        preset = self.api_presets.get(preset_name)
+        if not isinstance(preset, dict):
+            return
+
+        if preset.get("base_url"):
+            self.base_url.set(preset["base_url"])
+        if preset.get("model"):
+            self.model.set(preset["model"])
+        if preset.get("key"):
+            self.api_key.set(preset["key"])
+
+        if hasattr(self, "status"):
+            self.status.set(f"Selected preset: {preset_name}")
+
+    def _on_img_api_preset_selected(self, event=None) -> None:
+        """Populate image API fields from selected preset."""
+        preset_name = self.img_api_preset.get()
+        preset = self.img_api_presets.get(preset_name)
+        if not isinstance(preset, dict):
+            return
+
+        provider = preset.get("provider", "openai")
+        if hasattr(self, "img_api_type"):
+            self.img_api_type.set(provider)
+
+        if preset.get("base_url"):
+            self.img_base_url.set(preset["base_url"])
+        if preset.get("model"):
+            self.img_model.set(preset["model"])
+        if preset.get("key"):
+            self.img_api_key.set(preset["key"])
+        self.img_secret_key.set(preset.get("secret_key", ""))
+
+    def _load_custom_presets(self) -> None:
+        """Load custom story API presets from disk."""
+        custom = self._read_json_dict(self._CUSTOM_API_FILE)
+        if custom:
+            self.api_presets.update(custom)
+
+    def _save_custom_preset(self) -> None:
+        """Save current story API config as a custom preset."""
+        from tkinter import simpledialog
+
+        preset_name = simpledialog.askstring("Save Preset", "Preset name:", parent=self)
+        if not preset_name:
+            return
+
+        custom_map = self._read_json_dict(self._CUSTOM_API_FILE)
+        builtin_keys = set(self.api_presets.keys()) - set(custom_map.keys())
+        if preset_name in builtin_keys:
+            messagebox.showwarning("Warning", "Cannot overwrite builtin preset.")
+            return
+
+        config = {
+            "base_url": self.base_url.get(),
+            "model": self.model.get(),
+            "key": self.api_key.get(),
+        }
+        self.api_presets[preset_name] = config
+        custom_map[preset_name] = config
+
+        try:
+            self._write_json_dict(self._CUSTOM_API_FILE, custom_map)
+            self._refresh_story_preset_values()
+            self.api_preset.set(preset_name)
+            messagebox.showinfo("Success", f"Saved preset: {preset_name}")
+            if hasattr(self, "status"):
+                self.status.set(f"Saved preset: {preset_name}")
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to save preset: {e}")
+
+    def _delete_custom_preset(self) -> None:
+        """Delete selected custom story API preset."""
+        current = self.api_preset.get()
+        if not current:
+            messagebox.showwarning("Warning", "No preset selected.")
+            return
+
+        custom_map = self._read_json_dict(self._CUSTOM_API_FILE)
+        if current not in custom_map:
+            messagebox.showwarning("Not allowed", "Builtin preset cannot be deleted.")
+            return
+        if not messagebox.askyesno("Delete", f"Delete preset '{current}'?"):
+            return
+
+        try:
+            self.api_presets.pop(current, None)
+            custom_map.pop(current, None)
+            self._persist_custom_map(self._CUSTOM_API_FILE, custom_map)
+
+            self._refresh_story_preset_values()
+            fallback = next(iter(self.api_presets), "")
+            self.api_preset.set(fallback)
+            self._on_api_preset_selected(None)
+            messagebox.showinfo("Success", f"Deleted preset: {current}")
+            if hasattr(self, "status"):
+                self.status.set(f"Deleted preset: {current}")
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to delete preset: {e}")
+
+    def _load_custom_image_presets(self) -> None:
+        """Load custom image API presets from disk."""
+        custom = self._read_json_dict(self._CUSTOM_IMAGE_API_FILE)
+        if custom:
+            self.img_api_presets.update(custom)
+
+    def _save_custom_image_preset(self) -> None:
+        """Save current image API config as a custom preset."""
+        from tkinter import simpledialog
+
+        preset_name = simpledialog.askstring("Save Image Preset", "Preset name:", parent=self)
+        if not preset_name:
+            return
+
+        custom_map = self._read_json_dict(self._CUSTOM_IMAGE_API_FILE)
+        builtin_keys = set(self.img_api_presets.keys()) - set(custom_map.keys())
+        if preset_name in builtin_keys:
+            messagebox.showwarning("Warning", "Cannot overwrite builtin image preset.")
+            return
+
+        provider = self.img_api_type.get() if hasattr(self, "img_api_type") else "openai"
+        config = {
+            "base_url": self.img_base_url.get(),
+            "model": self.img_model.get(),
+            "key": self.img_api_key.get(),
+            "provider": provider,
+            "secret_key": self.img_secret_key.get() if provider == "hunyuan" else "",
+        }
+
+        self.img_api_presets[preset_name] = config
+        custom_map[preset_name] = config
+
+        try:
+            self._write_json_dict(self._CUSTOM_IMAGE_API_FILE, custom_map)
+            self._refresh_image_preset_values()
+            self.img_api_preset.set(preset_name)
+            messagebox.showinfo("Success", f"Saved image preset: {preset_name}")
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to save image preset: {e}")
+
+    def _delete_custom_image_preset(self) -> None:
+        """Delete selected custom image API preset."""
+        current = self.img_api_preset.get()
+        if not current:
+            messagebox.showwarning("Warning", "No image preset selected.")
+            return
+
+        custom_map = self._read_json_dict(self._CUSTOM_IMAGE_API_FILE)
+        if current not in custom_map:
+            messagebox.showwarning("Not allowed", "Builtin image preset cannot be deleted.")
+            return
+        if not messagebox.askyesno("Delete", f"Delete image preset '{current}'?"):
+            return
+
+        try:
+            self.img_api_presets.pop(current, None)
+            custom_map.pop(current, None)
+            self._persist_custom_map(self._CUSTOM_IMAGE_API_FILE, custom_map)
+
+            self._refresh_image_preset_values()
+            fallback = next(iter(self.img_api_presets), "")
+            self.img_api_preset.set(fallback)
+            self._on_img_api_preset_selected(None)
+            messagebox.showinfo("Success", f"Deleted image preset: {current}")
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to delete image preset: {e}")
+
+    def _refresh_story_preset_values(self) -> None:
+        if hasattr(self, "combo_api_preset"):
+            self.combo_api_preset["values"] = list(self.api_presets.keys())
+
+    def _refresh_image_preset_values(self) -> None:
+        if hasattr(self, "combo_img_api_preset"):
+            self.combo_img_api_preset["values"] = list(self.img_api_presets.keys())
+
+    def _persist_custom_map(self, path: Path, payload: dict) -> None:
+        if payload:
+            self._write_json_dict(path, payload)
+        elif path.exists():
+            path.unlink()
+
+    def _read_json_dict(self, path: Path) -> dict:
+        """Read a json dict safely from disk."""
+        if not path.exists():
+            return {}
+        try:
+            with path.open("r", encoding="utf-8") as f:
+                data = json.load(f)
+            if isinstance(data, dict):
+                return data
+            logger.warning("Preset file %s does not contain a dict", path)
+        except Exception as e:
+            logger.warning("Failed to read preset file %s: %s", path, e)
+        return {}
+
+    @staticmethod
+    def _write_json_dict(path: Path, payload: dict) -> None:
+        """Write json dict with utf-8 encoding."""
+        with path.open("w", encoding="utf-8") as f:
+            json.dump(payload, f, ensure_ascii=False, indent=2)

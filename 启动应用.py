@@ -15,11 +15,14 @@ os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
 # 设置 UTF-8 编码
 if sys.platform == "win32":
     import io
-    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
-    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
+    if hasattr(sys.stdout, "buffer"):
+        sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+    if hasattr(sys.stderr, "buffer"):
+        sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
 
 # 添加项目根目录到路径
-project_root = Path(__file__).parent
+project_root = Path(__file__).resolve().parent
+os.chdir(project_root)
 sys.path.insert(0, str(project_root))
 
 print("=" * 80)

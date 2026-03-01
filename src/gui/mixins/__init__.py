@@ -1,25 +1,42 @@
-"""Mixin模块聚合"""
+"""Mixin exports with lazy imports to reduce import-time coupling."""
 
-from .project_mixin import ProjectMixin
-from .story_modules import StoryMixin
-from .image_modules import ImageMixin
-from .kb_mixin import KbMixin
-from .config_modules import ConfigMixin
-from .ui_mixin import UiMixin
-from .settings_mixin import SettingsMixin
-from .enhancements import EnhancementsMixin
-from .kb_enhancements import KBEnhancementsMixin
-from .async_utils import PerformanceMixin
+from importlib import import_module
 
 __all__ = [
-	"ProjectMixin",
-	"StoryMixin",
-	"ImageMixin",
-	"KbMixin",
-	"ConfigMixin",
-	"UiMixin",
-	"SettingsMixin",
-	"EnhancementsMixin",
-	"KBEnhancementsMixin",
-	"PerformanceMixin",
+    "ProjectMixin",
+    "StoryMixin",
+    "ImageMixin",
+    "DirectorMixin",
+    "KbMixin",
+    "ConfigMixin",
+    "UiMixin",
+    "SettingsMixin",
+    "EnhancementsMixin",
+    "KBEnhancementsMixin",
+    "PerformanceMixin",
 ]
+
+_EXPORTS = {
+    "ProjectMixin": ".project_mixin",
+    "StoryMixin": ".story_modules",
+    "ImageMixin": ".image_modules",
+    "DirectorMixin": ".director_mixin",
+    "KbMixin": ".kb_mixin",
+    "ConfigMixin": ".config_modules",
+    "UiMixin": ".ui_mixin",
+    "SettingsMixin": ".settings_refactored",
+    "EnhancementsMixin": ".enhancements_refactored",
+    "KBEnhancementsMixin": ".kb_enhancements",
+    "PerformanceMixin": ".async_utils",
+}
+
+
+def __getattr__(name):
+    module_path = _EXPORTS.get(name)
+    if module_path is None:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+    module = import_module(module_path, __name__)
+    value = getattr(module, name)
+    globals()[name] = value
+    return value

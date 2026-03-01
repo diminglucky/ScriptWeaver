@@ -6,13 +6,19 @@ from tkinter import ttk
 import threading
 import re
 from pathlib import Path
-from dotenv import load_dotenv
+import logging
+try:
+	from dotenv import load_dotenv
+except Exception:  # pragma: no cover - fallback for minimal environments
+	def load_dotenv(*args, **kwargs):
+		return False
 
 from src.clients.deepseek_client import DeepSeekClient
-from src.kb.ingest import KnowledgeBaseIngestor, IngestConfig
-from src.kb.search import KnowledgeBaseSearcher, SearchConfig
 from src.utils.text import sanitize as _sanitize
 from ...theme import Theme
+
+
+logger = logging.getLogger(__name__)
 
 
 class StoryUIBuilderMixin:
@@ -59,20 +65,13 @@ class StoryUIBuilderMixin:
 			elif event.num == 5:  # Linux向下滚动
 				canvas.yview_scroll(1, "units")
 		
-		# 鼠标进入Canvas区域时绑定滚轮事件
-		def _bind_mousewheel(event):
-			canvas.bind_all("<MouseWheel>", _on_mousewheel)  # Windows和macOS
-			canvas.bind_all("<Button-4>", _on_mousewheel)    # Linux
-			canvas.bind_all("<Button-5>", _on_mousewheel)    # Linux
-		
-		# 鼠标离开Canvas区域时解绑滚轮事件
-		def _unbind_mousewheel(event):
-			canvas.unbind_all("<MouseWheel>")
-			canvas.unbind_all("<Button-4>")
-			canvas.unbind_all("<Button-5>")
-		
-		canvas.bind("<Enter>", _bind_mousewheel)
-		canvas.bind("<Leave>", _unbind_mousewheel)
+		# Use local bindings to avoid cross-tab/global wheel conflicts.
+		canvas.bind("<MouseWheel>", _on_mousewheel)
+		canvas.bind("<Button-4>", _on_mousewheel)
+		canvas.bind("<Button-5>", _on_mousewheel)
+		scrollable_frame.bind("<MouseWheel>", _on_mousewheel)
+		scrollable_frame.bind("<Button-4>", _on_mousewheel)
+		scrollable_frame.bind("<Button-5>", _on_mousewheel)
 		
 		canvas.pack(side="left", fill="both", expand=True)
 		scrollbar.pack(side="right", fill="y")
@@ -176,6 +175,11 @@ class StoryUIBuilderMixin:
 		
 		# 加载自定义配置
 		self._load_custom_presets()
+		self._normalize_story_preset_names()
+		if hasattr(self, "api_preset"):
+			current = (self.api_preset.get() or "").strip()
+			if current not in self.api_presets:
+				self.api_preset.set("Custom" if "Custom" in self.api_presets else next(iter(self.api_presets), ""))
 		
 		self.combo_api_preset = ttk.Combobox(row_preset, textvariable=self.api_preset, 
 											  values=list(self.api_presets.keys()),
@@ -526,6 +530,10 @@ class StoryUIBuilderMixin:
 			"- 语言自然口语化，逻辑清晰，富有生活气息；\n"
 			"- 不要写标题，直接进入正文；段落衔接自然，避免列表化与生硬小标题；\n"
 			"- 开头要抓人，中段有冲突与反转，结尾有观点或反思；\n"
+			"- 开篇前150字必须抛出异常信息、冲突或悬念，不要先铺陈背景；\n"
+			"- 每3-5段必须推进一次情节（冲突升级/关键决策/关系反转），禁止流水账；\n"
+			"- 关键场景需同时写到动作、心理、环境细节，避免空泛叙述；\n"
+			"- 结尾必须回扣开头悬念，并给出可传播的观点或情绪余味；\n"
 			"- 输出为纯文本，不使用任何 Markdown 标记（不要 #、*、-、**、``` 等）；\n"
 			"- 即使参考目录，也不要显式输出分节标题；将要点融合到连续正文中；\n"
 			"- 可以适当分段，但段落之间要自然过渡。\n\n"
@@ -570,6 +578,8 @@ class StoryUIBuilderMixin:
 			f"- 语言自然口语化，逻辑清晰，富有生活气息\n"
 			f"- **不要写章节标题**，直接进入正文内容\n"
 			f"- 与前文保持人物、情节、语气的连贯性\n"
+			f"- 本节至少设计一个新的冲突点或信息反转，推动故事前进\n"
+			f"- 本节结尾要留下下一节的悬念钩子，避免平铺直叙收尾\n"
 			f"- 段落衔接自然，避免列表化\n"
 			f"- 输出为纯文本，不使用任何 Markdown 标记\n"
 			f"- 如果前文已有内容，本节要自然承接，不要重复前文情节\n\n"
@@ -584,93 +594,153 @@ class StoryUIBuilderMixin:
 	
 
 	
+	def _canonical_story_preset_name(self, raw_name: str, cfg: dict) -> str:
+		name = str(raw_name or "").strip()
+		if not name:
+			return "Custom"
+		canonical = {
+			"DeepSeek",
+			"OpenAI",
+			"Azure OpenAI",
+			"Moonshot (Kimi)",
+			"Zhipu AI (GLM)",
+			"Baidu ERNIE",
+			"Alibaba Qwen",
+			"Custom",
+		}
+		if name in canonical:
+			return name
+
+		legacy_alias = {
+			"Moonshot (鏈堜箣鏆楅潰)": "Moonshot (Kimi)",
+			"Moonshot (月之暗面)": "Moonshot (Kimi)",
+			"鏅鸿氨AI (GLM)": "Zhipu AI (GLM)",
+			"智谱AI (GLM)": "Zhipu AI (GLM)",
+			"鐧惧害鏂囧績": "Baidu ERNIE",
+			"百度文心": "Baidu ERNIE",
+			"闃块噷閫氫箟": "Alibaba Qwen",
+			"阿里通义": "Alibaba Qwen",
+			"鑷畾涔?": "Custom",
+			"自定义": "Custom",
+		}
+		if name in legacy_alias:
+			return legacy_alias[name]
+		return name
+
+	def _normalize_story_preset_names(self):
+		presets = getattr(self, "api_presets", None)
+		if not isinstance(presets, dict):
+			return
+		normalized = {}
+		for raw_name, cfg in presets.items():
+			if not isinstance(cfg, dict):
+				continue
+			name = self._canonical_story_preset_name(raw_name, cfg)
+			if name not in normalized:
+				normalized[name] = cfg
+			else:
+				existing = normalized[name]
+				for key in ("key", "base_url", "model"):
+					if not existing.get(key) and cfg.get(key):
+						existing[key] = cfg[key]
+		self.api_presets = normalized
+
+	def _resolve_model_fetch_api_config(self):
+		"""Resolve API key/base URL for model list fetch based on current selection."""
+		presets = getattr(self, "api_presets", None)
+		if not isinstance(presets, dict) or not presets:
+			return None, "", ""
+
+		selected = ""
+		if hasattr(self, "api_preset"):
+			try:
+				if hasattr(self, "_ui_get"):
+					selected = (self._ui_get(self.api_preset.get) or "").strip()
+				else:
+					selected = (self.api_preset.get() or "").strip()
+			except Exception as e:
+				logger.debug("Failed to read current api_preset: %s", e)
+
+		if selected and isinstance(presets.get(selected), dict):
+			cfg = presets[selected]
+			return selected, cfg.get("key", ""), cfg.get("base_url", "")
+
+		for alias in ("Custom",):
+			cfg = presets.get(alias)
+			if isinstance(cfg, dict):
+				return alias, cfg.get("key", ""), cfg.get("base_url", "")
+
+		for name, cfg in presets.items():
+			if isinstance(cfg, dict) and (cfg.get("key") or cfg.get("base_url")):
+				return name, cfg.get("key", ""), cfg.get("base_url", "")
+
+		return None, "", ""
+
 	def _load_available_models(self):
-		"""异步加载可用的模型列表"""
+		"""Asynchronously load available model list from current API config."""
 		def task():
 			try:
 				import requests
-				
-				# 从配置中获取 API 信息
-				if hasattr(self, 'api_presets') and "自定义" in self.api_presets:
-					api_config = self.api_presets["自定义"]
-					api_key = api_config.get("key", "")
-					base_url = api_config.get("base_url", "")
-					
-					if not api_key or not base_url:
-						print("[WARN] API 配置不完整，使用默认模型列表")
-						self._set_default_models()
-						return
-					
-					base_url = base_url.rstrip("/")
-					candidates = []
-					if base_url.endswith("/v1"):
-						candidates.append(f"{base_url}/models")
+
+				preset_name, api_key, base_url = self._resolve_model_fetch_api_config()
+				if not api_key or not base_url:
+					logger.warning("Model fetch skipped: incomplete API config (preset=%s)", preset_name)
+					self._set_default_models()
+					return
+
+				base_url = base_url.rstrip("/")
+				candidates = [f"{base_url}/models"] if base_url.endswith("/v1") else [f"{base_url}/v1/models", f"{base_url}/models"]
+				headers = {"Authorization": f"Bearer {api_key}", "User-Agent": "Mozilla/5.0"}
+				last_status = None
+				result = None
+				for url in candidates:
+					try:
+						response = requests.get(url, headers=headers, timeout=10)
+						last_status = response.status_code
+						if response.status_code == 200:
+							result = response.json()
+							break
+					except Exception as e:
+						logger.debug("Model list probe failed for %s: %s", url, e)
+						continue
+
+				if result is not None:
+					models = []
+					if isinstance(result, dict):
+						if isinstance(result.get("data"), list):
+							models = [m.get("id") or m.get("name") for m in result["data"] if isinstance(m, dict)]
+						elif isinstance(result.get("models"), list):
+							models = [m.get("id") or m.get("name") for m in result["models"] if isinstance(m, dict)]
+					elif isinstance(result, list):
+						models = [m.get("id") or m.get("name") for m in result if isinstance(m, dict)]
+
+					models = [m for m in models if m]
+					if models:
+						if hasattr(self, "combo_story_model"):
+							self._ui(self.combo_story_model.__setitem__, "values", models)
+							current = self._ui_get(self.story_model_var.get) if hasattr(self, "_ui_get") else self.story_model_var.get()
+							if current not in models:
+								self._ui(self.story_model_var.set, models[0])
+
+						if hasattr(self, "combo_char_model"):
+							self._ui(self.combo_char_model.__setitem__, "values", models)
+							current = self._ui_get(self.char_model_var.get) if hasattr(self, "_ui_get") else self.char_model_var.get()
+							if current not in models:
+								self._ui(self.char_model_var.set, models[0])
+
+						logger.info("Loaded %d models for story/character tabs (preset=%s)", len(models), preset_name)
 					else:
-						candidates.append(f"{base_url}/v1/models")
-						candidates.append(f"{base_url}/models")
-					
-					# 调用 API 获取模型列表
-					headers = {
-						"Authorization": f"Bearer {api_key}",
-						"User-Agent": "Mozilla/5.0"
-					}
-					last_status = None
-					result = None
-					for url in candidates:
-						try:
-							response = requests.get(url, headers=headers, timeout=10)
-							last_status = response.status_code
-							if response.status_code == 200:
-								result = response.json()
-								break
-						except Exception:
-							continue
-					
-					if result is not None:
-						models = []
-						if isinstance(result, dict):
-							if isinstance(result.get("data"), list):
-								models = [m.get("id") or m.get("name") for m in result["data"] if isinstance(m, dict)]
-							elif isinstance(result.get("models"), list):
-								models = [m.get("id") or m.get("name") for m in result["models"] if isinstance(m, dict)]
-						elif isinstance(result, list):
-							models = [m.get("id") or m.get("name") for m in result if isinstance(m, dict)]
-						
-						models = [m for m in models if m]
-						if models:
-							# 更新故事生成页面的下拉框
-							if hasattr(self, 'combo_story_model'):
-								self._ui(self.combo_story_model.__setitem__, 'values', models)
-								current = self._ui_get(self.story_model_var.get) if hasattr(self, '_ui_get') else self.story_model_var.get()
-								if current not in models:
-									self._ui(self.story_model_var.set, models[0])
-							
-							# 更新人物生成页面的下拉框
-							if hasattr(self, 'combo_char_model'):
-								self._ui(self.combo_char_model.__setitem__, 'values', models)
-								current = self._ui_get(self.char_model_var.get) if hasattr(self, '_ui_get') else self.char_model_var.get()
-								if current not in models:
-									self._ui(self.char_model_var.set, models[0])
-							
-							print(f"[OK] 已加载 {len(models)} 个可用模型（故事生成 + 人物生成）")
-						else:
-							print("[WARN] API 响应未包含模型列表，使用默认模型列表")
-							self._set_default_models()
-					else:
-						print(f"[WARN] 获取模型列表失败 ({last_status})，使用默认模型列表")
+						logger.warning("Model fetch returned no model entries; using defaults")
 						self._set_default_models()
 				else:
-					print("[WARN] 未找到自定义 API 配置，使用默认模型列表")
+					logger.warning("Model fetch failed with status=%s; using defaults", last_status)
 					self._set_default_models()
-					
+
 			except Exception as e:
-				print(f"[WARN] 加载模型列表出错: {e}")
+				logger.warning("Failed to load available model list: %s", e)
 				self._set_default_models()
-		
-		# 在后台线程中执行
+
 		threading.Thread(target=task, daemon=True).start()
-	
-	
 	def _set_default_models(self):
 		"""设置默认模型列表（当无法从 API 获取时）"""
 		def _ui_call(func, *args):
@@ -708,5 +778,5 @@ class StoryUIBuilderMixin:
 			if current not in default_models:
 				_ui_call(self.char_model_var.set, default_models[0])
 			
-		print(f"[INFO] 使用默认模型列表 ({len(default_models)} 个)")
+		logger.info("Using default model list (%d entries)", len(default_models))
 

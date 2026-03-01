@@ -2,8 +2,10 @@
 专业UI主题配置 - 支持深色/浅色主题切换
 """
 import json
+import logging
 from pathlib import Path
 
+logger = logging.getLogger(__name__)
 
 class ThemeColors:
     """主题颜色基类"""
@@ -213,8 +215,8 @@ class ThemeManager:
                         self._current_theme = DarkTheme
                     elif config.get('theme') == 'light':
                         self._current_theme = LightTheme
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("load saved theme failed: %s", e)
     
     def _save_theme(self):
         """保存主题设置"""
@@ -222,8 +224,8 @@ class ThemeManager:
             self._config_path.parent.mkdir(parents=True, exist_ok=True)
             with open(self._config_path, 'w') as f:
                 json.dump({'theme': self._current_theme.NAME}, f)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("save theme failed: %s", e)
     
     @property
     def current(self) -> ThemeColors:
@@ -270,8 +272,8 @@ class ThemeManager:
         for callback in self._callbacks:
             try:
                 callback(self._current_theme)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("theme callback failed: %s", e)
 
 
 # 全局主题管理器（延迟初始化）

@@ -43,6 +43,8 @@ class ImageUICreateTabMixin:
 		rowf.pack(fill="x", padx=6, pady=(6, 8))
 		self.img_btn_recommend = ttk.Button(rowf, text="🤖 智能推荐", command=self._on_recommend_video_mode, width=14, takefocus=False)
 		self.img_btn_recommend.pack(side=LEFT, padx=(0, 4))
+		self.img_btn_director = ttk.Button(rowf, text="🎞️ 导演脚本包", command=self._on_generate_director_package, width=16, takefocus=False)
+		self.img_btn_director.pack(side=LEFT, padx=(0, 4))
 		self.img_btn_extract_brief = ttk.Button(rowf, text="🎬 简短(8-12秒)", command=lambda: self._on_img_extract_shots(mode="brief"), width=16, takefocus=False)
 		self.img_btn_extract_brief.pack(side=LEFT, padx=(0, 4))
 		self.img_btn_extract_video = ttk.Button(rowf, text="🎬 平衡(15-25秒)", command=lambda: self._on_img_extract_shots(mode="video"), width=17, takefocus=False)

@@ -167,7 +167,10 @@ class CharacterPhotoMixin:
 		# 确保运行时图片配置已同步（即使用户未打开设置页）
 		if hasattr(self, '_sync_img_runtime_from_config'):
 			try:
-				self._sync_img_runtime_from_config()
+				selected_provider = ""
+				if hasattr(self, 'char_draw_api_var'):
+					selected_provider = (self.char_draw_api_var.get() or "").strip()
+				self._sync_img_runtime_from_config(selected_provider or None)
 			except Exception:
 				pass
 
@@ -178,12 +181,13 @@ class CharacterPhotoMixin:
 			base_url = self.img_base_url.get().strip() if hasattr(self, 'img_base_url') else ""
 			model = self.img_model.get().strip() if hasattr(self, 'img_model') else ""
 
-			# 优先从当前图片预设读取
-			if not model and hasattr(self, 'img_api_preset') and hasattr(self, 'img_api_presets'):
+			# 优先从当前图片预设读取（分别兜底 key/base_url/model）
+			if hasattr(self, 'img_api_preset') and hasattr(self, 'img_api_presets'):
 				preset_name = self.img_api_preset.get().strip()
 				if preset_name and preset_name in self.img_api_presets:
 					cfg = self.img_api_presets.get(preset_name, {})
-					model = (cfg.get("model") or "").strip()
+					if not model:
+						model = (cfg.get("model") or "").strip()
 					if not key:
 						key = (cfg.get("key") or "").strip()
 					if not base_url:
@@ -209,57 +213,57 @@ class CharacterPhotoMixin:
 
 			return key, base_url, model
 		
-			def _is_safety_block_error(err: Exception) -> bool:
-				err_lower = str(err).lower()
-				return any(k in err_lower for k in ["blocked", "safety", "policy", "moderation", "content_filter"])
+		def _is_safety_block_error(err: Exception) -> bool:
+			err_lower = str(err).lower()
+			return any(k in err_lower for k in ["blocked", "safety", "policy", "moderation", "content_filter"])
 
-			def _is_retryable_model_error(err: Exception) -> bool:
-				err_lower = str(err).lower()
-				return any(k in err_lower for k in [
-					"blocked", "safety", "policy", "moderation", "content_filter",
-					"no capacity", "capacity available", "capacity", "overloaded"
-				])
+		def _is_retryable_model_error(err: Exception) -> bool:
+			err_lower = str(err).lower()
+			return any(k in err_lower for k in [
+				"blocked", "safety", "policy", "moderation", "content_filter",
+				"no capacity", "capacity available", "capacity", "overloaded"
+			])
 
-			def _looks_like_image_model(name: str) -> bool:
-				n = (name or "").strip().lower()
-				if not n:
-					return False
-				if "gemini" in n and "image" in n:
-					return True
-				return any(k in n for k in [
-					"image", "dall-e", "gpt-image", "diffusion", "stable-diffusion",
-					"sdxl", "flux", "recraft", "midjourney", "kandinsky"
-				])
+		def _looks_like_image_model(name: str) -> bool:
+			n = (name or "").strip().lower()
+			if not n:
+				return False
+			if "gemini" in n and "image" in n:
+				return True
+			return any(k in n for k in [
+				"image", "dall-e", "gpt-image", "diffusion", "stable-diffusion",
+				"sdxl", "flux", "recraft", "midjourney", "kandinsky"
+			])
 
-			def _collect_image_model_candidates(primary_model: str) -> list[str]:
-				candidates: list[str] = []
-				def _add(m):
-					val = (m or "").strip()
-					if not val:
-						return
-					if hasattr(self, '_strip_model_label'):
-						try:
-							val = self._strip_model_label(val)
-						except Exception:
-							pass
-					if not _looks_like_image_model(val):
-						return
-					if val not in candidates:
-						candidates.append(val)
+		def _collect_image_model_candidates(primary_model: str) -> list[str]:
+			candidates: list[str] = []
+			def _add(m):
+				val = (m or "").strip()
+				if not val:
+					return
+				if hasattr(self, '_strip_model_label'):
+					try:
+						val = self._strip_model_label(val)
+					except Exception:
+						pass
+				if not _looks_like_image_model(val):
+					return
+				if val not in candidates:
+					candidates.append(val)
 
-				_add(primary_model)
-				if hasattr(self, 'img_api_preset') and hasattr(self, 'img_api_presets'):
-					preset_name = self.img_api_preset.get().strip()
-					if preset_name in self.img_api_presets:
-						cfg = self.img_api_presets.get(preset_name, {})
-						_add(cfg.get("model", ""))
-						models = cfg.get("models", [])
-						if isinstance(models, list):
-							for m in models:
-								_add(str(m))
-				for m in ["gpt-image-1", "dall-e-3", "gemini-3-pro-image"]:
-					_add(m)
-				return candidates
+			_add(primary_model)
+			if hasattr(self, 'img_api_preset') and hasattr(self, 'img_api_presets'):
+				preset_name = self.img_api_preset.get().strip()
+				if preset_name in self.img_api_presets:
+					cfg = self.img_api_presets.get(preset_name, {})
+					_add(cfg.get("model", ""))
+					models = cfg.get("models", [])
+					if isinstance(models, list):
+						for m in models:
+							_add(str(m))
+			for m in ["gpt-image-1", "dall-e-3", "gemini-3-pro-image"]:
+				_add(m)
+			return candidates
 		
 		def generate_photo_thread():
 			generated_photos = []  # 存储生成的照片信息
@@ -341,14 +345,14 @@ class CharacterPhotoMixin:
 							except Exception as first_err:
 								if not _is_safety_block_error(first_err):
 									raise
-									retry_prompt = CharacterPromptBuilder.build_retry_prompt(
-										description=description,
-										style="证件照",
-										view_angle="front",
-										expression="neutral",
-										composition="upper_body",
-										language="zh",
-									)
+								retry_prompt = CharacterPromptBuilder.build_retry_prompt(
+									description=description,
+									style="证件照",
+									view_angle="front",
+									expression="neutral",
+									composition="upper_body",
+									language="zh",
+								)
 								print(f"⚠️ 混元触发策略拦截，使用安全提示词重试：{retry_prompt[:200]}")
 								self._last_character_photo_prompt = retry_prompt
 								self.after(0, lambda a=angle_name, e=expr_name: self.status.set(
@@ -917,10 +921,16 @@ class CharacterPhotoMixin:
 					api_key = self.img_api_key.get().strip() if hasattr(self, 'img_api_key') else ""
 					base_url = self.img_base_url.get().strip() if hasattr(self, 'img_base_url') else ""
 					model = self.img_model.get().strip() if hasattr(self, 'img_model') else ""
-					if not model and hasattr(self, 'img_api_preset') and hasattr(self, 'img_api_presets'):
+					if hasattr(self, 'img_api_preset') and hasattr(self, 'img_api_presets'):
 						preset_name = self.img_api_preset.get().strip()
 						if preset_name in self.img_api_presets:
-							model = (self.img_api_presets[preset_name].get("model") or "").strip()
+							cfg = self.img_api_presets[preset_name]
+							if not model:
+								model = (cfg.get("model") or "").strip()
+							if not api_key:
+								api_key = (cfg.get("key") or "").strip()
+							if not base_url:
+								base_url = (cfg.get("base_url") or "").strip()
 					model = model or "dall-e-3"
 					base_url = base_url or None
 					

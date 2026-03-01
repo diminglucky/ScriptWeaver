@@ -8,12 +8,36 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Tuple
 
-import faiss  # type: ignore
 import numpy as np
-from sentence_transformers import SentenceTransformer
 from tqdm import tqdm
 
 from src.utils.text import discover_text_files, read_file_text, clean_text, split_by_length
+
+
+def _load_kb_backends():
+	"""Load optional KB backends lazily so app startup is platform-safe."""
+	missing: list[str] = []
+	try:
+		import faiss  # type: ignore
+	except Exception:
+		faiss = None
+		missing.append("faiss-cpu")
+
+	try:
+		from sentence_transformers import SentenceTransformer  # type: ignore
+	except Exception:
+		SentenceTransformer = None
+		missing.append("sentence-transformers")
+
+	if missing:
+		pkgs = ", ".join(missing)
+		raise RuntimeError(
+			"知识库依赖缺失，暂时无法构建索引。"
+			f"\n缺失包: {pkgs}"
+			"\n请先安装后再试: pip install sentence-transformers faiss-cpu"
+		)
+
+	return faiss, SentenceTransformer
 
 
 @dataclass
@@ -28,7 +52,9 @@ class IngestConfig:
 class KnowledgeBaseIngestor:
 	def __init__(self, config: IngestConfig) -> None:
 		self.config = config
-		self.model = SentenceTransformer(config.embedding_model_name)
+		faiss_backend, sentence_transformer_cls = _load_kb_backends()
+		self._faiss = faiss_backend
+		self.model = sentence_transformer_cls(config.embedding_model_name)
 
 	def _embed(self, texts: List[str]) -> np.ndarray:
 		return self.model.encode(texts, show_progress_bar=False, convert_to_numpy=True, normalize_embeddings=True)
@@ -50,10 +76,10 @@ class KnowledgeBaseIngestor:
 				metas.append((str(fp), i))
 
 		embeddings = self._embed(chunks).astype("float32")
-		index = faiss.IndexFlatIP(embeddings.shape[1])
+		index = self._faiss.IndexFlatIP(embeddings.shape[1])
 		index.add(embeddings)
 
-		faiss.write_index(index, str(self.config.index_dir / "kb.index"))
+		self._faiss.write_index(index, str(self.config.index_dir / "kb.index"))
 		np.save(self.config.index_dir / "chunks.npy", np.array(chunks, dtype=object))
 		np.save(self.config.index_dir / "meta.npy", np.array(metas, dtype=object))
 

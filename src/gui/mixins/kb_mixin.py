@@ -8,8 +8,6 @@ from tkinter import BOTH, LEFT, RIGHT, DISABLED, NORMAL, END, messagebox, filedi
 import tkinter as tk
 from tkinter import ttk
 
-from src.kb.ingest import IngestConfig, KnowledgeBaseIngestor
-
 
 class KbMixin:
 	"""Kb管理功能"""
@@ -22,21 +20,26 @@ class KbMixin:
 		if not any(Path(self.data_dir.get()).rglob("*.txt")) and not any(Path(self.data_dir.get()).rglob("*.md")) and not any(Path(self.data_dir.get()).rglob("*.markdown")):
 			messagebox.showwarning("提示", "数据目录下未发现 .txt/.md/.markdown 文件")
 			return
+		def ui_call(func, *args, **kwargs):
+			if hasattr(self, '_ui'):
+				return self._ui(func, *args, **kwargs)
+			return func(*args, **kwargs)
 		def task():
 			try:
-				self.set_busy(True)
-				self.status.set("构建索引中...")
+				ui_call(self.set_busy, True)
+				ui_call(self.status.set, "构建索引中...")
+				from src.kb.ingest import IngestConfig, KnowledgeBaseIngestor
 				cfg = IngestConfig(data_root=Path(self.data_dir.get()), index_dir=Path(self.index_dir.get()))
 				KnowledgeBaseIngestor(cfg).build()
-				self.output.insert(END, f"索引已生成: {self.index_dir.get()}\n")
-				self.status.set("索引已生成")
+				ui_call(self.output.insert, END, f"索引已生成: {self.index_dir.get()}\n")
+				ui_call(self.status.set, "索引已生成")
 			except Exception as e:
 				import traceback
-				self.output.insert(END, "构建索引出错:\n" + traceback.format_exc() + "\n")
-				messagebox.showerror("错误", str(e))
-				self.status.set("构建索引失败")
+				ui_call(self.output.insert, END, "构建索引出错:\n" + traceback.format_exc() + "\n")
+				ui_call(messagebox.showerror, "错误", str(e))
+				ui_call(self.status.set, "构建索引失败")
 			finally:
-				self.set_busy(False)
+				ui_call(self.set_busy, False)
 		threading.Thread(target=task, daemon=True).start()
 
 	def locate_existing_index(self) -> None:

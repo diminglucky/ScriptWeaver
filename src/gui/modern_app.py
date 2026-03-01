@@ -4,24 +4,34 @@
 
 import tkinter as tk
 from tkinter import ttk
+import logging
 import os
 from pathlib import Path
 from datetime import datetime
 
+try:
+    from dotenv import load_dotenv
+except Exception:  # pragma: no cover - optional dependency
+    def load_dotenv(*args, **kwargs):
+        return False
+
 from .theme import Theme, Styles, Icons, theme_manager
 from .mixins.story_modules import StoryMixin
 from .mixins.image_modules import ImageMixin
+from .mixins.director_mixin import DirectorMixin
 from .mixins.project_mixin import ProjectMixin
 from .mixins.config_modules import ConfigMixin
 from .mixins.kb_mixin import KbMixin
 from .mixins.ui_mixin import UiMixin
-from .mixins.settings_mixin import SettingsMixin
-from .mixins.enhancements import EnhancementsMixin
+from .mixins.settings_refactored import SettingsMixin
+from .mixins.enhancements_refactored import EnhancementsMixin
 from .mixins.kb_enhancements import KBEnhancementsMixin
 from .mixins.async_utils import PerformanceMixin
 
+logger = logging.getLogger(__name__)
 
-class ModernApp(tk.Tk, ProjectMixin, StoryMixin, ImageMixin, KbMixin, ConfigMixin, UiMixin, SettingsMixin, EnhancementsMixin, KBEnhancementsMixin, PerformanceMixin):
+
+class ModernApp(tk.Tk, ProjectMixin, StoryMixin, ImageMixin, DirectorMixin, KbMixin, ConfigMixin, UiMixin, SettingsMixin, EnhancementsMixin, KBEnhancementsMixin, PerformanceMixin):
     """现代化专业UI应用 - 整合所有原有功能"""
     
     def __init__(self):
@@ -36,11 +46,11 @@ class ModernApp(tk.Tk, ProjectMixin, StoryMixin, ImageMixin, KbMixin, ConfigMixi
         self.configure(bg=Theme.BG_PRIMARY)
         
         # 加载环境变量
-        from dotenv import load_dotenv
         load_dotenv()
         
         # 初始化所有必需的变量（原有功能需要）
         self._init_variables()
+        self._setup_target_chars_autosave()
         
         # 应用现代化样式
         self._setup_modern_styles()
@@ -70,10 +80,56 @@ class ModernApp(tk.Tk, ProjectMixin, StoryMixin, ImageMixin, KbMixin, ConfigMixi
         # 注册主题变更回调
         theme_manager.register_callback(self._on_theme_change)
         
-        # 启动后自动加载配置
-        self.after(100, self._load_api_config_from_file)  # 先从 JSON 文件加载
-        self.after(150, self._auto_load_api_config)  # 再从 .env 加载（可能覆盖）
-        self.after(200, self._auto_load_story_api_selection)
+        # 启动后自动加载配置（单入口，避免多次 after 导致 UI 值跳动）
+        self.after(100, self._startup_load_configs)
+
+    def _setup_target_chars_autosave(self) -> None:
+        """Auto-persist target chars so it survives restart."""
+        self._target_chars_save_job = None
+        self._target_chars_last_saved = None
+        if not hasattr(self, "target_chars"):
+            return
+        try:
+            self.target_chars.trace_add("write", self._on_target_chars_changed)
+            self._persist_target_chars_to_env()
+        except Exception as e:
+            logger.debug("setup target chars autosave failed: %s", e)
+
+    def _on_target_chars_changed(self, *_args) -> None:
+        """Debounce writes when spinbox value changes."""
+        try:
+            if self._target_chars_save_job is not None:
+                self.after_cancel(self._target_chars_save_job)
+            self._target_chars_save_job = self.after(400, self._persist_target_chars_to_env)
+        except Exception as e:
+            logger.debug("schedule target chars persist failed: %s", e)
+
+    def _persist_target_chars_to_env(self) -> None:
+        """Write TARGET_CHARS to .env."""
+        try:
+            from dotenv import find_dotenv, set_key
+
+            value = int(self.target_chars.get())
+            value = max(500, min(30000, value))
+            if self._target_chars_last_saved == value:
+                return
+
+            env_path_str = find_dotenv(usecwd=True)
+            env_path = Path(env_path_str) if env_path_str else Path.cwd() / ".env"
+            env_path.touch(exist_ok=True)
+            set_key(str(env_path), "TARGET_CHARS", str(value))
+            self._target_chars_last_saved = value
+        except Exception as e:
+            logger.debug("persist target chars failed: %s", e)
+
+    def _startup_load_configs(self):
+        """启动时统一加载配置"""
+        try:
+            self._load_api_config_from_file()  # 先从 JSON 文件加载
+            self._auto_load_api_config()       # 再从 .env 加载（可能覆盖）
+            self._auto_load_story_api_selection()
+        except Exception as e:
+            logger.warning("startup config load failed: %s", e)
     
     def _on_theme_change(self, new_theme):
         """主题变更回调"""
@@ -100,7 +156,13 @@ class ModernApp(tk.Tk, ProjectMixin, StoryMixin, ImageMixin, KbMixin, ConfigMixi
         self.temperature = tk.DoubleVar(value=0.7)
         self.category = tk.StringVar(value="职场")
         self.style = tk.StringVar(value="情感起伏/反转/细节描写/有画面感/口语化")
-        self.target_chars = tk.IntVar(value=1800)
+        target_chars_raw = (os.getenv("TARGET_CHARS", "1800") or "1800").strip()
+        try:
+            target_chars_value = int(target_chars_raw)
+        except Exception:
+            target_chars_value = 1800
+        target_chars_value = max(500, min(30000, target_chars_value))
+        self.target_chars = tk.IntVar(value=target_chars_value)
         self.model_only = tk.BooleanVar(value=True)
         
         # 故事内容
@@ -197,6 +259,7 @@ class ModernApp(tk.Tk, ProjectMixin, StoryMixin, ImageMixin, KbMixin, ConfigMixi
         }
         
         # 兼容旧代码 - 从 providers 生成 api_presets
+        self.api_providers = self._normalize_story_provider_map(self.api_providers)
         self.api_presets = {}
         for name, config in self.api_providers.items():
             self.api_presets[name] = {
@@ -240,6 +303,7 @@ class ModernApp(tk.Tk, ProjectMixin, StoryMixin, ImageMixin, KbMixin, ConfigMixi
         }
         
         # 兼容旧代码
+        self.img_api_providers = self._normalize_image_provider_map(self.img_api_providers)
         self.img_api_presets = {}
         for name, config in self.img_api_providers.items():
             self.img_api_presets[name] = {
@@ -249,6 +313,103 @@ class ModernApp(tk.Tk, ProjectMixin, StoryMixin, ImageMixin, KbMixin, ConfigMixi
                 "provider": config.get("provider", "openai"),
             }
     
+    @staticmethod
+    def _normalize_story_provider_map(provider_map: dict) -> dict:
+        """Normalize legacy/garbled story provider labels into canonical names."""
+        normalized = {}
+        for raw_name, cfg in (provider_map or {}).items():
+            if not isinstance(cfg, dict):
+                continue
+            base = str(cfg.get("base_url", "")).lower()
+            models = list(cfg.get("models", []) or [])
+            raw_name_text = str(raw_name or "")
+            raw_name_lower = raw_name_text.lower()
+            is_custom_alias = (
+                "custom" in raw_name_lower
+                or "自定义" in raw_name_text
+                or "鑷畾涔?" in raw_name_text
+                or "閼奉亜鐣炬稊?" in raw_name_text
+            )
+            if "api.deepseek.com" in base:
+                name = "DeepSeek"
+            elif "api.openai.com" in base:
+                name = "OpenAI"
+            elif "azure.com" in base:
+                name = "Azure OpenAI"
+            elif "moonshot.cn" in base:
+                name = "Moonshot (Kimi)"
+            elif "bigmodel.cn" in base:
+                name = "Zhipu AI (GLM)"
+            elif "dashscope.aliyuncs.com" in base:
+                name = "Alibaba Qwen"
+            elif "baidubce.com" in base:
+                name = "Baidu ERNIE"
+            elif "siliconflow.cn" in base:
+                name = "SiliconFlow"
+            elif "lingyiwanwu.com" in base:
+                name = "01.AI"
+            elif not base and ("custom-model" in models or is_custom_alias):
+                name = "Custom"
+            else:
+                name = raw_name
+
+            current = normalized.get(name)
+            if current is None:
+                normalized[name] = cfg
+            else:
+                if not current.get("key") and cfg.get("key"):
+                    current["key"] = cfg["key"]
+                merged_models = list(current.get("models", []) or [])
+                for model in models:
+                    if model not in merged_models:
+                        merged_models.append(model)
+                current["models"] = merged_models
+        return normalized
+
+    @staticmethod
+    def _normalize_image_provider_map(provider_map: dict) -> dict:
+        """Normalize legacy/garbled image provider labels into canonical names."""
+        normalized = {}
+        for raw_name, cfg in (provider_map or {}).items():
+            if not isinstance(cfg, dict):
+                continue
+            base = str(cfg.get("base_url", "")).lower()
+            provider = str(cfg.get("provider", "openai")).lower()
+            models = list(cfg.get("models", []) or [])
+            raw_name_text = str(raw_name or "")
+            raw_name_lower = raw_name_text.lower()
+            is_custom_alias = (
+                "custom" in raw_name_lower
+                or "自定义" in raw_name_text
+                or "鑷畾涔?" in raw_name_text
+                or "閼奉亜鐣炬稊?" in raw_name_text
+            )
+            if provider == "hunyuan":
+                name = "Tencent Hunyuan"
+            elif "api.openai.com" in base:
+                name = "OpenAI (DALL-E)"
+            elif "v-api.ai" in base:
+                name = "V-API (Flux)"
+            elif "siliconflow.cn" in base:
+                name = "SiliconFlow (Image)"
+            elif not base and ("custom-model" in models or is_custom_alias):
+                name = "Custom"
+            else:
+                name = raw_name
+
+            current = normalized.get(name)
+            if current is None:
+                normalized[name] = cfg
+            else:
+                if not current.get("key") and cfg.get("key"):
+                    current["key"] = cfg["key"]
+                merged_models = list(current.get("models", []) or [])
+                for model in models:
+                    if model not in merged_models:
+                        merged_models.append(model)
+                current["models"] = merged_models
+        return normalized
+
     def _setup_modern_styles(self):
         """设置现代化ttk组件样式"""
         self.ttk_style = ttk.Style()
@@ -610,7 +771,7 @@ class ModernApp(tk.Tk, ProjectMixin, StoryMixin, ImageMixin, KbMixin, ConfigMixi
             self.notebook.pack_configure(padx=0, pady=0)
             
             # 更新页面背景 - 使用更深的背景色
-            for page in [self.page_project, self.page_story, self.page_image, self.page_settings]:
+            for page in [self.page_project, self.page_story, self.page_image, self.page_director, self.page_settings]:
                 page.configure(bg=Theme.BG_CARD)
                 self._apply_theme_to_children(page)
         
@@ -644,8 +805,8 @@ class ModernApp(tk.Tk, ProjectMixin, StoryMixin, ImageMixin, KbMixin, ConfigMixi
                     current_fg = widget.cget("fg")
                     if current_fg in ["#ffffff", "#FFFFFF", "#d4d4d4", "#D4D4D4", "black", "white", ""]:
                         widget.configure(fg=Theme.TEXT_PRIMARY)
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug("label fg sync skipped: %s", e)
             elif widget_class == "Text":
                 # 统一文本区域风格（仅覆盖旧黑色背景）
                 current_bg = widget.cget("bg")
@@ -709,7 +870,7 @@ class ModernApp(tk.Tk, ProjectMixin, StoryMixin, ImageMixin, KbMixin, ConfigMixi
                 self._apply_theme_to_children(child)
         except Exception as e:
             # 忽略无法配置的组件，避免崩溃
-            pass
+            logger.debug("apply theme to children failed: %s", e)
     
     def _create_modern_status_bar(self):
         """创建现代化底部状态栏 - 专业设计"""
@@ -810,8 +971,8 @@ class ModernApp(tk.Tk, ProjectMixin, StoryMixin, ImageMixin, KbMixin, ConfigMixi
             if hasattr(self, 'time_label'):
                 self.time_label.config(text=now)
             self.after(1000, self._update_time)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("update_time failed: %s", e)
     
     def _toggle_theme_ui(self):
         """切换主题（带UI更新）"""
@@ -860,7 +1021,7 @@ class ModernApp(tk.Tk, ProjectMixin, StoryMixin, ImageMixin, KbMixin, ConfigMixi
                     # 强制刷新UI
                     self.update_idletasks()
             except Exception as e:
-                print(f"更新状态栏失败: {e}")
+                logger.debug("update header status failed: %s", e)
         if hasattr(self, "_ui"):
             self._ui(apply)
         else:
@@ -870,7 +1031,6 @@ class ModernApp(tk.Tk, ProjectMixin, StoryMixin, ImageMixin, KbMixin, ConfigMixi
     def _auto_load_story_api_selection(self):
         """自动加载故事 API 选择配置"""
         try:
-            from dotenv import load_dotenv
             import os
             
             load_dotenv(override=True)
@@ -879,26 +1039,24 @@ class ModernApp(tk.Tk, ProjectMixin, StoryMixin, ImageMixin, KbMixin, ConfigMixi
             outline_api = os.getenv("STORY_OUTLINE_GEN_API", "DeepSeek")
             if hasattr(self, 'outline_gen_api'):
                 self.outline_gen_api.set(outline_api)
-                print(f"[OK] 已加载目录生成API: {outline_api}")
+                logger.info("loaded outline generation API: %s", outline_api)
             
             story_api = os.getenv("STORY_STORY_GEN_API", "DeepSeek")
             if hasattr(self, 'story_gen_api'):
                 self.story_gen_api.set(story_api)
-                print(f"[OK] 已加载故事生成API: {story_api}")
+                logger.info("loaded story generation API: %s", story_api)
             
             # 更新故事创作功能API下拉框的选项
             if hasattr(self, 'api_presets') and hasattr(self, 'combo_outline_gen_api'):
                 api_list = list(self.api_presets.keys())
                 self.combo_outline_gen_api['values'] = api_list
                 self.combo_story_gen_api['values'] = api_list
-                print(f"[OK] 已更新API选项列表: {api_list}")
+                logger.info("updated API option list: %s", api_list)
             
             # 同步到快速切换区域
             if hasattr(self, 'quick_story_api'):
                 self.quick_story_api.set(story_api)
-                print(f"[OK] 已同步到快速切换: {story_api}")
+                logger.info("synced quick story API: %s", story_api)
                 
         except Exception as e:
-            print(f"[ERROR] 加载故事API选择失败: {e}")
-            import traceback
-            traceback.print_exc()
+            logger.exception("load story API selection failed: %s", e)

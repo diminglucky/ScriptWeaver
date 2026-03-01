@@ -3,25 +3,102 @@
 from tkinter import BOTH, LEFT, RIGHT, DISABLED, NORMAL, END, messagebox, filedialog, scrolledtext
 import tkinter as tk
 from tkinter import ttk
+import logging
 import threading
 import re
 from pathlib import Path
-from dotenv import load_dotenv
+try:
+	from dotenv import load_dotenv
+except Exception:  # pragma: no cover - fallback for minimal environments
+	def load_dotenv(*args, **kwargs):
+		return False
 
-from src.clients.deepseek_client import DeepSeekClient
-from src.kb.ingest import KnowledgeBaseIngestor, IngestConfig
-from src.kb.search import KnowledgeBaseSearcher, SearchConfig
 from src.utils.text import sanitize as _sanitize
+
+logger = logging.getLogger(__name__)
+
+
+def print(*args, **kwargs):  # type: ignore[override]
+	logger.info(" ".join(str(a) for a in args))
 
 
 class StoryGeneratorMixin:
 	"""Story story_generator 功能"""
+
+	def _persist_target_chars_preference(self) -> None:
+		"""Persist current target chars to .env so it survives restart."""
+		try:
+			from pathlib import Path
+			from dotenv import find_dotenv, set_key
+
+			chars_value = int(self.target_chars.get())
+			chars_value = max(500, min(30000, chars_value))
+			env_path_str = find_dotenv(usecwd=True)
+			env_path = Path(env_path_str) if env_path_str else Path.cwd() / ".env"
+			env_path.touch(exist_ok=True)
+			set_key(str(env_path), "TARGET_CHARS", str(chars_value))
+		except Exception as e:
+			logger.debug("persist target chars failed: %s", e)
+
+	def _stream_story_with_retry(self, client, prompt: str, target_chars: int, min_ratio: float = 0.95, max_rounds: int | None = None) -> str:
+		"""Stream story text and auto-continue if output is shorter than expected."""
+		min_chars = max(1, int(target_chars * min_ratio))
+		if max_rounds is None:
+			# Larger targets need more continuation rounds on providers with short per-response limits.
+			max_rounds = max(2, min(8, (target_chars // 1500) + 2))
+
+		system_prompt = (
+			"你是资深中文叙事作者。写作必须具备强戏剧性："
+			"开头迅速抛冲突，中段持续升级并制造反转，结尾回扣并留余味。"
+			"禁止流水账、空话、重复总结。"
+		)
+		accumulated = ""
+		current_prompt = prompt
+
+		for round_idx in range(max_rounds):
+			remaining = max(0, min_chars - len(accumulated.strip()))
+			current_target = target_chars if round_idx == 0 else max(300, int(remaining * 1.2))
+			before_len = len(accumulated.strip())
+
+			for delta in client.stream([
+				{"role": "system", "content": system_prompt},
+				{"role": "user", "content": current_prompt},
+			], temperature=self.temperature.get(), max_tokens=int(current_target * 2.5)):
+				self._ui(self.output.insert, END, delta)
+				self._ui(self.output.see, END)
+				accumulated += delta
+
+			after_len = len(accumulated.strip())
+			if after_len >= min_chars:
+				break
+
+			remaining = max(0, min_chars - after_len)
+			produced_this_round = max(0, after_len - before_len)
+			# If backend no longer returns enough useful continuation, avoid infinite retries.
+			if produced_this_round < 120 and round_idx > 0:
+				break
+
+			if round_idx < max_rounds - 1 and remaining > 0:
+				if hasattr(self, "status"):
+					self._ui(self.status.set, f"内容偏短，自动续写中（还需约{remaining}字）")
+				current_prompt = (
+					"请在不重复前文的前提下继续正文，重点补强紧张感与戏剧性：\n"
+					"1) 立刻推进情节，不要复述；\n"
+					"2) 增加人物决策与代价；\n"
+					"3) 至少加入一次误导或反转；\n"
+					f"4) 继续补足约 {remaining} 字。\n\n"
+					"以下为前文末尾（用于衔接）：\n"
+					f"{accumulated[-1400:]}"
+				)
+
+		return accumulated
 	
 	def on_generate(self) -> None:
 		query = self._get_prompt_content()
 		if not query:
 			messagebox.showwarning("提示", "请先输入创作需求/主题")
 			return
+		self._persist_target_chars_preference()
 		
 		# 故事生成：根据模型路由选择 API
 		fallback_provider = None
@@ -70,11 +147,13 @@ class StoryGeneratorMixin:
 				if need_build:
 					if hasattr(self, 'update_header_status'):
 						self.update_header_status("正在构建索引...", "⏳")
+					from src.kb.ingest import IngestConfig, KnowledgeBaseIngestor
 					cfg = IngestConfig(data_root=Path(self.data_dir.get()), index_dir=Path(self.index_dir.get()))
 					KnowledgeBaseIngestor(cfg).build()
 				
 				if hasattr(self, 'update_header_status'):
 					self.update_header_status("检索资料中...", "🔍")
+				from src.kb.search import KnowledgeBaseSearcher, SearchConfig
 				searcher = KnowledgeBaseSearcher(SearchConfig(index_dir=Path(self.index_dir.get()), top_k=self.top_k.get()))
 				results = searcher.search(query, self.top_k.get())
 				contexts = [c for c, _s, _m in results]
@@ -87,6 +166,7 @@ class StoryGeneratorMixin:
 				selected_model = api_config.get("model", "")
 				print(f"🤖 使用模型: {selected_model}")
 				
+				from src.clients.deepseek_client import DeepSeekClient
 				client = DeepSeekClient(
 					api_key=api_key,
 					base_url=_sanitize(api_config.get("base_url", "")),
@@ -105,12 +185,7 @@ class StoryGeneratorMixin:
 					# 一次性生成（原逻辑）
 					self._ui(self.output.insert, END, "生成中...\n\n")
 					prompt = self._build_prompt(query, contexts, self.category.get(), self.current_outline)
-					for delta in client.stream([
-						{"role": "system", "content": "你是资深知乎创作者，擅长结合资料写出有观点、有结构的中文故事。"},
-						{"role": "user", "content": prompt},
-					], temperature=self.temperature.get(), max_tokens=int(target_chars*2.5)):
-						self._ui(self.output.insert, END, delta)
-						self._ui(self.output.see, END)
+					self._stream_story_with_retry(client, prompt, target_chars)
 				
 				self._ui(self.status.set, "生成完成")
 				# 更新顶部状态栏
@@ -136,6 +211,7 @@ class StoryGeneratorMixin:
 		if not self.parsed_sections:
 			messagebox.showwarning("提示", "请先生成目录")
 			return
+		self._persist_target_chars_preference()
 		
 		query = self._get_prompt_content()
 		if not query:
@@ -200,8 +276,10 @@ class StoryGeneratorMixin:
 					self.set_busy(True)
 					load_dotenv()
 					if need_build:
+						from src.kb.ingest import IngestConfig, KnowledgeBaseIngestor
 						cfg = IngestConfig(data_root=Path(self.data_dir.get()), index_dir=Path(self.index_dir.get()))
 						KnowledgeBaseIngestor(cfg).build()
+					from src.kb.search import KnowledgeBaseSearcher, SearchConfig
 					searcher = KnowledgeBaseSearcher(SearchConfig(index_dir=Path(self.index_dir.get()), top_k=self.top_k.get()))
 					results = searcher.search(query, self.top_k.get())
 					contexts = [c for c, _s, _m in results]
@@ -248,6 +326,7 @@ class StoryGeneratorMixin:
 				selected_model = api_config.get("model", "")
 				print(f"🤖 使用模型: {selected_model}")
 				
+				from src.clients.deepseek_client import DeepSeekClient
 				client = DeepSeekClient(
 					api_key=api_key,
 					base_url=_sanitize(api_config.get("base_url", "")),
@@ -266,12 +345,7 @@ class StoryGeneratorMixin:
 					# 一次性生成（原逻辑）
 					self._ui(self.output.insert, END, "生成中...\n\n")
 					prompt = self._build_prompt(query, [], self.category.get(), self.current_outline)
-					for delta in client.stream([
-						{"role": "system", "content": "你是资深知乎创作者，擅长结合资料写出有观点、有结构的中文故事。"},
-						{"role": "user", "content": prompt},
-					], temperature=self.temperature.get(), max_tokens=int(target_chars*2.5)):
-						self._ui(self.output.insert, END, delta)
-						self._ui(self.output.see, END)
+					self._stream_story_with_retry(client, prompt, target_chars)
 				
 				self._ui(self.status.set, "生成完成")
 				# 更新顶部状态栏

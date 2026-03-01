@@ -1,0 +1,42 @@
+{
+  "story_outline": {
+    "provider": "Custom",
+    "model": "gemini-3-flash-preview"
+  },
+  "story_generate": {
+    "provider": "Custom",
+    "model": "gemini-3-flash-preview"
+  },
+  "character_extract": {
+    "provider": "Custom",
+    "model": "gemini-3-flash-preview"
+  },
+  "character_description": {
+    "provider": "Custom",
+    "model": "gemini-3-flash-preview"
+  },
+  "image_prompt_translate": {
+    "provider": "Custom",
+    "model": "gemini-3-flash-preview"
+  },
+  "image_prompt_enhance": {
+    "provider": "Custom",
+    "model": "gemini-3-flash-preview"
+  },
+  "image_prompt_from_story": {
+    "provider": "Custom",
+    "model": "gemini-3-flash-preview"
+  },
+  "image_prompt_from_shots": {
+    "provider": "Custom",
+    "model": "gemini-3-flash-preview"
+  },
+  "image_shot_extract": {
+    "provider": "Custom",
+    "model": "gemini-3-flash-preview"
+  },
+  "image_shot_to_desc": {
+    "provider": "Custom",
+    "model": "gemini-3-flash-preview"
+  }
+}

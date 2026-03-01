@@ -5,9 +5,11 @@ from __future__ import annotations
 from PIL import Image
 from pathlib import Path
 from typing import Dict, Optional, Tuple
+import logging
 import weakref
 from collections import OrderedDict
 
+logger = logging.getLogger(__name__)
 
 class ImageCache:
     """LRU图片缓存管理器
@@ -59,16 +61,16 @@ class ImageCache:
             old_img = self._cache.pop(key)
             try:
                 old_img.close()
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("close old cached image failed: %s", e)
         
         # 如果缓存满了，移除最久未使用的
         while len(self._cache) >= self.max_size:
             oldest_key, oldest_img = self._cache.popitem(last=False)
             try:
                 oldest_img.close()
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("close evicted cached image failed: %s", e)
         
         # 添加新图片
         self._cache[key] = image
@@ -105,8 +107,8 @@ class ImageCache:
         for img in self._cache.values():
             try:
                 img.close()
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("close cached image on clear failed: %s", e)
         self._cache.clear()
     
     def remove(self, path: Path, size: Optional[Tuple[int, int]] = None):
@@ -121,8 +123,8 @@ class ImageCache:
             img = self._cache.pop(key)
             try:
                 img.close()
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("close removed cached image failed: %s", e)
     
     def _make_key(self, path: Path, size: Optional[Tuple[int, int]]) -> str:
         """生成缓存键"""

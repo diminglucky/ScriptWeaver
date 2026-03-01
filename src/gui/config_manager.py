@@ -2,11 +2,58 @@
 
 import json
 import os
+import re
 from pathlib import Path
 from tkinter import messagebox
-from dotenv import find_dotenv, set_key
+import logging
 
 from .utils import sanitize
+
+
+logger = logging.getLogger(__name__)
+
+
+def _dotenv_escape(value: str) -> str:
+	value = str(value)
+	if any(ch.isspace() for ch in value) or any(ch in value for ch in ['#', '"']):
+		return '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
+	return value
+
+
+def _fallback_set_key(dotenv_path: str, key_to_set: str, value_to_set: str) -> bool:
+	try:
+		path = Path(dotenv_path)
+		path.parent.mkdir(parents=True, exist_ok=True)
+		lines = path.read_text(encoding="utf-8").splitlines() if path.exists() else []
+		pattern = re.compile(r"^\s*" + re.escape(key_to_set) + r"\s*=")
+		new_line = f"{key_to_set}={_dotenv_escape(value_to_set)}"
+		replaced = False
+		out = []
+		for line in lines:
+			if pattern.match(line):
+				out.append(new_line)
+				replaced = True
+			else:
+				out.append(line)
+		if not replaced:
+			out.append(new_line)
+		path.write_text("\n".join(out) + "\n", encoding="utf-8")
+		return True
+	except Exception as e:
+		logger.debug("Fallback set_key failed for %s in %s: %s", key_to_set, dotenv_path, e)
+		return False
+
+
+try:
+	from dotenv import find_dotenv, set_key
+except Exception as e:  # pragma: no cover - optional dependency
+	logger.debug("python-dotenv unavailable for config_manager: %s", e)
+
+	def find_dotenv(*args, **kwargs):
+		return ""
+
+	def set_key(dotenv_path, key_to_set, value_to_set, *args, **kwargs):
+		return _fallback_set_key(dotenv_path, key_to_set, value_to_set)
 
 
 class ConfigManager:
@@ -28,7 +75,7 @@ class ConfigManager:
 				self.custom_presets = data.get('custom_presets', {})
 				return self.custom_presets
 		except Exception as e:
-			print(f"加载自定义预设失败: {e}")
+			logger.warning("Failed to load custom presets from %s: %s", self.config_file, e)
 			return {}
 	
 	def save_custom_preset(self, name: str, api_key: str, base_url: str, model: str) -> bool:
@@ -94,7 +141,7 @@ class ConfigManager:
 				self.custom_image_presets = data.get('custom_image_presets', {})
 				return self.custom_image_presets
 		except Exception as e:
-			print(f"加载图片预设失败: {e}")
+			logger.warning("Failed to load custom image presets from %s: %s", self.config_file, e)
 			return {}
 	
 	def save_custom_image_preset(self, name: str, provider: str, api_key: str, 

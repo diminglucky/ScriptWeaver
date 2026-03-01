@@ -4,7 +4,11 @@ import tkinter as tk
 from tkinter import ttk
 from pathlib import Path
 
-from dotenv import load_dotenv
+try:
+	from dotenv import load_dotenv
+except Exception:  # pragma: no cover - optional dependency
+	def load_dotenv(*args, **kwargs):
+		return False
 
 # 组合各功能模块
 from src.gui.mixins import ProjectMixin, StoryMixin, ImageMixin, KbMixin, ConfigMixin, UiMixin, SettingsMixin

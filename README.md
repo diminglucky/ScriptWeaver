@@ -33,12 +33,28 @@
 pip install -r requirements.txt
 ```
 
+可选（仅知识库向量检索需要）：
+
+```bash
+pip install faiss-cpu
+```
+
+如果 `faiss-cpu` 在当前 Python/平台没有可用 wheel，应用仍可启动；只是在使用“构建索引/检索”时会提示缺依赖。
+
 ### 2. 配置 API
 
 创建 `.env` 文件或在应用内配置：
 
 ```env
-DEEPSEEK_API_KEY=your_key_here
+API_PRESET=DeepSeek
+STORY_DeepSeek_KEY=your_key_here
+STORY_DeepSeek_BASE_URL=https://api.deepseek.com/v1
+STORY_DeepSeek_MODEL=deepseek-chat
+
+# 兼容旧配置（可选）
+# DEEPSEEK_API_KEY=your_key_here
+# DEEPSEEK_BASE_URL=https://api.deepseek.com/v1
+# DEEPSEEK_MODEL=deepseek-chat
 ```
 
 ### 3. 启动应用

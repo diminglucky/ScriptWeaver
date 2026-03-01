@@ -1,26 +1,227 @@
-{
-  "张强": {
-    "description": "根据故事内容，以下是关于“张强”的详细外貌特征描述：\n\n**性别与年龄段：**\n男性，高中生，年龄约16-18岁。\n\n**面部特征：**\n脸型偏瘦削，下颌线条分明。他的眼神常带有一种懒散和审视的意味，习惯性地眯起眼睛观察事物。五官轮廓较为立体，但并非精致类型，更偏向于带有几分痞气的俊朗。表情多数时候是漫不经心的，嘴角偶尔会带着一丝若有若无的冷笑或戏谑。\n\n**身材体型：**\n身材偏瘦高，但并非弱不禁风。因为经常打架，肢体蕴含着一定的力量和敏捷性。站姿和坐姿都比较随意，常带着一种懒洋洋的姿态，比如喜欢翘着二郎腿或双手插兜歪斜地靠着。\n\n**发型发色：**\n头发应该是黑色的短碎发，没有刻意打理，显得有些凌乱不羁，额前可能会有几缕碎发随意地垂落，更增添了几分随性和痞气。\n\n**穿着打扮：**\n典型的中国中学男生日常装扮，但带有个人风格。他身穿普通的校服（很可能是不好好系扣子或穿着不规整），内搭可能是简单的T恤。下身为校服长裤，可能因为经常活动而显得有些旧。脚上很可能穿着一双运动鞋或板鞋。整体打扮随意，甚至有些邋遢，符合他不在乎外界眼光的性格。\n\n**其他显著特征：**\n整体给人一种“不好惹”的视觉印象。他的动作幅度通常不大但很稳，带着一种潜在的掌控感。皮肤可能是健康的小麦色，暗示他可能有不少户外活动。手上可能因为打架或抽烟留有细微的疤痕或痕迹。",
-    "photo_path": ""
+[
+  {
+    "name": "陆舟",
+    "character_id": "CHAR_3B104E",
+    "description": "他常年穿着质地精良、扣至顶端的长袖白衬衫，袖口永远严丝合缝地锁在手腕处，仿佛那是他抵御外界的盔甲，他的脸型窄长，下颌线如刀削般凌厉，却被一副斯文的黑框眼镜中和了攻击性，他的眼神常态下显得疏离且疲惫，眼下带着长期高压留下的淡淡青黑，透着一种职场精英的枯燥感，虽然穿着考究，但衬衫下隐约可见的肌肉轮廓显示出他并非手无缚鸡之力的书生，而是一头潜伏在西装下的野兽",
+    "profile": {
+      "role": "主角",
+      "gender": "男",
+      "age_hint": "27岁左右",
+      "identity": "顶级公关公司新人，前街头混混",
+      "personality": [
+        "隐忍克制",
+        "勤恳专业",
+        "骨子里带戾气"
+      ],
+      "atmosphere": "斯文疲惫且带有高度防御性",
+      "story_role": "试图摆脱过去阴影、在职场偏见中挣扎并反击的核心人物",
+      "appearance_hints": "黑框眼镜，常年穿着扣紧袖口的长袖白衬衫，左臂有重剑荆棘纹身"
+    },
+    "visual": {
+      "face_shape": "棱角分明的窄长脸",
+      "eye_features": "细长且深邃的单眼皮，常配黑框眼镜",
+      "nose_features": "高挺笔直的希腊鼻",
+      "skin_tone": "因长期缺乏日照而呈现的冷白皮",
+      "body_type": "修长挺拔且富有爆发力的精肉型身材",
+      "hair_style": "修剪整齐、露出额头的利落黑色短发",
+      "hair_color": "纯黑色",
+      "default_outfit": "挺括的长袖白衬衫，深色西装裤，银色金属表带腕表",
+      "unique_marks": [
+        "左前臂内侧巨大的重剑荆棘纹身（常被袖口和胶带遮盖）",
+        "右手虎口处有一道极淡的陈旧伤疤"
+      ],
+      "do_not_change": [
+        "黑框眼镜",
+        "严谨的长袖衬衫装束",
+        "斯文与戾气并存的眼神"
+      ]
+    },
+    "dna": {
+      "character_id": "CHAR_3B104E",
+      "core_prompt": "short neat black hair，sharp and stoic facial features，pale skin，deep-set tired eyes with a hidden sharp gaze",
+      "negative_features": [
+        "黑框眼镜",
+        "严谨的长袖衬衫装束",
+        "斯文与戾气并存的眼神"
+      ],
+      "anchor_image": "",
+      "side_image": "",
+      "back_image": "",
+      "preferred_seed": 0
+    },
+    "photo_paths": [],
+    "primary_photo": "",
+    "turnaround_image": ""
   },
-  "林小雨": {
-    "description": "根据故事内容，林小雨的外貌特征描述如下：\n\n**性别与年龄段：**\n女性，高中学生，年龄约16-18岁。\n\n**面部特征：**\n- 脸型为标准的鹅蛋脸，在夕阳余晖中侧脸线条显得特别柔和\n- 五官清秀，眉毛细长且经常紧锁，显露出忧虑的神情\n- 眼睛大而明亮，但常常低垂着眼睑，睫毛长而微微颤动\n- 表情多为专注认真，但也常带着不安，脸颊容易因紧张而微微泛红\n- 嘴唇薄而线条分明，紧张时会不自觉地咬住下唇\n\n**身材体型：**\n身材苗条纤瘦，肩部线条单薄，整体给人柔弱的感觉，身高约160-165厘米。\n\n**发型发色：**\n总是扎着简单的马尾辫，头发为自然的黑色，发质顺滑，额前有细碎的刘海。\n\n**穿着打扮：**\n- 日常穿着洗得发白的标准校服，校服略显宽松\n- 衣着整洁但朴素，没有任何装饰品\n- 背着普通的书包，书包带子曾断裂过\n\n**其他显著特征：**\n- 坐姿总是挺直背部，显得很有教养\n- 手指修长但指节容易因紧张而泛白\n- 整体气质清纯，皮肤白皙，在阳光下显得通透\n- 动作轻巧，像受惊的小鹿般敏感，右手在紧张时会微微发抖\n\n这些外貌特征共同塑造出一个清秀文静、略带忧郁的女学生形象。",
-    "photo_path": ""
-  },
-  "李明": {
-    "description": "根据故事内容，以下是关于“李明”的详细外貌特征描述：\n\n**性别与年龄段：**\n男性，高中生，年龄约16-18岁。\n\n**面部特征：**\n脸型偏圆或方中带圆，显得敦厚；五官分布匀称，鼻梁可能不算高挺但鼻头圆润；嘴唇偏厚，常带着谨慎而讨好的微笑；眉头习惯性微蹙，眼神闪烁不定，看人时常快速垂下眼帘。\n\n**身材体型：**\n中等身高，体型微胖但不算臃肿，肩膀圆润，手臂粗壮；因长期保持弯腰递东西的姿势，肩背略显佝偻。\n\n**发型发色：**\n留着常见的黑色短发，发型是规矩的寸头或学生式短发，额前碎发偶尔被汗水黏在皮肤上。\n\n**穿着打扮：**\n总是穿着略显宽大的蓝白色校服，领口因常被拉扯而微微变形；袖口有细微的墨水渍，脚上穿着有些开胶的白色运动鞋。\n\n**其他显著特征：**\n右手虎口有被笔杆压出的浅红色凹痕，递东西时手指会无意识颤抖；校服左胸口袋总是鼓囊，装着零食或小物件；走路时习惯性缩着脖子，显得姿态拘谨。\n\n---\n**说明**：由于原文对李明的外貌描写有限，部分细节（如五官具体形状、发型细节等）根据其“识相”“懂事”的性格表现及校园背景进行了合理艺术化补充，确保符合人物整体形象。",
-    "photo_path": ""
-  },
-  "王磊": {
+  {
+    "name": "小李",
+    "character_id": "CHAR_FD2FEA",
     "description": "",
-    "photo_path": ""
+    "profile": {
+      "role": "反派",
+      "gender": "男",
+      "age_hint": "20代中后期",
+      "identity": "公关公司助理，陆舟的同事",
+      "personality": [
+        "阴险狡诈",
+        "善于伪装",
+        "投机取巧"
+      ],
+      "atmosphere": "表面热络实则心机深沉",
+      "story_role": "冲突的导火索，通过揭露隐私和栽赃陷害来排挤竞争对手",
+      "appearance_hints": "眼神充满探究与审视，嘴角常挂着得逞的笑意"
+    },
+    "visual": {
+      "face_shape": "",
+      "eye_features": "",
+      "nose_features": "",
+      "skin_tone": "",
+      "body_type": "",
+      "hair_style": "",
+      "hair_color": "",
+      "default_outfit": "",
+      "unique_marks": [],
+      "do_not_change": []
+    },
+    "dna": {
+      "character_id": "CHAR_FD2FEA",
+      "core_prompt": "",
+      "negative_features": [],
+      "anchor_image": "",
+      "side_image": "",
+      "back_image": "",
+      "preferred_seed": 0
+    },
+    "photo_paths": [],
+    "primary_photo": "",
+    "turnaround_image": ""
   },
-  "陈远": {
+  {
+    "name": "王姐",
+    "character_id": "CHAR_A71FBE",
     "description": "",
-    "photo_path": ""
+    "profile": {
+      "role": "配角",
+      "gender": "女",
+      "age_hint": "40岁左右",
+      "identity": "公关公司总监",
+      "personality": [
+        "严厉果断",
+        "唯结果论",
+        "带有职业偏见"
+      ],
+      "atmosphere": "威严冷酷，具有职场上位者的压迫感",
+      "story_role": "职场审判者，代表了社会对“污点人群”的刻板印象与不信任",
+      "appearance_hints": "常皱眉头，眼神冰冷，穿着精致职业装"
+    },
+    "visual": {
+      "face_shape": "",
+      "eye_features": "",
+      "nose_features": "",
+      "skin_tone": "",
+      "body_type": "",
+      "hair_style": "",
+      "hair_color": "",
+      "default_outfit": "",
+      "unique_marks": [],
+      "do_not_change": []
+    },
+    "dna": {
+      "character_id": "CHAR_A71FBE",
+      "core_prompt": "",
+      "negative_features": [],
+      "anchor_image": "",
+      "side_image": "",
+      "back_image": "",
+      "preferred_seed": 0
+    },
+    "photo_paths": [],
+    "primary_photo": "",
+    "turnaround_image": ""
   },
-  "老陈": {
+  {
+    "name": "Linda",
+    "character_id": "CHAR_07FC4A",
     "description": "",
-    "photo_path": ""
+    "profile": {
+      "role": "配角",
+      "gender": "女",
+      "age_hint": "20-30岁",
+      "identity": "公关公司同事",
+      "personality": [
+        "八卦好奇",
+        "肤浅随众"
+      ],
+      "atmosphere": "精致世俗的职场女性",
+      "story_role": "侧面烘托职场环境的压抑，是流言蜚语传播链的一环",
+      "appearance_hints": "带着浓郁香水味，眼神具有探究性"
+    },
+    "visual": {
+      "face_shape": "",
+      "eye_features": "",
+      "nose_features": "",
+      "skin_tone": "",
+      "body_type": "",
+      "hair_style": "",
+      "hair_color": "",
+      "default_outfit": "",
+      "unique_marks": [],
+      "do_not_change": []
+    },
+    "dna": {
+      "character_id": "CHAR_07FC4A",
+      "core_prompt": "",
+      "negative_features": [],
+      "anchor_image": "",
+      "side_image": "",
+      "back_image": "",
+      "preferred_seed": 0
+    },
+    "photo_paths": [],
+    "primary_photo": "",
+    "turnaround_image": ""
+  },
+  {
+    "name": "陆舟父亲",
+    "character_id": "CHAR_4A1B4A",
+    "description": "",
+    "profile": {
+      "role": "配角",
+      "gender": "男",
+      "age_hint": "50-60岁",
+      "identity": "陆舟的父亲",
+      "personality": [
+        "正直",
+        "严厉",
+        "失望"
+      ],
+      "atmosphere": "沉重且充满悲剧色彩",
+      "story_role": "陆舟心理阴影的来源，也是其改邪归正、渴望被社会认可的原始动力",
+      "appearance_hints": "出现在派出所门口，眼神中透着失望透顶"
+    },
+    "visual": {
+      "face_shape": "",
+      "eye_features": "",
+      "nose_features": "",
+      "skin_tone": "",
+      "body_type": "",
+      "hair_style": "",
+      "hair_color": "",
+      "default_outfit": "",
+      "unique_marks": [],
+      "do_not_change": []
+    },
+    "dna": {
+      "character_id": "CHAR_4A1B4A",
+      "core_prompt": "",
+      "negative_features": [],
+      "anchor_image": "",
+      "side_image": "",
+      "back_image": "",
+      "preferred_seed": 0
+    },
+    "photo_paths": [],
+    "primary_photo": "",
+    "turnaround_image": ""
   }
-}
+]

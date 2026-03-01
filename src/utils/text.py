@@ -71,26 +71,99 @@ def sanitize(s: str) -> str:
 	return val
 
 
+def _stringify_chat_content(value) -> str:
+	"""Convert chat content payloads to plain text."""
+	if value is None:
+		return ""
+	if isinstance(value, str):
+		return value.strip()
+	if isinstance(value, (list, tuple)):
+		parts: list[str] = []
+		for item in value:
+			if isinstance(item, str):
+				parts.append(item)
+				continue
+			if isinstance(item, dict):
+				parts.append(str(item.get("text") or item.get("content") or "").strip())
+				continue
+			text = getattr(item, "text", None) or getattr(item, "content", None)
+			if text:
+				parts.append(str(text).strip())
+		return " ".join([p for p in parts if p]).strip()
+	if isinstance(value, dict):
+		return str(value.get("text") or value.get("content") or value.get("message") or "").strip()
+	return str(value).strip()
+
+
+def _extract_chat_reply(resp) -> str:
+	"""Extract a readable reply from heterogeneous API response payloads."""
+	if resp is None:
+		return ""
+	if isinstance(resp, str):
+		return resp.strip()
+
+	if isinstance(resp, dict):
+		choices = resp.get("choices")
+		if isinstance(choices, list) and choices:
+			first = choices[0]
+			if isinstance(first, dict):
+				message = first.get("message")
+				if isinstance(message, dict):
+					reply = _stringify_chat_content(message.get("content") or message.get("text"))
+				else:
+					reply = _stringify_chat_content(first.get("content") or first.get("text") or message)
+				if reply:
+					return reply
+		for key in ("message", "content", "text", "output_text", "response"):
+			reply = _stringify_chat_content(resp.get(key))
+			if reply:
+				return reply
+
+	choices = getattr(resp, "choices", None)
+	if isinstance(choices, list) and choices:
+		first = choices[0]
+		if isinstance(first, dict):
+			message = first.get("message")
+			if isinstance(message, dict):
+				reply = _stringify_chat_content(message.get("content") or message.get("text"))
+			else:
+				reply = _stringify_chat_content(first.get("content") or first.get("text") or message)
+		else:
+			message = getattr(first, "message", None)
+			reply = _stringify_chat_content(getattr(message, "content", None) if message is not None else None)
+			if not reply:
+				reply = _stringify_chat_content(getattr(message, "text", None) if message is not None else None)
+			if not reply:
+				reply = _stringify_chat_content(getattr(first, "text", None) or getattr(first, "content", None))
+		if reply:
+			return reply
+
+	for attr in ("output_text", "text", "content", "message"):
+		reply = _stringify_chat_content(getattr(resp, attr, None))
+		if reply:
+			return reply
+
+	return _stringify_chat_content(resp)
+
+
 def try_chat_api(key: str, base_url: str, model: str) -> tuple[bool, str]:
-	"""测试聊天API是否可用"""
+	"""测试聊天API是否可用。"""
 	try:
 		from src.clients.custom_openai_client import create_compatible_client
-		
+
 		client = create_compatible_client(api_key=key, base_url=base_url, timeout=30)
 		resp = client.chat.completions.create(
 			model=model,
 			messages=[{"role": "user", "content": "ping"}],
 			max_tokens=5
 		)
-		_ok = bool(resp.choices and resp.choices[0].message)
-		
-		# 返回更详细的成功信息
-		reply = resp.choices[0].message.content if resp.choices else ""
-		return True, f"连接成功! 模型回复: {reply}"
+		reply = _extract_chat_reply(resp)
+		if reply:
+			return True, f"连接成功! 模型回复: {reply}"
+		return True, "连接成功! 模型已返回响应。"
 	except Exception as e:
 		error_msg = str(e)
-		
-		# 提供更友好的错误提示
+
 		if "blocked" in error_msg.lower():
 			return False, f"请求被阻止: {error_msg}\n💡 可能原因: API Key无效、IP限制、或模型名称错误"
 		elif "not found" in error_msg.lower() or "404" in error_msg:
@@ -101,7 +174,6 @@ def try_chat_api(key: str, base_url: str, model: str) -> tuple[bool, str]:
 			return False, f"连接超时: {error_msg}\n💡 可能原因: 网络问题或服务器响应慢"
 		else:
 			return False, error_msg
-
 
 def try_image_api(key: str, base_url: str, model: str) -> tuple[bool, str]:
 	"""测试图片生成API是否可用"""

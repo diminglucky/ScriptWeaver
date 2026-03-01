@@ -1,30 +1,24 @@
-#!/bin/bash
-# AI Story Creator Pro 快速启动脚本
+#!/usr/bin/env bash
+set -euo pipefail
 
-echo "🎨 AI Story Creator Pro - 智能故事创作平台"
-echo "=========================================="
-echo ""
-echo "正在启动应用..."
-echo ""
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "${SCRIPT_DIR}"
 
-# 检查Python版本
-python_version=$(python --version 2>&1 | awk '{print $2}')
-echo "✓ Python版本: $python_version"
-
-# 检查依赖
-if ! python -c "import tkinter" 2>/dev/null; then
-    echo "❌ 错误: 未安装tkinter"
-    echo "   请安装: brew install python-tk (macOS)"
-    exit 1
+if command -v python3 >/dev/null 2>&1; then
+  PYTHON_BIN="python3"
+elif command -v python >/dev/null 2>&1; then
+  PYTHON_BIN="python"
+else
+  echo "Error: Python is not installed or not in PATH."
+  exit 1
 fi
 
-# 启动应用
-echo ""
-echo "✨ 启动现代化UI界面..."
-echo ""
+if ! "${PYTHON_BIN}" -c "import tkinter" >/dev/null 2>&1; then
+  echo "Error: tkinter is missing."
+  echo "Linux: install package like python3-tk"
+  echo "macOS: install python.org build or brew python-tk"
+  exit 1
+fi
 
-python run_modern_app.py
-
-echo ""
-echo "应用已关闭"
-
+echo "Starting AI Story Creator Pro with ${PYTHON_BIN}..."
+exec "${PYTHON_BIN}" run_modern_app.py

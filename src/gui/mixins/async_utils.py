@@ -11,6 +11,10 @@ from typing import Callable, List, Dict, Any, Optional
 from dataclasses import dataclass
 from enum import Enum
 import gc
+import logging
+
+
+logger = logging.getLogger(__name__)
 
 
 class TaskStatus(Enum):
@@ -163,8 +167,8 @@ class TaskQueue:
         for callback in self._callbacks.get(event, []):
             try:
                 callback(data)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("TaskQueue callback failed for event %s: %s", event, e)
 
 
 class BatchGeneratorDialog:
@@ -306,8 +310,8 @@ class BatchGeneratorDialog:
                     break
             
             self._update_display()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("BatchGeneratorDialog._update_task_display failed for %s: %s", task.id, e)
     
     def _update_display(self):
         """更新进度显示"""
@@ -414,8 +418,8 @@ class MemoryOptimizer:
         try:
             from PIL import Image
             Image.preinit()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("MemoryOptimizer.optimize_images preinit failed: %s", e)
 
 
 class BatchGeneratorMixin:

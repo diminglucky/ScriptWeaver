@@ -310,6 +310,102 @@ class CharacterPromptBuilder:
             }
         
         return prompts
+
+    @staticmethod
+    def extract_appearance_only(text: str) -> str:
+        """Keep appearance-focused fragments and remove scene/action noise."""
+        raw = (text or "").strip()
+        if not raw:
+            return ""
+
+        # Split by common Chinese/English punctuation and line breaks.
+        parts = []
+        for chunk in raw.replace("\r", "\n").split("\n"):
+            for seg in chunk.replace("。", ",").replace("；", ",").replace(";", ",").split(","):
+                seg = seg.strip()
+                if seg:
+                    parts.append(seg)
+
+        appearance_keywords = (
+            "外貌", "长相", "五官", "脸", "面部", "眼", "眉", "鼻", "唇", "肤", "发", "发型", "发色",
+            "身高", "体型", "体态", "服装", "穿着", "衣", "鞋", "配饰", "疤", "痣", "纹身",
+            "appearance", "face", "facial", "eye", "nose", "lip", "hair", "skin", "height",
+            "body", "outfit", "clothing", "wearing", "accessory", "scar", "tattoo",
+        )
+        noise_keywords = (
+            "背景", "场景", "镜头", "构图", "光线", "动作", "情节", "故事", "对白", "心理",
+            "background", "scene", "camera", "shot", "lighting", "action", "story", "dialogue",
+        )
+
+        kept = []
+        for seg in parts:
+            lower_seg = seg.lower()
+            if any(k in seg for k in noise_keywords) or any(k in lower_seg for k in noise_keywords):
+                continue
+            if any(k in seg for k in appearance_keywords) or any(k in lower_seg for k in appearance_keywords):
+                kept.append(seg)
+
+        # Fallback: if heuristic filtered too much, keep original condensed text.
+        if not kept:
+            kept = parts[:8] if parts else [raw]
+
+        return "，".join(kept)[:800]
+
+    @staticmethod
+    def sanitize_for_image_safety(prompt: str, language: str = "en") -> str:
+        """Reduce prompt policy risk while keeping core appearance details."""
+        text = (prompt or "").strip()
+        if not text:
+            return ""
+
+        replacements = {
+            "未成年": "成年人",
+            "儿童": "成年人",
+            "小孩": "成年人",
+            "nude": "fully clothed",
+            "nudity": "fully clothed",
+            "sexy": "elegant",
+            "gore": "",
+            "blood": "",
+            "corpse": "",
+        }
+        for src, dst in replacements.items():
+            text = text.replace(src, dst)
+
+        # Collapse repeated separators/spaces.
+        while "，，" in text:
+            text = text.replace("，，", "，")
+        text = " ".join(text.split())
+        return text.strip("，, ")
+
+    @staticmethod
+    def build_retry_prompt(
+        description: str,
+        style: str = "ID photo",
+        view_angle: str = "front",
+        expression: str = "neutral",
+        composition: str = "upper_body",
+        language: str = "en",
+    ) -> str:
+        """Build a safer fallback prompt for retry after policy rejection."""
+        base_desc = CharacterPromptBuilder.extract_appearance_only(description)
+        prompt = CharacterPromptBuilder.build_character_photo_prompt(
+            description=base_desc,
+            style=style,
+            view_angle=view_angle,
+            expression=expression,
+            composition=composition,
+            language=language,
+            extra_details="",
+            default_nationality="chinese",
+            variant="",
+            variant_mode="none",
+            consistency_level="medium",
+            batch_type="none",
+        )
+        prompt = CharacterPromptBuilder.sanitize_for_image_safety(prompt, language=language)
+        api_type = "hunyuan" if language == "zh" else "openai"
+        return CharacterPromptBuilder.optimize_for_api(prompt, api_type)
     
     @staticmethod
     def optimize_for_api(prompt: str, api_type: str, max_length: int = None) -> str:

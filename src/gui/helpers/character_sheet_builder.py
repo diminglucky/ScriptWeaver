@@ -7,6 +7,11 @@ from PIL import Image, ImageDraw, ImageFont
 from pathlib import Path
 from typing import List, Dict, Tuple, Optional
 import os
+import platform
+import logging
+
+
+logger = logging.getLogger(__name__)
 
 
 class CharacterSheetBuilder:
@@ -362,15 +367,7 @@ class CharacterSheetBuilder:
 		font_size: int = 20, color: Tuple[int, int, int] = (0, 0, 0), bold: bool = False
 	):
 		"""绘制居中文本"""
-		try:
-			# 尝试加载字体（macOS中文字体）
-			font_path = "/System/Library/Fonts/PingFang.ttc"
-			if not os.path.exists(font_path):
-				font_path = "/System/Library/Fonts/Supplemental/Arial.ttf"
-			
-			font = ImageFont.truetype(font_path, font_size)
-		except Exception:
-			font = ImageFont.load_default()
+		font = cls._load_font(font_size)
 		
 		# 获取文本边界框
 		bbox = draw.textbbox((0, 0), text, font=font)
@@ -389,13 +386,7 @@ class CharacterSheetBuilder:
 		font_size: int = 20, color: Tuple[int, int, int] = (0, 0, 0), bold: bool = False
 	):
 		"""绘制左对齐文本"""
-		try:
-			font_path = "/System/Library/Fonts/PingFang.ttc"
-			if not os.path.exists(font_path):
-				font_path = "/System/Library/Fonts/Supplemental/Arial.ttf"
-			font = ImageFont.truetype(font_path, font_size)
-		except Exception:
-			font = ImageFont.load_default()
+		font = cls._load_font(font_size)
 		
 		draw.text(position, text, fill=color, font=font)
 	
@@ -405,13 +396,7 @@ class CharacterSheetBuilder:
 		font_size: int = 20, color: Tuple[int, int, int] = (0, 0, 0)
 	):
 		"""绘制右对齐文本（垂直居中）"""
-		try:
-			font_path = "/System/Library/Fonts/PingFang.ttc"
-			if not os.path.exists(font_path):
-				font_path = "/System/Library/Fonts/Supplemental/Arial.ttf"
-			font = ImageFont.truetype(font_path, font_size)
-		except Exception:
-			font = ImageFont.load_default()
+		font = cls._load_font(font_size)
 		
 		bbox = draw.textbbox((0, 0), text, font=font)
 		text_width = bbox[2] - bbox[0]
@@ -421,4 +406,39 @@ class CharacterSheetBuilder:
 		y = position[1] - text_height // 2
 		
 		draw.text((x, y), text, fill=color, font=font)
+
+	@classmethod
+	def _candidate_font_paths(cls) -> List[str]:
+		"""Return platform-appropriate font candidates for CJK-safe rendering."""
+		system = platform.system()
+		if system == "Windows":
+			return [
+				"C:/Windows/Fonts/msyh.ttc",
+				"C:/Windows/Fonts/simhei.ttf",
+				"C:/Windows/Fonts/arial.ttf",
+			]
+		if system == "Darwin":
+			return [
+				"/System/Library/Fonts/PingFang.ttc",
+				"/System/Library/Fonts/Hiragino Sans GB.ttc",
+				"/System/Library/Fonts/Supplemental/Arial Unicode.ttf",
+			]
+		return [
+			"/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
+			"/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+			"/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc",
+			"/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+		]
+
+	@classmethod
+	def _load_font(cls, font_size: int):
+		"""Load a usable font on each platform and gracefully fallback."""
+		for font_path in cls._candidate_font_paths():
+			if not os.path.exists(font_path):
+				continue
+			try:
+				return ImageFont.truetype(font_path, font_size)
+			except Exception as e:
+				logger.debug("Font load failed (%s): %s", font_path, e)
+		return ImageFont.load_default()
 

@@ -7,6 +7,9 @@ import os
 import threading
 from pathlib import Path
 from PIL import Image, ImageTk
+import logging
+import platform
+import subprocess
 
 from src.clients.deepseek_client import DeepSeekClient
 from src.clients.image_client import OpenAIImageClient
@@ -16,6 +19,9 @@ from ...theme import Theme
 from ...helpers.image_helpers import ImagePromptHelper, DescriptionPromptBuilder
 from ...helpers.character_prompt_builder import CharacterPromptBuilder
 from ...helpers.character_sheet_builder import CharacterSheetBuilder
+
+
+logger = logging.getLogger(__name__)
 
 
 class PromptOperationsMixin:
@@ -360,7 +366,8 @@ class PromptOperationsMixin:
 			x = self.btn_add_style.winfo_rootx()
 			y = self.btn_add_style.winfo_rooty() + self.btn_add_style.winfo_height()
 			menu.post(x, y)
-		except Exception:
+		except Exception as e:
+			logger.debug("Style menu post failed, fallback to pointer popup: %s", e)
 			menu.tk_popup(self.winfo_pointerx(), self.winfo_pointery())
 	
 	
@@ -505,10 +512,15 @@ class PromptOperationsMixin:
 					
 					# 自动打开预览
 					try:
-						import subprocess
-						subprocess.run(["open", str(result_path)])
-					except Exception:
-						pass
+						system_name = platform.system()
+						if system_name == "Darwin":
+							subprocess.run(["open", str(result_path)], check=False)
+						elif system_name == "Windows":
+							subprocess.run(["explorer", str(result_path)], check=False)
+						elif system_name == "Linux":
+							subprocess.run(["xdg-open", str(result_path)], check=False)
+					except (subprocess.SubprocessError, FileNotFoundError) as e:
+						logger.debug("Auto-open generated character sheet failed: %s", e)
 				else:
 					self.after(0, lambda: self.status.set("❌ 生成角色设定表失败"))
 					self.after(0, lambda: messagebox.showerror("失败", "生成角色设定表失败！\n请检查是否有足够的照片。"))
@@ -517,9 +529,7 @@ class PromptOperationsMixin:
 					self.after(0, lambda: self.update_header_status("设定表生成完成", "✅"))
 			
 			except Exception as e:
-				import traceback
-				error_detail = traceback.format_exc()
-				print(f"\n❌ 生成角色设定表失败：\n{error_detail}")
+				logger.exception("Failed to generate character sheet")
 				self.after(0, lambda: self.status.set("❌ 生成失败"))
 				self.after(0, lambda: messagebox.showerror("错误", f"生成角色设定表失败：\n{str(e)}"))
 				if hasattr(self, 'update_header_status'):

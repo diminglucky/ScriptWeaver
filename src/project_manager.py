@@ -5,10 +5,13 @@
 from __future__ import annotations
 
 import json
+import logging
 import shutil
 from pathlib import Path
 from datetime import datetime
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 
 class Project:
@@ -31,8 +34,8 @@ class Project:
 			try:
 				with open(self.meta_file, "r", encoding="utf-8") as f:
 					return json.load(f)
-			except Exception:
-				pass
+			except Exception as e:
+				logger.warning("Failed to load project metadata from %s: %s", self.meta_file, e)
 		return {
 			"name": self.project_dir.name,
 			"created_at": datetime.now().isoformat(),
@@ -111,6 +114,16 @@ class ProjectManager:
 	def __init__(self, workspace: Path | str = "projects"):
 		self.workspace = Path(workspace)
 		self.workspace.mkdir(parents=True, exist_ok=True)
+
+	def _validate_project_path(self, project_dir: Path | str) -> Path:
+		"""Ensure the target project directory is inside workspace."""
+		project_path = Path(project_dir).resolve()
+		workspace_root = self.workspace.resolve()
+		try:
+			project_path.relative_to(workspace_root)
+		except ValueError:
+			raise ValueError(f"Refuse to operate on path outside workspace: {project_path}")
+		return project_path
 	
 	def create_project(self, name: str) -> Project:
 		"""创建新项目"""
@@ -138,7 +151,8 @@ class ProjectManager:
 					info = project.get_info()
 					info["path"] = str(item)
 					projects.append(info)
-				except Exception:
+				except Exception as e:
+					logger.debug("skip invalid project directory %s: %s", item, e)
 					continue
 		
 		# 按更新时间倒序排列
@@ -147,7 +161,7 @@ class ProjectManager:
 	
 	def delete_project(self, project_dir: Path | str) -> None:
 		"""删除项目"""
-		project_path = Path(project_dir)
+		project_path = self._validate_project_path(project_dir)
 		if project_path.exists() and project_path.is_dir():
 			shutil.rmtree(project_path)
 

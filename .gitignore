@@ -87,6 +87,8 @@ projects/*/characters/*.png
 # API配置文件（包含敏感信息）
 custom_api_presets.json
 custom_image_api_presets.json
+config/.keyfile
+config/api_config.json
 
 # 缓存目录
 cache/

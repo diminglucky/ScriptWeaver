@@ -9,6 +9,80 @@ from tkinter import ttk, filedialog, messagebox, END
 from pathlib import Path
 from typing import List, Dict, Optional
 import threading
+import logging
+
+
+logger = logging.getLogger(__name__)
+
+SUPPORTED_KB_EXTENSIONS = (".txt", ".md", ".json", ".csv", ".docx", ".pdf")
+SEARCHABLE_KB_EXTENSIONS = {".txt", ".md", ".json", ".csv"}
+INDEX_ARTIFACT_NAMES = {"kb.index", "faiss.index", "chunks.npy", "meta.npy"}
+
+
+def _discover_supported_files(kb_path: Path) -> list[Path]:
+    files: list[Path] = []
+    for ext in SUPPORTED_KB_EXTENSIONS:
+        files.extend(kb_path.glob(f"**/*{ext}"))
+    return sorted(files)
+
+
+def _search_text_matches(
+    files: list[Path],
+    kb_path: Path,
+    query: str,
+    max_results: int = 50,
+    context_chars: int = 100,
+) -> list[dict]:
+    results: list[dict] = []
+    query_lower = (query or "").lower()
+    if not query_lower:
+        return results
+
+    for file_path in files:
+        try:
+            if file_path.suffix.lower() not in SEARCHABLE_KB_EXTENSIONS:
+                continue
+            with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
+                content = f.read()
+            content_lower = content.lower()
+            if query_lower not in content_lower:
+                continue
+
+            idx = content_lower.find(query_lower)
+            start = max(0, idx - context_chars)
+            end = min(len(content), idx + len(query) + context_chars)
+            results.append(
+                {
+                    "file": file_path.relative_to(kb_path),
+                    "context": content[start:end],
+                    "full_path": file_path,
+                }
+            )
+            if len(results) >= max_results:
+                break
+        except Exception as e:
+            logger.debug("Search skipped unreadable file %s: %s", file_path, e)
+    return results
+
+
+def _clear_known_index_artifacts(index_dir: Path) -> tuple[int, int]:
+    removed = 0
+    kept = 0
+    if not index_dir.exists():
+        return removed, kept
+
+    for path in index_dir.rglob("*"):
+        if not path.is_file():
+            continue
+        if path.name in INDEX_ARTIFACT_NAMES:
+            try:
+                path.unlink()
+                removed += 1
+            except Exception as e:
+                logger.debug("failed to remove index artifact %s: %s", path, e)
+        else:
+            kept += 1
+    return removed, kept
 
 
 class KBPreviewDialog:
@@ -17,6 +91,8 @@ class KBPreviewDialog:
     def __init__(self, parent, kb_path: str):
         self.parent = parent
         self.kb_path = Path(kb_path)
+        self.files: list[Path] = []
+        self._search_in_progress = False
         
         self.dialog = tk.Toplevel(parent)
         self.dialog.title("知识库内容预览")
@@ -28,6 +104,13 @@ class KBPreviewDialog:
         
         self._build_ui()
         self._load_content()
+
+    def _safe_after(self, ms: int, callback):
+        try:
+            if self.dialog.winfo_exists():
+                self.dialog.after(ms, callback)
+        except Exception as e:
+            logger.debug("skip ui callback for closed KB preview dialog: %s", e)
     
     def _build_ui(self):
         """构建UI"""
@@ -47,8 +130,16 @@ class KBPreviewDialog:
         self.search_entry.pack(side="left", padx=5)
         self.search_entry.bind("<Return>", self._on_search)
         
-        tk.Button(toolbar, text="🔍 搜索", command=self._on_search, bg="#3B82F6", fg="#ffffff",
-                  relief=tk.FLAT, cursor="hand2").pack(side="left", padx=5)
+        self.search_btn = tk.Button(
+            toolbar,
+            text="🔍 搜索",
+            command=self._on_search,
+            bg="#3B82F6",
+            fg="#ffffff",
+            relief=tk.FLAT,
+            cursor="hand2",
+        )
+        self.search_btn.pack(side="left", padx=5)
         
         # 主内容区域
         main_frame = tk.Frame(self.dialog, bg="#1e1e1e")
@@ -106,27 +197,48 @@ class KBPreviewDialog:
     
     def _load_content(self):
         """加载知识库内容"""
-        if not self.kb_path.exists():
-            self.preview_text.insert("1.0", "知识库目录不存在")
-            return
-        
-        # 支持的文件格式
-        supported_extensions = {'.txt', '.md', '.json', '.csv', '.docx', '.pdf'}
-        
-        files = []
-        for ext in supported_extensions:
-            files.extend(self.kb_path.glob(f"**/*{ext}"))
-        
-        files = sorted(files)
-        
-        self.files = files
+        self.files = []
         self.file_listbox.delete(0, END)
-        
-        for f in files:
-            rel_path = f.relative_to(self.kb_path)
-            self.file_listbox.insert(END, str(rel_path))
-        
-        self.stats_label.config(text=f"文件数: {len(files)}")
+        if not self.kb_path.exists():
+            self.preview_text.delete("1.0", END)
+            self.preview_text.insert("1.0", "知识库目录不存在")
+            self.stats_label.config(text="文件数: 0")
+            return
+
+        self.preview_text.delete("1.0", END)
+        self.preview_text.insert("1.0", "正在扫描知识库文件，请稍候...")
+        self.stats_label.config(text="文件数: 扫描中...")
+
+        def task():
+            try:
+                files = _discover_supported_files(self.kb_path)
+                error = None
+            except Exception as e:
+                files = []
+                error = str(e)
+
+            def apply():
+                if not self.dialog.winfo_exists():
+                    return
+                self.files = files
+                self.file_listbox.delete(0, END)
+                for f in files:
+                    rel_path = f.relative_to(self.kb_path)
+                    self.file_listbox.insert(END, str(rel_path))
+                self.stats_label.config(text=f"文件数: {len(files)}")
+                if error:
+                    self.preview_text.delete("1.0", END)
+                    self.preview_text.insert("1.0", f"扫描知识库失败: {error}")
+                elif files:
+                    self.preview_text.delete("1.0", END)
+                    self.preview_text.insert("1.0", "请选择左侧文件查看内容")
+                else:
+                    self.preview_text.delete("1.0", END)
+                    self.preview_text.insert("1.0", "未发现支持的文件类型")
+
+            self._safe_after(0, apply)
+
+        threading.Thread(target=task, daemon=True).start()
     
     def _on_file_select(self, event):
         """文件选择事件"""
@@ -210,39 +322,39 @@ class KBPreviewDialog:
         query = self.search_var.get().strip()
         if not query:
             return
-        
-        # 简单的全文搜索
-        results = []
-        
-        for file_path in self.files:
-            try:
-                ext = file_path.suffix.lower()
-                if ext in ['.txt', '.md', '.json', '.csv']:
-                    with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
-                        content = f.read()
-                    if query.lower() in content.lower():
-                        # 找到匹配的上下文
-                        idx = content.lower().find(query.lower())
-                        start = max(0, idx - 100)
-                        end = min(len(content), idx + len(query) + 100)
-                        context = content[start:end]
-                        results.append({
-                            'file': file_path.relative_to(self.kb_path),
-                            'context': context,
-                            'full_path': file_path
-                        })
-            except Exception:
-                pass
-        
-        # 显示结果
+        if not self.files:
+            self.preview_text.delete("1.0", END)
+            self.preview_text.insert("1.0", "暂无可搜索的文件")
+            return
+        if self._search_in_progress:
+            return
+
+        self._search_in_progress = True
+        self.search_btn.config(state=tk.DISABLED)
         self.preview_text.delete("1.0", END)
-        if results:
-            self.preview_text.insert("1.0", f"搜索 '{query}' 找到 {len(results)} 个结果:\n\n")
-            for i, result in enumerate(results[:50], 1):  # 限制显示前50个
-                self.preview_text.insert(END, f"━━━ {i}. {result['file']} ━━━\n")
-                self.preview_text.insert(END, f"...{result['context']}...\n\n")
-        else:
-            self.preview_text.insert("1.0", f"未找到包含 '{query}' 的内容")
+        self.preview_text.insert("1.0", f"正在搜索 '{query}'，请稍候...")
+
+        def task():
+            results = _search_text_matches(self.files, self.kb_path, query)
+
+            def apply():
+                if not self.dialog.winfo_exists():
+                    return
+                self.preview_text.delete("1.0", END)
+                if results:
+                    self.preview_text.insert("1.0", f"搜索 '{query}' 找到 {len(results)} 个结果:\n\n")
+                    for i, result in enumerate(results, 1):
+                        self.preview_text.insert(END, f"━━━ {i}. {result['file']} ━━━\n")
+                        self.preview_text.insert(END, f"...{result['context']}...\n\n")
+                else:
+                    self.preview_text.insert("1.0", f"未找到包含 '{query}' 的内容")
+
+                self._search_in_progress = False
+                self.search_btn.config(state=tk.NORMAL)
+
+            self._safe_after(0, apply)
+
+        threading.Thread(target=task, daemon=True).start()
 
 
 class KBManagerDialog:
@@ -457,11 +569,15 @@ class KBManagerDialog:
             return
         
         try:
-            import shutil
-            if self.index_dir.exists():
-                shutil.rmtree(self.index_dir)
-                self.index_dir.mkdir(parents=True, exist_ok=True)
-            messagebox.showinfo("完成", "索引已清除")
+            self.index_dir.mkdir(parents=True, exist_ok=True)
+            removed, kept = _clear_known_index_artifacts(self.index_dir)
+            if removed:
+                detail = f"已清理 {removed} 个索引文件"
+                if kept:
+                    detail += f"\n保留 {kept} 个非索引文件"
+                messagebox.showinfo("完成", detail)
+            else:
+                messagebox.showinfo("完成", "未发现可清理的索引文件")
             self._load_stats()
         except Exception as e:
             messagebox.showerror("错误", f"清除索引失败: {str(e)}")
