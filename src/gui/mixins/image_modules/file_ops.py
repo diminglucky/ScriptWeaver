@@ -139,6 +139,8 @@ class FileOperationsMixin:
 			target_chars = self.target_chars.get()
 		outline = getattr(self, "current_outline", "") or ""
 		parsed_sections = getattr(self, "parsed_sections", []) or []
+		story_memory_ledger = getattr(self, "story_memory_ledger", []) or []
+		chapter_quality_reports = getattr(self, "chapter_quality_reports", []) or []
 		section_index = 0
 		if hasattr(self, "section_selector"):
 			try:
@@ -159,6 +161,8 @@ class FileOperationsMixin:
 				target_chars=target_chars,
 				outline=outline,
 				parsed_sections=parsed_sections,
+				story_memory_ledger=story_memory_ledger,
+				chapter_quality_reports=chapter_quality_reports,
 				section_index=section_index,
 			)
 			# 在后台更新项目列表（不显示弹窗）

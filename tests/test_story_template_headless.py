@@ -89,6 +89,9 @@ class StoryTemplateHeadlessTests(unittest.TestCase):
         obj.settings_log = _Log()
         obj.model_only = _Var(False)
         obj.rag_min_score = _Var(0.12)
+        obj.story_quality_review_enabled = _Var(True)
+        obj.story_quality_min_avg = _Var(7.4)
+        obj.story_quality_min_dim = _Var(6.8)
         obj.quick_story_api = _Var("DeepSeek")
         obj.quick_image_api = _Var("OpenAI (DALL-E)")
         obj.api_providers = {"DeepSeek": {}}
@@ -121,6 +124,9 @@ class StoryTemplateHeadlessTests(unittest.TestCase):
         old_creativity = os.environ.get("STORY_CREATIVITY_MODE")
         old_model_only = os.environ.get("MODEL_ONLY")
         old_rag_min_score = os.environ.get("RAG_MIN_SCORE")
+        old_quality_review = os.environ.get("STORY_QUALITY_REVIEW")
+        old_quality_min_avg = os.environ.get("STORY_QUALITY_MIN_AVG")
+        old_quality_min_dim = os.environ.get("STORY_QUALITY_MIN_DIM")
         try:
             os.environ["STORY_OUTLINE_GEN_API"] = "DeepSeek"
             os.environ["IMAGE_GEN_API"] = "OpenAI (DALL-E)"
@@ -129,6 +135,9 @@ class StoryTemplateHeadlessTests(unittest.TestCase):
             os.environ["STORY_CREATIVITY_MODE"] = "wild"
             os.environ["MODEL_ONLY"] = "1"
             os.environ["RAG_MIN_SCORE"] = "0.45"
+            os.environ["STORY_QUALITY_REVIEW"] = "0"
+            os.environ["STORY_QUALITY_MIN_AVG"] = "8.2"
+            os.environ["STORY_QUALITY_MIN_DIM"] = "7.1"
             obj._load_quick_api_switch()
             self.assertEqual(obj.story_template_key.get(), "xianxia_fantasy")
             self.assertEqual(obj.story_template_select_var.get(), "仙侠玄幻")
@@ -137,6 +146,9 @@ class StoryTemplateHeadlessTests(unittest.TestCase):
             self.assertEqual(obj.story_creativity_mode.get(), "wild")
             self.assertEqual(obj.model_only.get(), True)
             self.assertEqual(obj.rag_min_score.get(), 0.45)
+            self.assertEqual(obj.story_quality_review_enabled.get(), False)
+            self.assertEqual(obj.story_quality_min_avg.get(), 8.2)
+            self.assertEqual(obj.story_quality_min_dim.get(), 7.1)
         finally:
             if old_story is None:
                 os.environ.pop("STORY_OUTLINE_GEN_API", None)
@@ -166,6 +178,18 @@ class StoryTemplateHeadlessTests(unittest.TestCase):
                 os.environ.pop("RAG_MIN_SCORE", None)
             else:
                 os.environ["RAG_MIN_SCORE"] = old_rag_min_score
+            if old_quality_review is None:
+                os.environ.pop("STORY_QUALITY_REVIEW", None)
+            else:
+                os.environ["STORY_QUALITY_REVIEW"] = old_quality_review
+            if old_quality_min_avg is None:
+                os.environ.pop("STORY_QUALITY_MIN_AVG", None)
+            else:
+                os.environ["STORY_QUALITY_MIN_AVG"] = old_quality_min_avg
+            if old_quality_min_dim is None:
+                os.environ.pop("STORY_QUALITY_MIN_DIM", None)
+            else:
+                os.environ["STORY_QUALITY_MIN_DIM"] = old_quality_min_dim
 
     @patch("src.gui.mixins.settings_mixin.messagebox.showinfo", return_value=None)
     def test_quick_switch_save_persists_model_only_flag(self, _mock_info):
@@ -174,6 +198,9 @@ class StoryTemplateHeadlessTests(unittest.TestCase):
         obj.rag_min_score.set(0.35)
         obj.story_template_strategy.set("rotate")
         obj.story_creativity_mode.set("wild")
+        obj.story_quality_review_enabled.set(False)
+        obj.story_quality_min_avg.set(8.1)
+        obj.story_quality_min_dim.set(7.2)
         old_cwd = os.getcwd()
         with tempfile.TemporaryDirectory() as td:
             os.chdir(td)
@@ -184,6 +211,9 @@ class StoryTemplateHeadlessTests(unittest.TestCase):
                 self.assertEqual(str(values.get("RAG_MIN_SCORE")), "0.35")
                 self.assertEqual(str(values.get("STORY_TEMPLATE_STRATEGY")), "rotate")
                 self.assertEqual(str(values.get("STORY_CREATIVITY_MODE")), "wild")
+                self.assertEqual(str(values.get("STORY_QUALITY_REVIEW")), "0")
+                self.assertEqual(str(values.get("STORY_QUALITY_MIN_AVG")), "8.1")
+                self.assertEqual(str(values.get("STORY_QUALITY_MIN_DIM")), "7.2")
             finally:
                 os.chdir(old_cwd)
 

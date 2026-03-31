@@ -11,6 +11,44 @@ from typing import Optional
 class StoryExtractor:
     """Extract pure story body from mixed runtime output logs."""
 
+    _RAG_SCORE_LINE = re.compile(
+        r"^\s*\d+[\.、]\s*.+[（(]\s*score\s*=\s*\d+(?:\.\d+)?\s*[）)]\s*$",
+        re.IGNORECASE,
+    )
+
+    @staticmethod
+    def _is_runtime_marker_line(stripped: str) -> bool:
+        if not stripped:
+            return False
+
+        fixed_prefixes = (
+            "🎭 本次模版：",
+            "🔎 RAG检索：",
+            "🧠 创新引擎",
+            "📊 RAG检索：",
+        )
+        if stripped.startswith(fixed_prefixes):
+            return True
+
+        if StoryExtractor._RAG_SCORE_LINE.match(stripped):
+            return True
+
+        patterns = (
+            r"^使用\s+.+(检索素材并生成目录中|生成目录中|生成正文中|准备生成).*$",
+            r"^目录生成中[\.。…]*$",
+            r"^故事生成中[\.。…]*$",
+            r"^正在构建索引[\.。…]*$",
+            r"^正在生成第\s*\d+/\d+\s*段.*$",
+            r"^正在生成第\s*\d+/\d+\s*章.*$",
+            r"^No text-like files found under .+$",
+            r"^未找到索引.*$",
+            r"^[🎭🔎📊🧭📝⏳✅❌]+\s*.*(策略|命中|score=|阈值).*$",
+        )
+        for pattern in patterns:
+            if re.match(pattern, stripped, re.IGNORECASE):
+                return True
+        return False
+
     @staticmethod
     def extract_pure_story(full_text: str) -> str:
         """
@@ -32,7 +70,7 @@ class StoryExtractor:
                     story_lines.append(line)
                 continue
 
-            if stripped.startswith("🎭 本次模版："):
+            if StoryExtractor._is_runtime_marker_line(stripped):
                 continue
 
             if re.match(r"^目录[：:]*\s*$", stripped, re.IGNORECASE):
@@ -84,6 +122,27 @@ class StoryExtractor:
         return result
 
     @staticmethod
+    def sanitize_for_publish(text: str) -> str:
+        """Final pass before publishing: remove runtime noise and invalid control chars."""
+        pure = StoryExtractor.extract_pure_story(text)
+        if not pure:
+            return ""
+
+        cleaned_lines: list[str] = []
+        for line in pure.split("\n"):
+            stripped = line.strip()
+            if StoryExtractor._is_runtime_marker_line(stripped):
+                continue
+            # keep tabs/newlines, drop other control chars that may break editor input
+            safe_line = "".join(ch for ch in line if ch in ("\t",) or ord(ch) >= 32)
+            safe_line = safe_line.replace("\u200b", "").replace("\ufeff", "")
+            cleaned_lines.append(safe_line.rstrip())
+
+        cleaned = "\n".join(cleaned_lines).strip()
+        cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
+        return cleaned
+
+    @staticmethod
     def extract_title_from_story(full_text: str) -> Optional[str]:
         if not full_text or not full_text.strip():
             return None
@@ -120,4 +179,3 @@ class StoryExtractor:
         else:
             preview += "..."
         return preview
-

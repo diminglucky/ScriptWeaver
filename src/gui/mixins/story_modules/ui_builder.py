@@ -28,6 +28,11 @@ from ...helpers.story_creativity import (
 	build_story_creativity_block,
 	normalize_story_creativity_mode,
 )
+from ...helpers.story_writing_guardrails import (
+	build_non_ai_writing_guardrails,
+	build_outline_title_guardrails,
+)
+from ...helpers.story_quality import format_memory_context
 
 
 logger = logging.getLogger(__name__)
@@ -327,7 +332,7 @@ class StoryUIBuilderMixin:
 		self.combo_category.pack(side=LEFT, padx=(0, 20))
 		
 		# 模型选择
-		tk.Label(row1_frame, text="🤖 模型:", font=("", 12, "bold"), bg="#2b2b2b", fg=Theme.TEXT_PRIMARY).pack(side=LEFT, padx=(0, 8))
+		tk.Label(row1_frame, text="🤖 主模型:", font=("", 12, "bold"), bg="#2b2b2b", fg=Theme.TEXT_PRIMARY).pack(side=LEFT, padx=(0, 8))
 		self.story_model_var = tk.StringVar(value="claude-sonnet-4-5")
 		self.combo_story_model = ttk.Combobox(row1_frame, textvariable=self.story_model_var, width=25,
 											  values=["正在加载..."],
@@ -357,15 +362,30 @@ class StoryUIBuilderMixin:
 		btn_frame.pack(side=RIGHT)
 		self.btn_outline = tk.Button(btn_frame, text="📋 生成目录", command=self.on_generate_outline, 
 									  font=("", 13, "bold"), bg="#000000", fg="#ffffff", relief=tk.FLAT, 
-									  padx=18, pady=10, cursor="hand2", activebackground="#000000", activeforeground="#ffffff")
+									  width=11, padx=12, pady=10, cursor="hand2",
+									  activebackground="#000000", activeforeground="#ffffff")
 		self.btn_outline.pack(side=LEFT, padx=4)
 		self.btn_generate = tk.Button(btn_frame, text="🚀 生成故事", command=self.on_generate, 
 									   font=("", 13, "bold"), bg="#000000", fg="#ffffff", relief=tk.FLAT, 
-									   padx=18, pady=10, cursor="hand2", activebackground="#000000", activeforeground="#ffffff")
+									   width=11, padx=12, pady=10, cursor="hand2",
+									   activebackground="#000000", activeforeground="#ffffff")
 		self.btn_generate.pack(side=LEFT, padx=4)
-		tk.Button(btn_frame, text="💾 保存为...", command=self.on_save_as, font=("", 13, "bold"), 
-				  bg="#000000", fg="#ffffff", relief=tk.FLAT, padx=18, pady=10, cursor="hand2", 
-				  activebackground="#000000", activeforeground="#ffffff").pack(side=LEFT, padx=4)
+		self.btn_save_as = tk.Button(
+			btn_frame,
+			text="💾 保存为…",
+			command=self.on_save_as,
+			font=("", 13, "bold"),
+			bg="#000000",
+			fg="#ffffff",
+			relief=tk.FLAT,
+			width=11,
+			padx=12,
+			pady=10,
+			cursor="hand2",
+			activebackground="#000000",
+			activeforeground="#ffffff",
+		)
+		self.btn_save_as.pack(side=LEFT, padx=4)
 
 		# 第二行：创作需求（改为多行文本框）
 		tk.Label(self.story_tab_create, text="💡 创作需求:", font=("", 12, "bold"), bg="#2b2b2b", fg="#ffffff").grid(row=1, column=0, sticky="nw", padx=(15, 10), pady=(0, 4))
@@ -480,15 +500,51 @@ class StoryUIBuilderMixin:
 												 padx=15, pady=15)
 		self.output.grid(row=3, column=0, columnspan=2, sticky="nsew", padx=0, pady=0)
 
+		# 章节质量/记忆面板
+		diag_frame = tk.Frame(self.story_tab_create, bg="#2b2b2b")
+		diag_frame.grid(row=4, column=0, columnspan=2, sticky="we", padx=12, pady=(4, 4))
+		diag_frame.columnconfigure(0, weight=1)
+		diag_frame.columnconfigure(1, weight=1)
+
+		self.story_quality_summary_var = tk.StringVar(value="质量评审：未开始")
+		self.story_memory_summary_var = tk.StringVar(value="记忆账本：暂无章节记忆")
+
+		self.lbl_story_quality_summary = tk.Label(
+			diag_frame,
+			textvariable=self.story_quality_summary_var,
+			bg="#1f2937",
+			fg="#93c5fd",
+			anchor="w",
+			justify="left",
+			font=("", 10, "bold"),
+			padx=10,
+			pady=6,
+		)
+		self.lbl_story_quality_summary.grid(row=0, column=0, sticky="we", padx=(0, 6))
+
+		self.lbl_story_memory_summary = tk.Label(
+			diag_frame,
+			textvariable=self.story_memory_summary_var,
+			bg="#111827",
+			fg="#a7f3d0",
+			anchor="w",
+			justify="left",
+			font=("", 10),
+			padx=10,
+			pady=6,
+		)
+		self.lbl_story_memory_summary.grid(row=0, column=1, sticky="we", padx=(6, 0))
+		self._update_story_diagnostics_panel()
+
 		# 知乎发布区域
 		zhihu_frame = tk.Frame(self.story_tab_create, bg="#2b2b2b")
-		zhihu_frame.grid(row=4, column=0, columnspan=2, sticky="we", padx=10, pady=(0, 4))
+		zhihu_frame.grid(row=5, column=0, columnspan=2, sticky="we", padx=10, pady=(0, 4))
 		if hasattr(self, "_build_zhihu_publish_ui"):
 			self._build_zhihu_publish_ui(zhihu_frame)
 		
 		self.status = tk.StringVar(value="就绪")
 		status_bar = ttk.Label(self.story_tab_create, textvariable=self.status, anchor="w")
-		status_bar.grid(row=5, column=0, columnspan=2, sticky="we", padx=10, pady=(0, 8))
+		status_bar.grid(row=6, column=0, columnspan=2, sticky="we", padx=10, pady=(0, 8))
 		
 		# 配置行列权重，让output区域可以扩展
 		self.story_tab_create.rowconfigure(3, weight=1)
@@ -530,6 +586,84 @@ class StoryUIBuilderMixin:
 
 	def _get_story_creativity_nonce(self) -> str:
 		return str(getattr(self, "_story_creativity_nonce", "") or "").strip()
+
+	def _get_story_memory_ledger(self) -> list[dict]:
+		rows = getattr(self, "story_memory_ledger", [])
+		if not isinstance(rows, list):
+			return []
+		return [x for x in rows if isinstance(x, dict)]
+
+	def _build_story_memory_context(self, section_index: int, max_items: int = 3) -> str:
+		"""Build concise memory context from previous generated chapters."""
+		try:
+			idx = int(section_index)
+		except Exception:
+			idx = 0
+		rows = [x for x in self._get_story_memory_ledger() if int(x.get("chapter_index", -1)) < idx]
+		if not rows:
+			return ""
+		return format_memory_context(rows, max_entries=max_items)
+
+	def _update_story_diagnostics_panel(self) -> None:
+		"""Refresh quality + memory summary badges on story page."""
+		if not hasattr(self, "story_quality_summary_var") or not hasattr(self, "story_memory_summary_var"):
+			return
+
+		quality_enabled = True
+		if hasattr(self, "story_quality_review_enabled"):
+			try:
+				quality_enabled = bool(self.story_quality_review_enabled.get())
+			except Exception:
+				quality_enabled = True
+
+		if not quality_enabled:
+			self.story_quality_summary_var.set("质量评审：已关闭（仅生成，不自动精修）")
+		else:
+			reports = getattr(self, "chapter_quality_reports", [])
+			last_report = None
+			if isinstance(reports, list):
+				for row in reversed(reports):
+					if isinstance(row, dict) and row:
+						last_report = row
+						break
+			if last_report:
+				avg = float(last_report.get("avg_score", 0.0) or 0.0)
+				scores = last_report.get("scores", {}) if isinstance(last_report.get("scores", {}), dict) else {}
+				realism = float(scores.get("realism", 0.0) or 0.0)
+				detail = float(scores.get("detail", 0.0) or 0.0)
+				issue = ""
+				issues = last_report.get("issues", [])
+				if isinstance(issues, list) and issues:
+					issue = str(issues[0] or "").strip()
+				key_fix = str(last_report.get("key_fix", "") or "").strip()
+				title = str(last_report.get("chapter_title", "") or "").strip()
+				self.story_quality_summary_var.set(
+					f"质量评审：{title or '最近章节'} | 平均{avg:.1f} | 真实{realism:.1f} 细节{detail:.1f}"
+					f"{' | 修复: ' + (key_fix or issue) if (key_fix or issue) else ''}"
+				)
+			else:
+				self.story_quality_summary_var.set("质量评审：等待章节生成后自动打分")
+
+		ledger = self._get_story_memory_ledger()
+		if ledger:
+			last = ledger[-1]
+			try:
+				chapter_no = int(last.get("chapter_index", len(ledger) - 1)) + 1
+			except Exception:
+				chapter_no = len(ledger)
+			chapter_title = str(last.get("chapter_title", "") or "").strip()
+			summary = str(last.get("summary", "") or "").strip()
+			hooks = last.get("unresolved_hooks", [])
+			hook_text = ""
+			if isinstance(hooks, list) and hooks:
+				hook_text = str(hooks[0] or "").strip()
+			desc = summary[:36] + ("..." if len(summary) > 36 else "") if summary else "已记录"
+			self.story_memory_summary_var.set(
+				f"记忆账本：第{chapter_no}章《{chapter_title or '未命名'}》 | {desc}"
+				f"{' | 伏笔: ' + hook_text if hook_text else ''}"
+			)
+		else:
+			self.story_memory_summary_var.set("记忆账本：暂无章节记忆")
 
 	def _format_story_rules(self, rules):
 		items = []
@@ -647,6 +781,7 @@ class StoryUIBuilderMixin:
 		template_label = template.get("label", "默认模版")
 		outline_focus = template.get("outline_focus", "围绕主题构建起承转合")
 		outline_rules = self._format_story_rules(template.get("outline_rules", []))
+		outline_guardrails = build_outline_title_guardrails()
 		creativity_mode = self._get_story_creativity_mode()
 		creativity_rules = build_story_creativity_block(
 			creativity_mode,
@@ -677,13 +812,15 @@ class StoryUIBuilderMixin:
 			"【核心要求】\n"
 			f"- 只输出 {suggested_sections} 个主要章节标题，不要子标题、不要要点列表\n"
 			"- 每个章节用数字编号（1. 2. 3. ...）\n"
-			"- 章节名简短有力（5-10字），能体现故事发展\n"
+			"- 章节名简短有力（4-12字），能体现故事发展\n"
 			"- 结构要符合：开端 → 发展 → 高潮 → 结局\n"
 			"- 不要写\"第一章\"、\"第二章\"，直接写章节内容主题\n\n"
 			"【模版要求】\n"
 			f"- 当前模版：{template_label}\n"
 			f"- 模版导向：{outline_focus}\n"
 			f"{outline_rules}\n\n"
+			"【标题质量约束】\n"
+			f"{outline_guardrails}\n\n"
 			f"{creativity_part}"
 			f"【创作信息】\n"
 			f"- 主题/需求：{requirement}\n"
@@ -708,6 +845,7 @@ class StoryUIBuilderMixin:
 		template_label = template.get("label", "默认模版")
 		story_focus = template.get("story_focus", "叙事连贯，冲突清晰，结尾有回扣")
 		story_rules = self._format_story_rules(template.get("story_rules", []))
+		writing_guardrails = build_non_ai_writing_guardrails()
 		creativity_mode = self._get_story_creativity_mode()
 		creativity_rules = build_story_creativity_block(
 			creativity_mode,
@@ -750,6 +888,8 @@ class StoryUIBuilderMixin:
 			"- 输出为纯文本，不使用任何 Markdown 标记（不要 #、*、-、**、``` 等）；\n"
 			"- 即使参考目录，也不要显式输出分节标题；将要点融合到连续正文中；\n"
 			"- 可以适当分段，但段落之间要自然过渡。\n\n"
+			"【去模板腔与专业度】\n"
+			f"{writing_guardrails}\n\n"
 			"【特别提醒】\n"
 			f"请一定要写到至少 {min_chars} 字，不要因为觉得写完了就停止。如果还没达到字数，请继续展开细节、增加情节、深化描写。\n"
 			f"{outline_part}\n\n"
@@ -763,6 +903,7 @@ class StoryUIBuilderMixin:
 		template = self._get_story_template_profile(requirement=requirement, category=category)
 		template_label = template.get("label", "默认模版")
 		section_rules = self._format_story_rules(template.get("section_rules", []))
+		writing_guardrails = build_non_ai_writing_guardrails()
 		creativity_mode = self._get_story_creativity_mode()
 		creativity_rules = build_story_creativity_block(
 			creativity_mode,
@@ -796,6 +937,13 @@ class StoryUIBuilderMixin:
 			context_hint = f"这是故事的最后部分，需要收尾总结，呼应前文。\n\n前文概要：\n{previous_content[-500:] if previous_content else '无'}"
 		else:
 			context_hint = f"这是故事的第 {section_index + 1} 部分，需要承上启下，保持情节连贯。\n\n前文最后部分：\n{previous_content[-500:] if previous_content else '无'}"
+		memory_context = self._build_story_memory_context(section_index, max_items=3)
+		if memory_context:
+			context_hint += (
+				"\n\n【记忆账本（最近章节）】\n"
+				f"{memory_context}\n"
+				"- 必须保持人物状态、关系变化、未回收伏笔的一致性。"
+			)
 		
 		return (
 			f"请继续创作故事的第 {section_index + 1}/{total_sections} 部分。\n\n"
@@ -818,6 +966,7 @@ class StoryUIBuilderMixin:
 			f"- 段落衔接自然，避免列表化\n"
 			f"- 输出为纯文本，不使用任何 Markdown 标记\n"
 			f"- 如果前文已有内容，本节要自然承接，不要重复前文情节\n\n"
+			f"【去模板腔与专业度】\n{writing_guardrails}\n\n"
 			f"【特别提醒】\n"
 			f"请写够 {min_chars} 字以上，展开细节描写和情节发展。\n"
 			f"主题/需求：{requirement}\n\n"

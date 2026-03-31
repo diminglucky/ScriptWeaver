@@ -6,6 +6,7 @@ from tkinter import ttk
 import logging
 import threading
 import re
+import os
 from pathlib import Path
 try:
 	from dotenv import load_dotenv
@@ -15,6 +16,14 @@ except Exception:  # pragma: no cover - optional dependency
 
 from src.clients.deepseek_client import DeepSeekClient
 from src.utils.text import sanitize as _sanitize
+from src.gui.helpers.story_writing_guardrails import normalize_chapter_title
+from src.gui.helpers.story_quality import (
+	normalize_memory_entry,
+	parse_memory_entry,
+	parse_quality_review,
+	should_polish,
+	strip_duplicate_lines,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -88,6 +97,194 @@ class OutlineGeneratorMixin:
 		if not self._is_section_tail_complete(extra):
 			extra = extra.rstrip("，,：:；;、") + "。"
 		return extra
+
+	def _is_story_quality_review_enabled(self) -> bool:
+		raw = str(os.getenv("STORY_QUALITY_REVIEW", "1") or "1").strip().lower()
+		default_enabled = raw in {"1", "true", "yes", "on"}
+		val = getattr(self, "story_quality_review_enabled", None)
+		if hasattr(val, "get"):
+			try:
+				return bool(val.get())
+			except Exception:
+				return default_enabled
+		if isinstance(val, bool):
+			return val
+		return default_enabled
+
+	def _get_story_quality_thresholds(self) -> tuple[float, float]:
+		min_avg = 7.4
+		min_dim = 6.8
+		if hasattr(self, "story_quality_min_avg"):
+			try:
+				min_avg = float(self.story_quality_min_avg.get())
+			except Exception:
+				min_avg = 7.4
+		else:
+			try:
+				min_avg = float(os.getenv("STORY_QUALITY_MIN_AVG", "7.4") or "7.4")
+			except Exception:
+				min_avg = 7.4
+		if hasattr(self, "story_quality_min_dim"):
+			try:
+				min_dim = float(self.story_quality_min_dim.get())
+			except Exception:
+				min_dim = 6.8
+		else:
+			try:
+				min_dim = float(os.getenv("STORY_QUALITY_MIN_DIM", "6.8") or "6.8")
+			except Exception:
+				min_dim = 6.8
+		min_avg = max(1.0, min(10.0, min_avg))
+		min_dim = max(1.0, min(10.0, min_dim))
+		return min_avg, min_dim
+
+	def _review_section_quality(self, client, section_title: str, section_content: str, requirement: str, category: str) -> dict:
+		if not section_content.strip():
+			return {
+				"scores": {"realism": 1.0, "detail": 1.0, "coherence": 1.0, "naturalness": 1.0},
+				"avg_score": 1.0,
+				"strengths": [],
+				"issues": ["内容为空"],
+				"key_fix": "先生成有效正文。",
+			}
+		preview = section_content[-1800:]
+		prompt = (
+			"你是严格的中文小说编辑，请评估以下章节文本质量，并仅返回 JSON。\n"
+			"评分维度（1-10）：realism(真实感), detail(细节密度), coherence(逻辑连贯), naturalness(语言自然度)。\n"
+			"返回格式：\n"
+			"{\"scores\":{\"realism\":0,\"detail\":0,\"coherence\":0,\"naturalness\":0},"
+			"\"strengths\":[\"\"],\"issues\":[\"\"],\"key_fix\":\"\"}\n"
+			"要求：\n"
+			"1) issues 至少给1条且可执行；\n"
+			"2) key_fix 20字以内；\n"
+			"3) 禁止输出 JSON 以外内容。\n\n"
+			f"主题：{requirement}\n"
+			f"题材：{category}\n"
+			f"章节标题：{section_title}\n"
+			f"章节文本：\n{preview}\n"
+		)
+		try:
+			raw = client.chat(
+				[{"role": "user", "content": prompt}],
+				temperature=0.1,
+				max_tokens=600,
+			)
+		except Exception as e:
+			logger.debug("quality review failed: %s", e)
+			return {
+				"scores": {"realism": 7.0, "detail": 7.0, "coherence": 7.0, "naturalness": 7.0},
+				"avg_score": 7.0,
+				"strengths": [],
+				"issues": ["质量评审不可用，跳过自动改写"],
+				"key_fix": "",
+			}
+		return parse_quality_review(raw)
+
+	def _polish_section_text(
+		self,
+		client,
+		section_title: str,
+		section_content: str,
+		review: dict,
+		target_chars_per_section: int,
+	) -> str:
+		key_fix = str(review.get("key_fix", "") or "").strip()
+		issues = review.get("issues", [])
+		if not isinstance(issues, list):
+			issues = []
+		issue_text = "；".join(str(x) for x in issues[:3] if str(x).strip())
+		chars = len(section_content.strip())
+		target_low = max(220, int(target_chars_per_section * 0.8))
+		target_high = max(target_low, int(target_chars_per_section * 1.15))
+		prompt = (
+			"你是中文小说精修编辑。请在不改变剧情事实和人物设定的前提下，"
+			"对下面章节做一次“真实细腻化”重写。\n"
+			"硬性要求：\n"
+			"1) 保留原剧情顺序与关键事件，不新增大剧情；\n"
+			"2) 优先修复："
+			f"{key_fix or issue_text or '语言模板腔和细节不足'}；\n"
+			"3) 增加可感知细节（动作/环境/心理），减少空泛评价句；\n"
+			"4) 语言自然克制，禁止“首先/其次/最后/总的来说”等模板腔；\n"
+			f"5) 字数控制在 {target_low}-{target_high} 字附近（当前约{chars}字）；\n"
+			"6) 只输出最终章节正文，不要解释。\n\n"
+			f"章节标题：{section_title}\n"
+			f"原文：\n{section_content}\n"
+		)
+		try:
+			rewritten = client.chat(
+				[{"role": "user", "content": prompt}],
+				temperature=0.45,
+				max_tokens=max(1200, int(target_chars_per_section * 2.4)),
+			).strip()
+		except Exception as e:
+			logger.debug("section polish failed: %s", e)
+			return section_content
+
+		if not rewritten:
+			return section_content
+		rewritten = re.sub(r"^\s*【?第.*?章[：:】]\s*", "", rewritten)
+		rewritten = strip_duplicate_lines(rewritten)
+		if len(rewritten) < max(120, int(len(section_content) * 0.55)):
+			return section_content
+		return rewritten
+
+	def _update_chapter_quality_report(self, section_index: int, section_title: str, review: dict) -> None:
+		if not hasattr(self, "chapter_quality_reports") or not isinstance(self.chapter_quality_reports, list):
+			self.chapter_quality_reports = []
+		while len(self.chapter_quality_reports) <= section_index:
+			self.chapter_quality_reports.append({})
+		report = {
+			"chapter_index": int(section_index),
+			"chapter_title": str(section_title or "").strip(),
+			"scores": review.get("scores", {}),
+			"avg_score": review.get("avg_score", 0.0),
+			"issues": review.get("issues", []),
+			"key_fix": review.get("key_fix", ""),
+		}
+		self.chapter_quality_reports[section_index] = report
+
+	def _extract_memory_entry(self, client, section_index: int, section_title: str, section_content: str) -> dict:
+		preview = section_content[-2200:]
+		prompt = (
+			"你是小说连续性编辑。请从以下章节提取“记忆账本”，并仅返回 JSON：\n"
+			"{\"summary\":\"\",\"plot_points\":[\"\"],\"relation_changes\":[\"\"],\"unresolved_hooks\":[\"\"],\"state_shift\":\"\"}\n"
+			"要求：\n"
+			"1) summary 40-120字；\n"
+			"2) plot_points 最多4条，聚焦事实事件；\n"
+			"3) relation_changes 最多3条，写清人物关系变化；\n"
+			"4) unresolved_hooks 最多3条，写未回收问题；\n"
+			"5) state_shift 30字以内。\n\n"
+			f"章节标题：{section_title}\n"
+			f"章节文本：\n{preview}\n"
+		)
+		try:
+			raw = client.chat(
+				[{"role": "user", "content": prompt}],
+				temperature=0.2,
+				max_tokens=700,
+			)
+			entry = parse_memory_entry(raw)
+		except Exception as e:
+			logger.debug("memory extraction failed: %s", e)
+			entry = {}
+		if not entry:
+			fallback_summary = section_content.strip().replace("\n", " ")
+			entry = {
+				"summary": fallback_summary[:120],
+				"plot_points": [],
+				"relation_changes": [],
+				"unresolved_hooks": [],
+				"state_shift": "",
+			}
+		return normalize_memory_entry(entry, chapter_index=section_index, chapter_title=section_title)
+
+	def _update_story_memory_ledger(self, section_index: int, section_title: str, entry: dict) -> None:
+		if not hasattr(self, "story_memory_ledger") or not isinstance(self.story_memory_ledger, list):
+			self.story_memory_ledger = []
+		normalized = normalize_memory_entry(entry, chapter_index=section_index, chapter_title=section_title)
+		while len(self.story_memory_ledger) <= section_index:
+			self.story_memory_ledger.append({})
+		self.story_memory_ledger[section_index] = normalized
 	
 	def on_generate_outline(self) -> None:
 		requirement = self._get_prompt_content()
@@ -199,7 +396,11 @@ class OutlineGeneratorMixin:
 				
 				# 解析章节并更新选择器
 				self.parsed_sections = self._parse_outline_sections(self.current_outline)
+				self.story_memory_ledger = []
+				self.chapter_quality_reports = []
 				self._ui(self._update_section_selector)
+				if hasattr(self, "_update_story_diagnostics_panel"):
+					self._ui(self._update_story_diagnostics_panel)
 				
 				self._ui(self.output.insert, END, f"目录（共{len(self.parsed_sections)}章，预估字数≈{estimate}字）\n\n{self.current_outline}\n\n")
 				self._ui(self.status.set, "目录已生成")
@@ -382,7 +583,11 @@ class OutlineGeneratorMixin:
 				
 				# 解析章节并更新选择器
 				self.parsed_sections = self._parse_outline_sections(self.current_outline)
+				self.story_memory_ledger = []
+				self.chapter_quality_reports = []
 				self._ui(self._update_section_selector)
+				if hasattr(self, "_update_story_diagnostics_panel"):
+					self._ui(self._update_story_diagnostics_panel)
 				
 				self._ui(self.output.insert, END, f"目录（共{len(self.parsed_sections)}章，预估字数≈{estimate}字）\n\n{self.current_outline}\n\n")
 				self._ui(self.status.set, "目录已生成")
@@ -417,6 +622,7 @@ class OutlineGeneratorMixin:
 			self._ui(self.status.set, f"生成第 {idx+1}/{total_sections} 段: {section['title']}")
 			self._ui(self.output.insert, END, f"【正在生成第 {idx+1}/{total_sections} 段】\n\n")
 			self._ui(self.output.see, END)
+			section_start_pos = self._ui_get(self.output.index, "end-1c") if hasattr(self, "_ui_get") else self.output.index("end-1c")
 			# 更新顶部状态栏
 			if hasattr(self, 'update_header_status'):
 				self._ui(self.update_header_status, f"生成中 ({idx+1}/{total_sections})", "📝")
@@ -452,6 +658,47 @@ class OutlineGeneratorMixin:
 				self._ui(self.output.insert, END, delta)
 				self._ui(self.output.see, END)
 				section_content += delta
+
+			# 章节末尾补全，避免截断
+			tail_patch = self._repair_section_tail_if_needed(client, section.get("title", ""), section_content)
+			if tail_patch:
+				if not section_content.endswith("\n"):
+					section_content += "\n"
+					self._ui(self.output.insert, END, "\n")
+				section_content += tail_patch
+				self._ui(self.output.insert, END, tail_patch)
+				self._ui(self.output.see, END)
+
+			# 质量评审 + 自动精修
+			review = None
+			if self._is_story_quality_review_enabled():
+				review = self._review_section_quality(client, section.get("title", ""), section_content, requirement, category)
+				self._update_chapter_quality_report(idx, section.get("title", ""), review)
+				min_avg, min_dim = self._get_story_quality_thresholds()
+				if should_polish(review, min_avg_score=min_avg, min_dimension_score=min_dim):
+					polished = self._polish_section_text(
+						client,
+						section.get("title", ""),
+						section_content,
+						review,
+						target_per_section,
+					)
+					if polished and polished != section_content:
+						self._ui(self.output.delete, section_start_pos, "end-1c")
+						self._ui(self.output.insert, END, polished)
+						self._ui(self.output.see, END)
+						section_content = polished
+
+			# 记忆账本（用于后续章节连贯）
+			memory_entry = self._extract_memory_entry(
+				client,
+				section_index=idx,
+				section_title=section.get("title", ""),
+				section_content=section_content,
+			)
+			self._update_story_memory_ledger(idx, section.get("title", ""), memory_entry)
+			if hasattr(self, "_update_story_diagnostics_panel"):
+				self._ui(self._update_story_diagnostics_panel)
 			
 			# 累积内容（用于下一段的上下文）
 			accumulated_content += section_content
@@ -585,6 +832,7 @@ class OutlineGeneratorMixin:
 		self._ui(self.output.insert, END, f"\n{'='*50}\n")
 		self._ui(self.output.insert, END, f"【第 {section_index+1}/{total_sections} 章：{section['title']}】\n\n")
 		self._ui(self.output.see, END)
+		section_start_pos = self._ui_get(self.output.index, "end-1c") if hasattr(self, "_ui_get") else self.output.index("end-1c")
 		
 		# 构建提示词
 		section_prompt = self._build_section_prompt(
@@ -628,6 +876,43 @@ class OutlineGeneratorMixin:
 			section_content += tail_patch
 			self._ui(self.output.insert, END, tail_patch)
 			self._ui(self.output.see, END)
+
+		# 质量评审 + 自动精修
+		review = None
+		if self._is_story_quality_review_enabled():
+			review = self._review_section_quality(
+				client,
+				section.get("title", ""),
+				section_content,
+				query,
+				self.category.get(),
+			)
+			self._update_chapter_quality_report(section_index, section.get("title", ""), review)
+			min_avg, min_dim = self._get_story_quality_thresholds()
+			if should_polish(review, min_avg_score=min_avg, min_dimension_score=min_dim):
+				polished = self._polish_section_text(
+					client,
+					section.get("title", ""),
+					section_content,
+					review,
+					target_per_section,
+				)
+				if polished and polished != section_content:
+					self._ui(self.output.delete, section_start_pos, "end-1c")
+					self._ui(self.output.insert, END, polished)
+					self._ui(self.output.see, END)
+					section_content = polished
+
+		# 记忆账本（用于后续章节连贯）
+		memory_entry = self._extract_memory_entry(
+			client,
+			section_index=section_index,
+			section_title=section.get("title", ""),
+			section_content=section_content,
+		)
+		self._update_story_memory_ledger(section_index, section.get("title", ""), memory_entry)
+		if hasattr(self, "_update_story_diagnostics_panel"):
+			self._ui(self._update_story_diagnostics_panel)
 		
 		# 累积内容
 		self.generated_content += "\n\n" + section_content
@@ -738,6 +1023,11 @@ class OutlineGeneratorMixin:
 		self.generated_content = ""
 		
 		self.status.set(f"已解析 {len(self.parsed_sections)} 个章节，可开始逐章生成")
+		if hasattr(self, "_update_story_diagnostics_panel"):
+			try:
+				self._update_story_diagnostics_panel()
+			except Exception:
+				pass
 	
 	
 	def _parse_outline_sections(self, outline: str) -> list[dict[str, str]]:
@@ -775,7 +1065,7 @@ class OutlineGeneratorMixin:
 				title = re.sub(r'^\d+[.、]\s*', '', title)
 				title = re.sub(r'^[一二三四五六七八九十]+[.、]\s*', '', title)
 				title = re.sub(r'^[-•*]\s*', '', title)
-				current_section = title.strip()
+				current_section = normalize_chapter_title(title.strip(), min_len=4, max_len=12)
 				current_items = []
 			else:
 				# 子项

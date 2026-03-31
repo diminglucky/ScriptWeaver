@@ -109,6 +109,78 @@ class ProjectMixin:
 			out.append({"title": title, "items": items})
 		return out
 
+	def _normalize_story_memory_ledger(self, raw_rows) -> list[dict]:
+		if not isinstance(raw_rows, list):
+			return []
+		rows: list[dict] = []
+		for item in raw_rows:
+			if not isinstance(item, dict):
+				continue
+			try:
+				chapter_index = int(item.get("chapter_index", len(rows)))
+			except Exception:
+				chapter_index = len(rows)
+			chapter_title = str(item.get("chapter_title", "") or "").strip()
+			summary = str(item.get("summary", "") or "").strip()
+			plot_points = item.get("plot_points", [])
+			relation_changes = item.get("relation_changes", [])
+			unresolved_hooks = item.get("unresolved_hooks", [])
+			state_shift = str(item.get("state_shift", "") or "").strip()
+			if not isinstance(plot_points, list):
+				plot_points = []
+			if not isinstance(relation_changes, list):
+				relation_changes = []
+			if not isinstance(unresolved_hooks, list):
+				unresolved_hooks = []
+			rows.append(
+				{
+					"chapter_index": max(0, chapter_index),
+					"chapter_title": chapter_title,
+					"summary": summary,
+					"plot_points": [str(x).strip() for x in plot_points if str(x).strip()],
+					"relation_changes": [str(x).strip() for x in relation_changes if str(x).strip()],
+					"unresolved_hooks": [str(x).strip() for x in unresolved_hooks if str(x).strip()],
+					"state_shift": state_shift,
+				}
+			)
+		return rows
+
+	def _normalize_chapter_quality_reports(self, raw_rows) -> list[dict]:
+		if not isinstance(raw_rows, list):
+			return []
+		rows: list[dict] = []
+		for item in raw_rows:
+			if not isinstance(item, dict):
+				continue
+			try:
+				chapter_index = int(item.get("chapter_index", len(rows)))
+			except Exception:
+				chapter_index = len(rows)
+			chapter_title = str(item.get("chapter_title", "") or "").strip()
+			avg_score = item.get("avg_score", 0.0)
+			try:
+				avg_score = float(avg_score)
+			except Exception:
+				avg_score = 0.0
+			scores = item.get("scores", {})
+			if not isinstance(scores, dict):
+				scores = {}
+			issues = item.get("issues", [])
+			if not isinstance(issues, list):
+				issues = []
+			key_fix = str(item.get("key_fix", "") or "").strip()
+			rows.append(
+				{
+					"chapter_index": max(0, chapter_index),
+					"chapter_title": chapter_title,
+					"avg_score": max(0.0, min(10.0, avg_score)),
+					"scores": scores,
+					"issues": [str(x).strip() for x in issues if str(x).strip()],
+					"key_fix": key_fix,
+				}
+			)
+		return rows
+
 	def _restore_story_structure_from_project(self, story_content: str, meta: dict) -> None:
 		"""恢复目录、章节列表与当前章节选择"""
 		if not hasattr(self, "section_selector"):
@@ -127,6 +199,8 @@ class ProjectMixin:
 
 		self.current_outline = outline or None
 		self.parsed_sections = parsed_sections
+		self.story_memory_ledger = self._normalize_story_memory_ledger(meta.get("story_memory_ledger"))
+		self.chapter_quality_reports = self._normalize_chapter_quality_reports(meta.get("chapter_quality_reports"))
 
 		if hasattr(self, "_update_section_selector"):
 			self._update_section_selector()
@@ -152,6 +226,11 @@ class ProjectMixin:
 					pass
 
 		self.generated_content = self._extract_generated_content(story_content)
+		if hasattr(self, "_update_story_diagnostics_panel"):
+			try:
+				self._update_story_diagnostics_panel()
+			except Exception:
+				pass
 	
 	def _refresh_project_list(self) -> None:
 		"""刷新项目列表"""
@@ -292,6 +371,8 @@ class ProjectMixin:
 				target_chars=self.target_chars.get(),
 				outline=(self.current_outline or ""),
 				parsed_sections=(self.parsed_sections or []),
+				story_memory_ledger=(getattr(self, "story_memory_ledger", []) or []),
+				chapter_quality_reports=(getattr(self, "chapter_quality_reports", []) or []),
 				section_index=self.section_selector.current() if hasattr(self, "section_selector") else 0,
 			)
 			self._refresh_project_list()

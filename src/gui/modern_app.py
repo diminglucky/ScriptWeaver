@@ -346,9 +346,29 @@ class ModernApp(tk.Tk, ProjectMixin, StoryMixin, ImageMixin, DirectorMixin, KbMi
             value=normalize_story_template_strategy(template_strategy_raw or DEFAULT_STORY_TEMPLATE_STRATEGY)
         )
         creativity_mode_raw = (os.getenv("STORY_CREATIVITY_MODE", "") or "").strip()
+        creativity_default = "stable"
         self.story_creativity_mode = tk.StringVar(
-            value=normalize_story_creativity_mode(creativity_mode_raw or DEFAULT_STORY_CREATIVITY_MODE)
+            value=normalize_story_creativity_mode(creativity_mode_raw or creativity_default)
         )
+        quality_review_raw = (os.getenv("STORY_QUALITY_REVIEW", "1") or "1").strip().lower()
+        self.story_quality_review_enabled = tk.BooleanVar(
+            value=quality_review_raw in {"1", "true", "yes", "on"}
+        )
+        quality_min_avg_raw = (os.getenv("STORY_QUALITY_MIN_AVG", "7.4") or "7.4").strip()
+        try:
+            quality_min_avg_val = float(quality_min_avg_raw)
+        except Exception:
+            quality_min_avg_val = 7.4
+        quality_min_avg_val = max(1.0, min(10.0, quality_min_avg_val))
+        self.story_quality_min_avg = tk.DoubleVar(value=quality_min_avg_val)
+
+        quality_min_dim_raw = (os.getenv("STORY_QUALITY_MIN_DIM", "6.8") or "6.8").strip()
+        try:
+            quality_min_dim_val = float(quality_min_dim_raw)
+        except Exception:
+            quality_min_dim_val = 6.8
+        quality_min_dim_val = max(1.0, min(10.0, quality_min_dim_val))
+        self.story_quality_min_dim = tk.DoubleVar(value=quality_min_dim_val)
         model_only_raw = (os.getenv("MODEL_ONLY", "0") or "0").strip().lower()
         self.model_only = tk.BooleanVar(value=model_only_raw in {"1", "true", "yes", "on"})
         
@@ -363,6 +383,8 @@ class ModernApp(tk.Tk, ProjectMixin, StoryMixin, ImageMixin, DirectorMixin, KbMi
         # 章节管理
         self.parsed_sections: list[dict] = []
         self.generated_content: str = ""
+        self.story_memory_ledger: list[dict] = []
+        self.chapter_quality_reports: list[dict] = []
         
         # API预设初始化 - 包含主流AI提供商和多个模型
         self.api_providers = {

@@ -31,6 +31,8 @@ class _DummyRestore(ProjectMixin):
         self.current_outline = None
         self.parsed_sections = []
         self.generated_content = ""
+        self.story_memory_ledger = []
+        self.chapter_quality_reports = []
         self.section_selector = _Selector()
         self.current_section_index = _Var(0)
         self.selector_update_count = 0
@@ -68,6 +70,27 @@ class ProjectMixinRestoreTests(unittest.TestCase):
                 {"title": "新标题A", "items": []},
                 {"title": "新标题B", "items": ["要点"]},
             ],
+            "story_memory_ledger": [
+                {
+                    "chapter_index": 0,
+                    "chapter_title": "新标题A",
+                    "summary": "第一章摘要",
+                    "plot_points": ["事件A"],
+                    "relation_changes": ["关系变化A"],
+                    "unresolved_hooks": ["伏笔A"],
+                    "state_shift": "情绪转折A",
+                }
+            ],
+            "chapter_quality_reports": [
+                {
+                    "chapter_index": 0,
+                    "chapter_title": "新标题A",
+                    "avg_score": 7.6,
+                    "scores": {"realism": 7.5},
+                    "issues": ["细节不足"],
+                    "key_fix": "补细节",
+                }
+            ],
             "section_index": 1,
         }
 
@@ -79,6 +102,10 @@ class ProjectMixinRestoreTests(unittest.TestCase):
         self.assertEqual(obj.section_selector.current(), 1)
         self.assertEqual(obj.current_section_index.get(), 1)
         self.assertTrue(obj.generated_content.startswith("【第 1/2 章：旧标题A】"))
+        self.assertEqual(len(obj.story_memory_ledger), 1)
+        self.assertEqual(obj.story_memory_ledger[0]["summary"], "第一章摘要")
+        self.assertEqual(len(obj.chapter_quality_reports), 1)
+        self.assertEqual(obj.chapter_quality_reports[0]["key_fix"], "补细节")
         self.assertEqual(obj.selector_update_count, 1)
 
     def test_restore_falls_back_to_story_text_and_detects_last_chapter(self):

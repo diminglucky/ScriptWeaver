@@ -346,7 +346,7 @@ class SettingsMixin:
         self._update_story_template_strategy_desc()
 
         if not hasattr(self, "story_creativity_mode"):
-            self.story_creativity_mode = tk.StringVar(value=DEFAULT_STORY_CREATIVITY_MODE)
+            self.story_creativity_mode = tk.StringVar(value="stable")
 
         creativity_items = list_story_creativity_modes()
         self.story_creativity_key_to_label = {
@@ -392,6 +392,71 @@ class SettingsMixin:
         )
         self.story_creativity_desc_label.pack(side="left", fill="x", expand=True)
         self._update_story_creativity_mode_desc()
+
+        if not hasattr(self, "story_quality_review_enabled"):
+            self.story_quality_review_enabled = tk.BooleanVar(value=True)
+        if not hasattr(self, "story_quality_min_avg"):
+            self.story_quality_min_avg = tk.DoubleVar(value=7.4)
+        if not hasattr(self, "story_quality_min_dim"):
+            self.story_quality_min_dim = tk.DoubleVar(value=6.8)
+
+        quality_frame = tk.Frame(grp_params, bg=Theme.BG_SECONDARY)
+        quality_frame.pack(fill="x", padx=8, pady=(0, 8))
+
+        self.chk_story_quality_review = ttk.Checkbutton(
+            quality_frame,
+            text="开启章节质量评审与自动精修",
+            variable=self.story_quality_review_enabled,
+        )
+        self.chk_story_quality_review.pack(side="left", padx=(0, 16))
+
+        tk.Label(
+            quality_frame,
+            text="平均分阈值:",
+            bg=Theme.BG_SECONDARY,
+            fg=Theme.TEXT_PRIMARY,
+            font=("", 10, "bold"),
+        ).pack(side="left", padx=(0, 4))
+        self.spin_story_quality_min_avg = tk.Spinbox(
+            quality_frame,
+            from_=1.0,
+            to=10.0,
+            increment=0.1,
+            textvariable=self.story_quality_min_avg,
+            width=5,
+            bg=Theme.SURFACE,
+            fg=Theme.TEXT_PRIMARY,
+            relief=tk.FLAT,
+        )
+        self.spin_story_quality_min_avg.pack(side="left", padx=(0, 12))
+
+        tk.Label(
+            quality_frame,
+            text="单项阈值:",
+            bg=Theme.BG_SECONDARY,
+            fg=Theme.TEXT_PRIMARY,
+            font=("", 10, "bold"),
+        ).pack(side="left", padx=(0, 4))
+        self.spin_story_quality_min_dim = tk.Spinbox(
+            quality_frame,
+            from_=1.0,
+            to=10.0,
+            increment=0.1,
+            textvariable=self.story_quality_min_dim,
+            width=5,
+            bg=Theme.SURFACE,
+            fg=Theme.TEXT_PRIMARY,
+            relief=tk.FLAT,
+        )
+        self.spin_story_quality_min_dim.pack(side="left", padx=(0, 8))
+
+        tk.Label(
+            grp_params,
+            text="💡 低于阈值会自动触发章节精修；想更自然细腻可适当提高阈值。",
+            bg=Theme.BG_SECONDARY,
+            fg=Theme.TEXT_SECONDARY,
+            font=("", 9),
+        ).pack(anchor="w", padx=12, pady=(0, 6))
         
         scrollable_frame = api_frame
         # 页面说明
@@ -579,15 +644,15 @@ class SettingsMixin:
         # ========== 6. 模型路由 ==========
         grp_routing = ttk.LabelFrame(scrollable_frame, text="🧭 模型路由", padding=(15, 10))
         grp_routing.pack(fill="x", padx=15, pady=(10, 10))
-        grp_routing.columnconfigure(2, weight=1)
+        grp_routing.columnconfigure(0, weight=1)
 
         tk.Label(
             grp_routing,
-            text="💡 为每个功能单独选择模型与提供商（未设置时使用默认/快速配置）",
+            text="💡 默认只用主模型；仅在需要时才开启按功能单独路由",
             bg=Theme.BG_SECONDARY,
             fg="#90CAF9",
             font=("", 10),
-        ).grid(row=0, column=0, columnspan=4, sticky="w", padx=8, pady=(0, 4))
+        ).grid(row=0, column=0, sticky="w", padx=8, pady=(0, 4))
 
         tk.Label(
             grp_routing,
@@ -595,22 +660,61 @@ class SettingsMixin:
             bg=Theme.BG_SECONDARY,
             fg="#F59E0B",
             font=("", 10, "bold"),
-        ).grid(row=1, column=0, columnspan=4, sticky="w", padx=8, pady=(0, 10))
+        ).grid(row=1, column=0, sticky="w", padx=8, pady=(0, 8))
+
+        self.model_route_advanced_var = tk.BooleanVar(value=False)
+        mode_frame = tk.Frame(grp_routing, bg=Theme.BG_SECONDARY)
+        mode_frame.grid(row=2, column=0, sticky="we", padx=8, pady=(0, 6))
+        mode_frame.columnconfigure(0, weight=1)
+
+        self.chk_model_route_advanced = ttk.Checkbutton(
+            mode_frame,
+            text="高级模式：按功能单独设置模型路由",
+            variable=self.model_route_advanced_var,
+            command=self._on_model_route_mode_toggle,
+        )
+        self.chk_model_route_advanced.grid(row=0, column=0, sticky="w")
+
+        tk.Button(
+            mode_frame,
+            text="🔁 用当前主模型覆盖文本任务",
+            command=self._apply_story_model_to_text_routes,
+            bg="#2563EB",
+            fg=Theme.TEXT_PRIMARY,
+            relief=tk.FLAT,
+            padx=10,
+            pady=4,
+            cursor="hand2",
+            font=("", 10, "bold"),
+        ).grid(row=0, column=1, sticky="e", padx=(10, 0))
+
+        self.model_route_mode_hint_label = tk.Label(
+            grp_routing,
+            text="",
+            bg=Theme.BG_SECONDARY,
+            fg=Theme.TEXT_SECONDARY,
+            font=("", 9),
+        )
+        self.model_route_mode_hint_label.grid(row=3, column=0, sticky="w", padx=8, pady=(0, 8))
+
+        self.model_routing_advanced_frame = tk.Frame(grp_routing, bg=Theme.BG_SECONDARY)
+        self.model_routing_advanced_frame.grid(row=4, column=0, sticky="we")
+        self.model_routing_advanced_frame.columnconfigure(2, weight=1)
 
         # 记录路由变量与控件
         self.model_route_vars = {}
         provider_names = list(self.api_providers.keys()) if hasattr(self, 'api_providers') else ["DeepSeek"]
 
-        for idx, (task_key, task_label) in enumerate(MODEL_ROUTING_TASKS, start=2):
+        for idx, (task_key, task_label) in enumerate(MODEL_ROUTING_TASKS):
             row = idx
-            tk.Label(grp_routing, text=task_label, bg=Theme.BG_SECONDARY, fg=Theme.TEXT_PRIMARY,
+            tk.Label(self.model_routing_advanced_frame, text=task_label, bg=Theme.BG_SECONDARY, fg=Theme.TEXT_PRIMARY,
                      font=("", 10, "bold")).grid(row=row, column=0, sticky="e", padx=(8, 6), pady=4)
 
             provider_var = tk.StringVar(value=provider_names[0] if provider_names else "DeepSeek")
             model_var = tk.StringVar(value="")
 
             combo_provider = ttk.Combobox(
-                grp_routing,
+                self.model_routing_advanced_frame,
                 textvariable=provider_var,
                 values=provider_names,
                 state="readonly",
@@ -619,7 +723,7 @@ class SettingsMixin:
             combo_provider.grid(row=row, column=1, sticky="w", padx=(0, 8), pady=4)
 
             combo_model = ttk.Combobox(
-                grp_routing,
+                self.model_routing_advanced_frame,
                 textvariable=model_var,
                 values=[""],
                 state="normal",
@@ -627,7 +731,7 @@ class SettingsMixin:
             )
             combo_model.grid(row=row, column=2, sticky="w", padx=(0, 8), pady=4)
 
-            tk.Label(grp_routing, text="(可手动输入)", bg=Theme.BG_SECONDARY, fg=Theme.TEXT_SECONDARY,
+            tk.Label(self.model_routing_advanced_frame, text="(可手动输入)", bg=Theme.BG_SECONDARY, fg=Theme.TEXT_SECONDARY,
                      font=("", 9)).grid(row=row, column=3, sticky="w")
 
             combo_provider.bind("<<ComboboxSelected>>", lambda e, k=task_key: self._on_route_provider_change(k))
@@ -639,8 +743,8 @@ class SettingsMixin:
                 "task_key": task_key,
             }
 
-        route_btn_frame = tk.Frame(grp_routing, bg=Theme.BG_SECONDARY)
-        route_btn_frame.grid(row=len(MODEL_ROUTING_TASKS) + 2, column=0, columnspan=4, pady=(10, 5))
+        route_btn_frame = tk.Frame(self.model_routing_advanced_frame, bg=Theme.BG_SECONDARY)
+        route_btn_frame.grid(row=len(MODEL_ROUTING_TASKS), column=0, columnspan=4, pady=(10, 5))
         tk.Button(
             route_btn_frame,
             text="💾 保存模型路由",
@@ -653,6 +757,7 @@ class SettingsMixin:
             cursor="hand2",
             font=("", 11, "bold"),
         ).pack()
+        self._toggle_model_routing_advanced_ui(False)
 
         scrollable_frame = api_frame
         # ========== 7. 测试日志 ==========
@@ -1008,15 +1113,27 @@ class SettingsMixin:
             path = Path("model_routing.json")
             if not path.exists():
                 self.model_routing = {}
+                self.model_routing_meta = {}
                 self._model_routing_loaded = True
                 return
 
             with open(path, "r", encoding="utf-8") as f:
                 data = json.load(f)
-            self.model_routing = data if isinstance(data, dict) else {}
+            if isinstance(data, dict):
+                meta = data.get("__meta__", {})
+                self.model_routing_meta = meta if isinstance(meta, dict) else {}
+                self.model_routing = {
+                    k: v
+                    for k, v in data.items()
+                    if k != "__meta__" and isinstance(v, dict)
+                }
+            else:
+                self.model_routing = {}
+                self.model_routing_meta = {}
             self._model_routing_loaded = True
         except Exception:
             self.model_routing = {}
+            self.model_routing_meta = {}
             self._model_routing_loaded = True
 
     def _save_model_routing_to_file(self) -> None:
@@ -1025,8 +1142,12 @@ class SettingsMixin:
             import json
 
             routing = self.model_routing if isinstance(getattr(self, "model_routing", {}), dict) else {}
+            payload = dict(routing)
+            meta = self.model_routing_meta if isinstance(getattr(self, "model_routing_meta", {}), dict) else {}
+            if meta:
+                payload["__meta__"] = meta
             with open("model_routing.json", "w", encoding="utf-8") as f:
-                json.dump(routing, f, ensure_ascii=False, indent=2)
+                json.dump(payload, f, ensure_ascii=False, indent=2)
         except Exception:
             # 路由保存失败不应阻断主流程
             pass
@@ -1036,11 +1157,15 @@ class SettingsMixin:
         if getattr(self, "_model_routing_loaded", False):
             if not isinstance(getattr(self, "model_routing", None), dict):
                 self.model_routing = {}
+            if not isinstance(getattr(self, "model_routing_meta", None), dict):
+                self.model_routing_meta = {}
             return
 
         self._load_model_routing_from_file()
         if not isinstance(getattr(self, "model_routing", None), dict):
             self.model_routing = {}
+        if not isinstance(getattr(self, "model_routing_meta", None), dict):
+            self.model_routing_meta = {}
 
         for task_key, _label in MODEL_ROUTING_TASKS:
             if task_key not in self.model_routing:
@@ -1361,6 +1486,8 @@ class SettingsMixin:
         # 确保路由已加载
         if hasattr(self, '_ensure_model_routing_loaded'):
             self._ensure_model_routing_loaded()
+        advanced_mode = bool(getattr(self, "model_routing_meta", {}).get("advanced_mode", False))
+        self._toggle_model_routing_advanced_ui(advanced_mode)
         for task_key, _label in MODEL_ROUTING_TASKS:
             route = self._get_task_route(task_key) if hasattr(self, '_get_task_route') else {}
             route_ui = self.model_route_vars.get(task_key)
@@ -1381,6 +1508,11 @@ class SettingsMixin:
             return
         if not hasattr(self, 'model_routing'):
             self.model_routing = {}
+        if not hasattr(self, "model_routing_meta") or not isinstance(self.model_routing_meta, dict):
+            self.model_routing_meta = {}
+        self.model_routing_meta["advanced_mode"] = bool(
+            self.model_route_advanced_var.get() if hasattr(self, "model_route_advanced_var") else False
+        )
         for task_key, _label in MODEL_ROUTING_TASKS:
             route_ui = self.model_route_vars.get(task_key)
             if not route_ui:
@@ -1398,6 +1530,90 @@ class SettingsMixin:
             self.settings_log.insert(END, "✅ 模型路由配置已保存\n")
             self.settings_log.see(END)
         messagebox.showinfo("成功", "模型路由已保存")
+
+    def _toggle_model_routing_advanced_ui(self, enabled: bool | None = None) -> None:
+        """切换模型路由高级视图（默认隐藏复杂配置）"""
+        if enabled is None:
+            enabled = bool(self.model_route_advanced_var.get()) if hasattr(self, "model_route_advanced_var") else False
+        enabled = bool(enabled)
+        if hasattr(self, "model_route_advanced_var"):
+            self.model_route_advanced_var.set(enabled)
+        if hasattr(self, "model_routing_advanced_frame"):
+            if enabled:
+                self.model_routing_advanced_frame.grid()
+            else:
+                self.model_routing_advanced_frame.grid_remove()
+        if hasattr(self, "model_route_mode_hint_label"):
+            if enabled:
+                self.model_route_mode_hint_label.config(
+                    text="当前：高级模式（可为每个功能单独设置模型）",
+                    fg="#F59E0B",
+                )
+            else:
+                self.model_route_mode_hint_label.config(
+                    text="当前：简洁模式（默认用主模型；需要时再打开高级模式）",
+                    fg=Theme.TEXT_SECONDARY,
+                )
+
+    def _on_model_route_mode_toggle(self) -> None:
+        """高级模式开关变更"""
+        self._toggle_model_routing_advanced_ui()
+        if not hasattr(self, "model_routing_meta") or not isinstance(self.model_routing_meta, dict):
+            self.model_routing_meta = {}
+        self.model_routing_meta["advanced_mode"] = bool(
+            self.model_route_advanced_var.get() if hasattr(self, "model_route_advanced_var") else False
+        )
+        if hasattr(self, "_save_model_routing_to_file"):
+            self._save_model_routing_to_file()
+
+    def _apply_story_model_to_text_routes(self) -> None:
+        """使用主模型快速覆盖所有文本任务路由"""
+        if not hasattr(self, "model_route_vars"):
+            return
+
+        provider = ""
+        if hasattr(self, "settings_api_provider"):
+            provider = self.settings_api_provider.get().strip()
+        if not provider and hasattr(self, "quick_story_api"):
+            provider = self.quick_story_api.get().strip()
+        if not provider and hasattr(self, "api_preset"):
+            provider = self.api_preset.get().strip()
+        if not provider and hasattr(self, "api_providers") and self.api_providers:
+            provider = list(self.api_providers.keys())[0]
+
+        model = ""
+        if hasattr(self, "story_model_var"):
+            model = self._strip_model_label(self.story_model_var.get().strip())
+        if not model and hasattr(self, "settings_model_var"):
+            model = self._strip_model_label(self.settings_model_var.get().strip())
+        if not model and provider and hasattr(self, "api_providers") and provider in self.api_providers:
+            model = self._strip_model_label(str(self.api_providers[provider].get("model", "") or ""))
+
+        if not provider:
+            messagebox.showwarning("提示", "未找到可用的故事提供商，请先在设置页配置故事 API")
+            return
+        if not model:
+            messagebox.showwarning("提示", "未找到可用的主模型，请先在故事页或设置页选择模型")
+            return
+
+        updated = 0
+        for task_key, _label in MODEL_ROUTING_TASKS:
+            if str(task_key).startswith("image_"):
+                continue
+            route_ui = self.model_route_vars.get(task_key)
+            if not route_ui:
+                continue
+            route_ui["provider_var"].set(provider)
+            self._on_route_provider_change(task_key)
+            route_ui["model_var"].set(self._decorate_model_value(model, "text"))
+            updated += 1
+
+        if hasattr(self, "settings_log"):
+            self.settings_log.insert(
+                END,
+                f"✅ 已同步主模型到 {updated} 个文本任务: {provider} / {model}\n",
+            )
+            self.settings_log.see(END)
     
     def _on_settings_provider_change(self, event=None):
         """故事API提供商切换 - 更新模型列表"""
@@ -1686,6 +1902,31 @@ class SettingsMixin:
             ui_call(self.settings_log.see, END)
         
         threading.Thread(target=task, daemon=True).start()
+
+    def _save_story_quality_settings(self, env_path: Path) -> None:
+        """保存故事质量控制参数到 .env。"""
+        from dotenv import set_key
+
+        if hasattr(self, "story_quality_review_enabled"):
+            try:
+                quality_review_enabled = bool(self.story_quality_review_enabled.get())
+            except Exception:
+                quality_review_enabled = True
+            set_key(str(env_path), "STORY_QUALITY_REVIEW", "1" if quality_review_enabled else "0")
+        if hasattr(self, "story_quality_min_avg"):
+            try:
+                quality_min_avg_value = float(self.story_quality_min_avg.get())
+            except Exception:
+                quality_min_avg_value = 7.4
+            quality_min_avg_value = max(1.0, min(10.0, quality_min_avg_value))
+            set_key(str(env_path), "STORY_QUALITY_MIN_AVG", f"{quality_min_avg_value:.1f}")
+        if hasattr(self, "story_quality_min_dim"):
+            try:
+                quality_min_dim_value = float(self.story_quality_min_dim.get())
+            except Exception:
+                quality_min_dim_value = 6.8
+            quality_min_dim_value = max(1.0, min(10.0, quality_min_dim_value))
+            set_key(str(env_path), "STORY_QUALITY_MIN_DIM", f"{quality_min_dim_value:.1f}")
     
     def _save_story_api_settings(self):
         """保存故事API配置"""
@@ -1763,6 +2004,7 @@ class SettingsMixin:
                     rag_min_score_value = 0.12
                 rag_min_score_value = max(0.0, min(1.0, rag_min_score_value))
                 set_key(str(env_path), "RAG_MIN_SCORE", f"{rag_min_score_value:.2f}")
+            self._save_story_quality_settings(env_path)
 
             if hasattr(self, 'quick_story_api'):
                 self.quick_story_api.set(provider_name)
@@ -2042,6 +2284,7 @@ class SettingsMixin:
                     rag_min_score_value = 0.12
                 rag_min_score_value = max(0.0, min(1.0, rag_min_score_value))
                 set_key(str(env_path), "RAG_MIN_SCORE", f"{rag_min_score_value:.2f}")
+            self._save_story_quality_settings(env_path)
             
             # 同步到其他页面的变量
             if hasattr(self, 'outline_gen_api'):
@@ -2102,8 +2345,14 @@ class SettingsMixin:
             if hasattr(self, "_update_story_template_strategy_desc"):
                 self._update_story_template_strategy_desc()
 
+            creativity_fallback = "stable"
+            if hasattr(self, "story_creativity_mode"):
+                try:
+                    creativity_fallback = self.story_creativity_mode.get()
+                except Exception:
+                    creativity_fallback = "stable"
             creativity_mode = normalize_story_creativity_mode(
-                (os.getenv("STORY_CREATIVITY_MODE", "") or "").strip() or DEFAULT_STORY_CREATIVITY_MODE
+                (os.getenv("STORY_CREATIVITY_MODE", "") or "").strip() or creativity_fallback
             )
             if hasattr(self, "story_creativity_mode"):
                 self.story_creativity_mode.set(creativity_mode)
@@ -2138,6 +2387,30 @@ class SettingsMixin:
                         rag_value = float(rag_raw)
                         rag_value = max(0.0, min(1.0, rag_value))
                         self.rag_min_score.set(rag_value)
+                    except Exception:
+                        pass
+            if hasattr(self, "story_quality_review_enabled"):
+                quality_review_raw = (os.getenv("STORY_QUALITY_REVIEW", "") or "").strip().lower()
+                if quality_review_raw:
+                    self.story_quality_review_enabled.set(
+                        quality_review_raw in {"1", "true", "yes", "on"}
+                    )
+            if hasattr(self, "story_quality_min_avg"):
+                quality_min_avg_raw = (os.getenv("STORY_QUALITY_MIN_AVG", "") or "").strip()
+                if quality_min_avg_raw:
+                    try:
+                        quality_min_avg_value = float(quality_min_avg_raw)
+                        quality_min_avg_value = max(1.0, min(10.0, quality_min_avg_value))
+                        self.story_quality_min_avg.set(quality_min_avg_value)
+                    except Exception:
+                        pass
+            if hasattr(self, "story_quality_min_dim"):
+                quality_min_dim_raw = (os.getenv("STORY_QUALITY_MIN_DIM", "") or "").strip()
+                if quality_min_dim_raw:
+                    try:
+                        quality_min_dim_value = float(quality_min_dim_raw)
+                        quality_min_dim_value = max(1.0, min(10.0, quality_min_dim_value))
+                        self.story_quality_min_dim.set(quality_min_dim_value)
                     except Exception:
                         pass
             if hasattr(self, 'settings_img_provider') and hasattr(self, 'img_api_providers'):

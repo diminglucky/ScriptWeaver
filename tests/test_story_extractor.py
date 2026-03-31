@@ -36,7 +36,44 @@ class StoryExtractorTests(unittest.TestCase):
         self.assertTrue(preview)
         self.assertNotIn("目录", preview)
 
+    def test_extract_pure_story_filters_rag_runtime_lines(self):
+        text = (
+            "🎭 本次模版：知乎现实故事（策略：固定模版）\n"
+            "🔎 RAG检索：命中 3 条（阈值≥0.12）\n"
+            "  1. story_a.md（score=0.873）\n"
+            "  2. story_b.txt（score=0.764）\n\n"
+            "这是第一段正文。\n"
+            "这是第二段正文。"
+        )
+        pure = StoryExtractor.extract_pure_story(text)
+        self.assertIn("这是第一段正文。", pure)
+        self.assertIn("这是第二段正文。", pure)
+        self.assertNotIn("RAG检索", pure)
+        self.assertNotIn("score=", pure)
+
+    def test_sanitize_for_publish_removes_control_chars(self):
+        text = "这是正文\u200b第一段。\n这是正文第二段。\x07"
+        cleaned = StoryExtractor.sanitize_for_publish(text)
+        self.assertIn("这是正文第一段。", cleaned)
+        self.assertIn("这是正文第二段。", cleaned)
+        self.assertNotIn("\u200b", cleaned)
+        self.assertNotIn("\x07", cleaned)
+
+    def test_sanitize_for_publish_removes_index_runtime_noises(self):
+        text = (
+            "No text-like files found under /tmp/data\n"
+            "未找到索引，是否现在根据当前数据目录自动构建？\n"
+            "正在构建索引...\n"
+            "这是正文第一段。\n"
+            "这是正文第二段。"
+        )
+        cleaned = StoryExtractor.sanitize_for_publish(text)
+        self.assertIn("这是正文第一段。", cleaned)
+        self.assertIn("这是正文第二段。", cleaned)
+        self.assertNotIn("No text-like files found under", cleaned)
+        self.assertNotIn("未找到索引", cleaned)
+        self.assertNotIn("正在构建索引", cleaned)
+
 
 if __name__ == "__main__":
     unittest.main()
-

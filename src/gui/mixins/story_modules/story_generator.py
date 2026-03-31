@@ -73,6 +73,8 @@ class StoryGeneratorMixin:
 			f"{base_system_prompt}\n"
 			"写作必须具备强戏剧性：开头迅速抛冲突，中段持续升级并制造反转，结尾回扣并留余味。"
 			"禁止流水账、空话、重复总结。"
+			"语言要自然克制，避免“首先/其次/最后/总的来说/不难发现/值得一提的是”等模板腔。"
+			"用具体行动、细节和代价推进，不要口号化表达。"
 		)
 		accumulated = ""
 		current_prompt = prompt

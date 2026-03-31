@@ -9,6 +9,7 @@ import tkinter as tk
 from tkinter import END, messagebox, scrolledtext, ttk
 
 from src.clients.deepseek_client import DeepSeekClient
+from src.gui.helpers.story_writing_guardrails import normalize_article_title
 from src.utils.story_extractor import StoryExtractor
 from src.utils.text import sanitize as _sanitize
 
@@ -155,17 +156,18 @@ class ZhihuPublisherMixin:
                 prompt = f"""请为以下故事生成一个吸引点击的知乎标题。
 
 要求：
-1. 15-25字
-2. 有冲突、悬念或反转
-3. 风格自然，不要夸张营销号语气
-4. 只返回标题文本，不要附加解释
+1. 12-20字，超过20字必须压缩
+2. 有冲突、悬念或反转，但表达克制
+3. 禁止营销号措辞（如“震惊”“逆天”“看哭了”“绝了”）
+4. 不要使用“总的来说/不难发现/值得一提的是”这类模板化表达
+5. 只返回标题文本，不要附加解释
 
 故事内容摘要：
 {summary}
 
 请直接输出标题："""
                 title = client.chat([{"role": "user", "content": prompt}], temperature=0.7).strip()
-                title = title.strip('"\'「」『』""\'\'')
+                title = normalize_article_title(title, min_len=12, max_len=20)
 
                 self.after(0, lambda: self.zhihu_title_var.set(title))
                 self.after(0, lambda: self.zhihu_progress_label.config(text="✅ 标题生成完成"))
@@ -178,7 +180,9 @@ class ZhihuPublisherMixin:
         threading.Thread(target=generate_title_task, daemon=True).start()
 
     def _on_publish_to_zhihu(self) -> None:
-        title = self.zhihu_title_var.get().strip()
+        title = normalize_article_title(self.zhihu_title_var.get().strip(), min_len=12, max_len=20)
+        if title != self.zhihu_title_var.get().strip():
+            self.zhihu_title_var.set(title)
         if not title:
             messagebox.showwarning("提示", "请先输入或生成文章标题")
             return
@@ -191,7 +195,7 @@ class ZhihuPublisherMixin:
             messagebox.showwarning("提示", "故事内容太短，建议至少100字以上")
             return
 
-        content = StoryExtractor.extract_pure_story(raw_content)
+        content = StoryExtractor.sanitize_for_publish(raw_content)
         if not content or len(content) < 100:
             messagebox.showwarning("提示", "无法提取有效的故事内容")
             return
@@ -278,6 +282,7 @@ class ZhihuPublisherMixin:
         def confirm_publish():
             edited_title = title_var.get().strip()
             edited_content = content_text.get("1.0", "end-1c").strip()
+            edited_content = StoryExtractor.sanitize_for_publish(edited_content)
             if not edited_title:
                 messagebox.showwarning("提示", "标题不能为空")
                 return
@@ -377,4 +382,3 @@ class ZhihuPublisherMixin:
                 self.after(0, lambda: self.zhihu_publish_btn.config(state="normal", text="📤 发布到知乎"))
 
         threading.Thread(target=publish_task, daemon=True).start()
-
