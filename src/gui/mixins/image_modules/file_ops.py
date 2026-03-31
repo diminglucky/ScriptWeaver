@@ -137,6 +137,14 @@ class FileOperationsMixin:
 			requirement = self._get_prompt_content()
 			style = self.style.get()
 			target_chars = self.target_chars.get()
+		outline = getattr(self, "current_outline", "") or ""
+		parsed_sections = getattr(self, "parsed_sections", []) or []
+		section_index = 0
+		if hasattr(self, "section_selector"):
+			try:
+				section_index = self._ui_get(self.section_selector.current) if hasattr(self, "_ui_get") else self.section_selector.current()
+			except Exception:
+				section_index = 0
 
 		if not story_content or story_content == "生成中...":
 			return
@@ -149,6 +157,9 @@ class FileOperationsMixin:
 				requirement=requirement,
 				style=style,
 				target_chars=target_chars,
+				outline=outline,
+				parsed_sections=parsed_sections,
+				section_index=section_index,
 			)
 			# 在后台更新项目列表（不显示弹窗）
 			if hasattr(self, 'project_tree'):

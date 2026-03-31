@@ -2,6 +2,7 @@
 Project相关功能模块
 """
 
+import re
 from tkinter import BOTH, LEFT, RIGHT, DISABLED, NORMAL, END, messagebox, filedialog
 import tkinter as tk
 from tkinter import ttk
@@ -9,6 +10,148 @@ from tkinter import ttk
 
 class ProjectMixin:
 	"""Project管理功能"""
+
+	def _extract_outline_from_story_content(self, story_content: str) -> str:
+		"""从已保存的 story.txt 中提取目录文本（兼容老项目）"""
+		text = (story_content or "").strip()
+		if not text:
+			return ""
+
+		lines = text.splitlines()
+		section_line_pattern = re.compile(
+			r"^(\d+[.、]\s+.+|[一二三四五六七八九十百千]+[.、]\s+.+|[-•*]\s+.+)$"
+		)
+
+		def _collect_from(start_idx: int) -> list[str]:
+			collected: list[str] = []
+			idx = start_idx
+			while idx < len(lines):
+				stripped = lines[idx].strip()
+				if not stripped:
+					if collected:
+						# 章节列表结束后，通常会进入分隔线或正文标记
+						peek = idx + 1
+						while peek < len(lines) and not lines[peek].strip():
+							peek += 1
+						if peek >= len(lines):
+							break
+						next_line = lines[peek].strip()
+						if next_line.startswith("=") or next_line.startswith("【第"):
+							break
+					idx += 1
+					continue
+				if section_line_pattern.match(stripped):
+					collected.append(stripped)
+					idx += 1
+					continue
+				if collected:
+					break
+				idx += 1
+			return collected
+
+		for i, line in enumerate(lines):
+			stripped = line.strip()
+			if stripped.startswith("目录（共") or stripped.startswith("目录(共"):
+				candidates = _collect_from(i + 1)
+				if len(candidates) >= 2:
+					return "\n".join(candidates).strip()
+
+		# 兜底：抓取第一段连续章节行
+		best: list[str] = []
+		for i in range(len(lines)):
+			candidates = _collect_from(i)
+			if len(candidates) > len(best):
+				best = candidates
+		if len(best) >= 2:
+			return "\n".join(best).strip()
+		return ""
+
+	def _detect_last_generated_section_index(self, story_content: str, total_sections: int) -> int:
+		"""根据正文中的章节标记推断最后生成到哪一章（0-based）"""
+		if total_sections <= 0:
+			return 0
+		text = story_content or ""
+		matches = re.findall(r"【第\s*(\d+)\s*/\s*\d+\s*章", text)
+		if not matches:
+			return 0
+		try:
+			last_no = max(int(x) for x in matches)
+		except Exception:
+			return 0
+		last_no = max(1, min(total_sections, last_no))
+		return last_no - 1
+
+	def _extract_generated_content(self, story_content: str) -> str:
+		"""从 story.txt 中提取已生成正文内容片段"""
+		text = (story_content or "").strip()
+		if not text:
+			return ""
+		match = re.search(r"【第\s*\d+\s*/\s*\d+\s*章[：:]", text)
+		if match:
+			return text[match.start():].strip()
+		return text
+
+	def _normalize_parsed_sections(self, raw_sections) -> list[dict]:
+		"""标准化已保存章节结构，过滤脏数据"""
+		if not isinstance(raw_sections, list):
+			return []
+		out: list[dict] = []
+		for item in raw_sections:
+			if not isinstance(item, dict):
+				continue
+			title = str(item.get("title", "") or "").strip()
+			if not title:
+				continue
+			items_raw = item.get("items", [])
+			items: list[str] = []
+			if isinstance(items_raw, list):
+				items = [str(x).strip() for x in items_raw if str(x).strip()]
+			out.append({"title": title, "items": items})
+		return out
+
+	def _restore_story_structure_from_project(self, story_content: str, meta: dict) -> None:
+		"""恢复目录、章节列表与当前章节选择"""
+		if not hasattr(self, "section_selector"):
+			return
+
+		outline = str(meta.get("outline", "") or "").strip()
+		parsed_sections = self._normalize_parsed_sections(meta.get("parsed_sections"))
+
+		if not outline:
+			outline = self._extract_outline_from_story_content(story_content)
+		if not parsed_sections and outline and hasattr(self, "_parse_outline_sections"):
+			try:
+				parsed_sections = self._parse_outline_sections(outline) or []
+			except Exception:
+				parsed_sections = []
+
+		self.current_outline = outline or None
+		self.parsed_sections = parsed_sections
+
+		if hasattr(self, "_update_section_selector"):
+			self._update_section_selector()
+
+		if self.parsed_sections:
+			raw_idx = meta.get("section_index", None)
+			try:
+				section_index = int(raw_idx)
+			except Exception:
+				section_index = -1
+			if section_index < 0:
+				section_index = self._detect_last_generated_section_index(story_content, len(self.parsed_sections))
+			section_index = max(0, min(len(self.parsed_sections) - 1, section_index))
+
+			try:
+				self.section_selector.current(section_index)
+			except Exception:
+				pass
+			if hasattr(self, "current_section_index") and hasattr(self.current_section_index, "set"):
+				try:
+					self.current_section_index.set(section_index)
+				except Exception:
+					pass
+
+		self.generated_content = self._extract_generated_content(story_content)
 	
 	def _refresh_project_list(self) -> None:
 		"""刷新项目列表"""
@@ -118,6 +261,9 @@ class ProjectMixin:
 				self.style.set(meta["style"])
 			if meta.get("target_chars"):
 				self.target_chars.set(meta["target_chars"])
+
+			# 恢复目录与章节状态（兼容老项目 story.txt）
+			self._restore_story_structure_from_project(story_content, meta)
 			
 			messagebox.showinfo("成功", f"项目已加载: {project_name}\n\n故事内容已恢复到输出区域")
 			# 切换到故事生成页面
@@ -144,6 +290,9 @@ class ProjectMixin:
 				requirement=self._get_prompt_content(),
 				style=self.style.get(),
 				target_chars=self.target_chars.get(),
+				outline=(self.current_outline or ""),
+				parsed_sections=(self.parsed_sections or []),
+				section_index=self.section_selector.current() if hasattr(self, "section_selector") else 0,
 			)
 			self._refresh_project_list()
 			if hasattr(self, 'status'):
@@ -249,4 +398,3 @@ class ProjectMixin:
 		# 初始加载项目列表
 		self._refresh_project_list()
 	
-

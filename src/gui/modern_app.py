@@ -2,6 +2,8 @@
 现代化UI主窗口 - 使用原有Mixin功能，应用现代化主题
 """
 
+from __future__ import annotations
+
 import tkinter as tk
 from tkinter import ttk
 import logging
@@ -27,6 +29,15 @@ from .mixins.settings_refactored import SettingsMixin
 from .mixins.enhancements_refactored import EnhancementsMixin
 from .mixins.kb_enhancements import KBEnhancementsMixin
 from .mixins.async_utils import PerformanceMixin
+from .helpers.story_templates import (
+    DEFAULT_STORY_TEMPLATE_KEY,
+    DEFAULT_STORY_TEMPLATE_STRATEGY,
+    normalize_story_template_strategy,
+)
+from .helpers.story_creativity import (
+    DEFAULT_STORY_CREATIVITY_MODE,
+    normalize_story_creativity_mode,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -61,6 +72,7 @@ class ModernApp(tk.Tk, ProjectMixin, StoryMixin, ImageMixin, DirectorMixin, KbMi
         # 调用原有的UI构建方法（来自UiMixin）
         # 这会创建完整的notebook和所有页面
         self._build_ui()
+        self._setup_story_preferences_autosave_post_ui()
         
         # 应用现代化主题到现有组件
         self._apply_modern_theme()
@@ -82,50 +94,189 @@ class ModernApp(tk.Tk, ProjectMixin, StoryMixin, ImageMixin, DirectorMixin, KbMi
         
         # 启动后自动加载配置（单入口，避免多次 after 导致 UI 值跳动）
         self.after(100, self._startup_load_configs)
+        self.protocol("WM_DELETE_WINDOW", self._on_app_close)
 
     def _setup_target_chars_autosave(self) -> None:
-        """Auto-persist target chars so it survives restart."""
+        """Setup auto-persist for story preferences."""
         self._target_chars_save_job = None
         self._target_chars_last_saved = None
-        if not hasattr(self, "target_chars"):
-            return
+        self._story_prefs_save_job = None
+        self._story_prefs_trace_installed = False
+        self._story_prefs_prompt_binding_installed = False
+        self._story_prefs_last_saved: dict[str, str] = {}
         try:
-            self.target_chars.trace_add("write", self._on_target_chars_changed)
-            self._persist_target_chars_to_env()
+            self._install_story_pref_var_traces()
+            self._persist_story_preferences_to_env()
         except Exception as e:
-            logger.debug("setup target chars autosave failed: %s", e)
+            logger.debug("setup story preference autosave failed: %s", e)
 
     def _on_target_chars_changed(self, *_args) -> None:
-        """Debounce writes when spinbox value changes."""
+        """Debounce writes when story preference vars change."""
         try:
-            if self._target_chars_save_job is not None:
-                self.after_cancel(self._target_chars_save_job)
-            self._target_chars_save_job = self.after(400, self._persist_target_chars_to_env)
+            if self._story_prefs_save_job is not None:
+                self.after_cancel(self._story_prefs_save_job)
+            self._story_prefs_save_job = self.after(400, self._persist_story_preferences_to_env)
         except Exception as e:
-            logger.debug("schedule target chars persist failed: %s", e)
+            logger.debug("schedule story preference persist failed: %s", e)
 
-    def _persist_target_chars_to_env(self) -> None:
-        """Write TARGET_CHARS to .env."""
+    def _install_story_pref_var_traces(self) -> None:
+        if self._story_prefs_trace_installed:
+            return
+        var_names = [
+            "target_chars",
+            "category",
+            "style",
+            "top_k",
+            "temperature",
+            "model_only",
+            "rag_min_score",
+            "data_dir",
+            "index_dir",
+        ]
+        for name in var_names:
+            var = getattr(self, name, None)
+            if var is None or not hasattr(var, "trace_add"):
+                continue
+            try:
+                var.trace_add("write", self._on_target_chars_changed)
+            except Exception as e:
+                logger.debug("trace_add failed for %s: %s", name, e)
+        self._story_prefs_trace_installed = True
+
+    def _setup_story_preferences_autosave_post_ui(self) -> None:
+        """Install post-UI autosave hooks (prompt/model widgets)."""
+        if hasattr(self, "story_model_var") and hasattr(self.story_model_var, "trace_add"):
+            try:
+                self.story_model_var.trace_add("write", self._on_target_chars_changed)
+            except Exception as e:
+                logger.debug("trace story_model_var failed: %s", e)
+        if hasattr(self, "prompt_text") and not self._story_prefs_prompt_binding_installed:
+            try:
+                self.prompt_text.bind("<KeyRelease>", self._on_prompt_text_changed, add="+")
+                self.prompt_text.bind("<FocusOut>", self._on_prompt_text_changed, add="+")
+                self._story_prefs_prompt_binding_installed = True
+                self._restore_story_requirement_from_env()
+            except Exception as e:
+                logger.debug("bind prompt_text autosave failed: %s", e)
+        self._restore_story_model_from_env()
+
+    def _on_prompt_text_changed(self, _event=None) -> None:
+        self._on_target_chars_changed()
+
+    def _restore_story_requirement_from_env(self) -> None:
+        if not hasattr(self, "prompt_text"):
+            return
+        saved = (os.getenv("STORY_REQUIREMENT", "") or "").strip()
+        if not saved:
+            return
+        try:
+            self.prompt_text.delete("1.0", "end")
+            self.prompt_text.insert("1.0", saved)
+            self.prompt_text.tag_remove("placeholder", "1.0", "end")
+        except Exception as e:
+            logger.debug("restore story requirement failed: %s", e)
+
+    def _restore_story_model_from_env(self) -> None:
+        saved_model = (os.getenv("STORY_UI_MODEL", "") or "").strip()
+        if not saved_model or not hasattr(self, "story_model_var"):
+            return
+        try:
+            self.story_model_var.set(saved_model)
+        except Exception as e:
+            logger.debug("restore story model failed: %s", e)
+
+    def _read_story_requirement(self) -> str:
+        if not hasattr(self, "prompt_text"):
+            return ""
+        try:
+            if hasattr(self, "_get_prompt_content"):
+                return str(self._get_prompt_content() or "").strip()
+            raw = self.prompt_text.get("1.0", "end-1c").strip()
+            if raw.startswith("例如："):
+                return ""
+            return raw
+        except Exception:
+            return ""
+
+    def _persist_story_preferences_to_env(self) -> None:
+        """Write story preferences to .env."""
         try:
             from dotenv import find_dotenv, set_key
 
-            value = int(self.target_chars.get())
-            value = max(500, min(30000, value))
-            if self._target_chars_last_saved == value:
-                return
+            target_chars = 1800
+            try:
+                target_chars = int(self.target_chars.get())
+            except Exception:
+                target_chars = 1800
+            target_chars = max(500, min(30000, target_chars))
+
+            top_k = 6
+            try:
+                top_k = int(self.top_k.get())
+            except Exception:
+                top_k = 6
+            top_k = max(1, min(20, top_k))
+
+            temperature = 0.7
+            try:
+                temperature = float(self.temperature.get())
+            except Exception:
+                temperature = 0.7
+            temperature = max(0.0, min(1.5, temperature))
+
+            rag_min_score = 0.12
+            try:
+                rag_min_score = float(self.rag_min_score.get())
+            except Exception:
+                rag_min_score = 0.12
+            rag_min_score = max(0.0, min(1.0, rag_min_score))
+
+            model_only = False
+            try:
+                model_only = bool(self.model_only.get())
+            except Exception:
+                model_only = False
+
+            payload = {
+                "TARGET_CHARS": str(target_chars),
+                "TOP_K": str(top_k),
+                "TEMPERATURE": f"{temperature:.2f}",
+                "MODEL_ONLY": "1" if model_only else "0",
+                "RAG_MIN_SCORE": f"{rag_min_score:.2f}",
+                "STORY_CATEGORY": str(self.category.get() if hasattr(self, "category") else "").strip(),
+                "STORY_STYLE": str(self.style.get() if hasattr(self, "style") else "").strip(),
+                "STORY_REQUIREMENT": self._read_story_requirement(),
+                "STORY_UI_MODEL": str(self.story_model_var.get() if hasattr(self, "story_model_var") else "").strip(),
+                "DATA_DIR": str(self.data_dir.get() if hasattr(self, "data_dir") else "").strip(),
+                "INDEX_DIR": str(self.index_dir.get() if hasattr(self, "index_dir") else "").strip(),
+            }
 
             env_path_str = find_dotenv(usecwd=True)
             env_path = Path(env_path_str) if env_path_str else Path.cwd() / ".env"
             env_path.touch(exist_ok=True)
-            set_key(str(env_path), "TARGET_CHARS", str(value))
-            self._target_chars_last_saved = value
+            for key, value in payload.items():
+                if self._story_prefs_last_saved.get(key) == value:
+                    continue
+                set_key(str(env_path), key, value)
+                self._story_prefs_last_saved[key] = value
+
+            self._target_chars_last_saved = target_chars
         except Exception as e:
-            logger.debug("persist target chars failed: %s", e)
+            logger.debug("persist story preferences failed: %s", e)
+
+    def _on_app_close(self):
+        """Persist user preferences before exiting."""
+        try:
+            self._persist_story_preferences_to_env()
+        except Exception as e:
+            logger.debug("persist on close failed: %s", e)
+        self.destroy()
 
     def _startup_load_configs(self):
         """启动时统一加载配置"""
         try:
-            self._load_api_config_from_file()  # 先从 JSON 文件加载
+            if not getattr(self, "_api_config_from_file_loaded", False):
+                self._load_api_config_from_file()  # 先从 JSON 文件加载（仅一次）
             self._auto_load_api_config()       # 再从 .env 加载（可能覆盖）
             self._auto_load_story_api_selection()
         except Exception as e:
@@ -142,8 +293,10 @@ class ModernApp(tk.Tk, ProjectMixin, StoryMixin, ImageMixin, DirectorMixin, KbMi
     def _init_variables(self):
         """初始化所有必需的变量"""
         # 路径配置
-        self.data_dir = tk.StringVar(value=str(Path("data").resolve()))
-        self.index_dir = tk.StringVar(value=str(Path("index").resolve()))
+        saved_data_dir = (os.getenv("DATA_DIR", "") or "").strip()
+        saved_index_dir = (os.getenv("INDEX_DIR", "") or "").strip()
+        self.data_dir = tk.StringVar(value=saved_data_dir or str(Path("data").resolve()))
+        self.index_dir = tk.StringVar(value=saved_index_dir or str(Path("index").resolve()))
         
         # API配置
         self.api_key = tk.StringVar(value=os.getenv("DEEPSEEK_API_KEY", ""))
@@ -152,10 +305,33 @@ class ModernApp(tk.Tk, ProjectMixin, StoryMixin, ImageMixin, DirectorMixin, KbMi
         self.api_preset = tk.StringVar(value="DeepSeek")  # API预设选择
         
         # 生成参数
-        self.top_k = tk.IntVar(value=6)
-        self.temperature = tk.DoubleVar(value=0.7)
-        self.category = tk.StringVar(value="职场")
-        self.style = tk.StringVar(value="情感起伏/反转/细节描写/有画面感/口语化")
+        top_k_raw = (os.getenv("TOP_K", "6") or "6").strip()
+        try:
+            top_k_value = int(top_k_raw)
+        except Exception:
+            top_k_value = 6
+        top_k_value = max(1, min(20, top_k_value))
+        self.top_k = tk.IntVar(value=top_k_value)
+
+        temperature_raw = (os.getenv("TEMPERATURE", "0.7") or "0.7").strip()
+        try:
+            temperature_value = float(temperature_raw)
+        except Exception:
+            temperature_value = 0.7
+        temperature_value = max(0.0, min(1.5, temperature_value))
+        self.temperature = tk.DoubleVar(value=temperature_value)
+        rag_min_score_raw = (os.getenv("RAG_MIN_SCORE", "0.12") or "0.12").strip()
+        try:
+            rag_min_score_value = float(rag_min_score_raw)
+        except Exception:
+            rag_min_score_value = 0.12
+        rag_min_score_value = max(0.0, min(1.0, rag_min_score_value))
+        self.rag_min_score = tk.DoubleVar(value=rag_min_score_value)
+        self.category = tk.StringVar(value=(os.getenv("STORY_CATEGORY", "职场") or "职场").strip() or "职场")
+        self.style = tk.StringVar(
+            value=(os.getenv("STORY_STYLE", "情感起伏/反转/细节描写/有画面感/口语化") or "情感起伏/反转/细节描写/有画面感/口语化").strip()
+            or "情感起伏/反转/细节描写/有画面感/口语化"
+        )
         target_chars_raw = (os.getenv("TARGET_CHARS", "1800") or "1800").strip()
         try:
             target_chars_value = int(target_chars_raw)
@@ -163,7 +339,18 @@ class ModernApp(tk.Tk, ProjectMixin, StoryMixin, ImageMixin, DirectorMixin, KbMi
             target_chars_value = 1800
         target_chars_value = max(500, min(30000, target_chars_value))
         self.target_chars = tk.IntVar(value=target_chars_value)
-        self.model_only = tk.BooleanVar(value=True)
+        template_key = (os.getenv("STORY_TEMPLATE_KEY", "") or "").strip() or DEFAULT_STORY_TEMPLATE_KEY
+        self.story_template_key = tk.StringVar(value=template_key)
+        template_strategy_raw = (os.getenv("STORY_TEMPLATE_STRATEGY", "") or "").strip()
+        self.story_template_strategy = tk.StringVar(
+            value=normalize_story_template_strategy(template_strategy_raw or DEFAULT_STORY_TEMPLATE_STRATEGY)
+        )
+        creativity_mode_raw = (os.getenv("STORY_CREATIVITY_MODE", "") or "").strip()
+        self.story_creativity_mode = tk.StringVar(
+            value=normalize_story_creativity_mode(creativity_mode_raw or DEFAULT_STORY_CREATIVITY_MODE)
+        )
+        model_only_raw = (os.getenv("MODEL_ONLY", "0") or "0").strip().lower()
+        self.model_only = tk.BooleanVar(value=model_only_raw in {"1", "true", "yes", "on"})
         
         # 故事内容
         self.current_outline: str | None = None

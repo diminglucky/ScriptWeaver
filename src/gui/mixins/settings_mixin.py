@@ -3,6 +3,8 @@
 将所有配置集中到一个页面
 """
 
+from __future__ import annotations
+
 import os
 import re
 import threading
@@ -13,6 +15,19 @@ from dotenv import load_dotenv
 
 from ..theme import Theme
 from .config_modules.model_routing import MODEL_ROUTING_TASKS
+from ..helpers.story_templates import (
+    DEFAULT_STORY_TEMPLATE_KEY,
+    DEFAULT_STORY_TEMPLATE_STRATEGY,
+    get_story_template,
+    list_story_template_strategies,
+    list_story_templates,
+    normalize_story_template_strategy,
+)
+from ..helpers.story_creativity import (
+    DEFAULT_STORY_CREATIVITY_MODE,
+    list_story_creativity_modes,
+    normalize_story_creativity_mode,
+)
 
 
 class SettingsMixin:
@@ -21,12 +36,10 @@ class SettingsMixin:
     def _fix_entry_colors(self, entry_widget):
         """
         修复Entry组件的颜色问题，防止焦点时变成白底白字
-        使用更强制的方法来保持深色主题
+        使用短时守护重试，避免长期高频轮询带来的性能负担
         """
-        def force_dark_colors(event=None):
-            """强制设置深色主题颜色"""
+        def _apply_dark_colors():
             try:
-                # 强制设置颜色
                 entry_widget.config(
                     bg=Theme.BG_TERTIARY, 
                     fg=Theme.TEXT_PRIMARY,
@@ -37,42 +50,57 @@ class SettingsMixin:
                     disabledforeground=Theme.TEXT_DISABLED,
                     readonlybackground=Theme.BG_TERTIARY
                 )
-                # 使用after确保颜色设置生效
-                entry_widget.after(1, lambda: entry_widget.config(
-                    bg=Theme.BG_TERTIARY, 
-                    fg=Theme.TEXT_PRIMARY,
-                    insertbackground=Theme.TEXT_PRIMARY
-                ))
-                # 再次延迟确保
-                entry_widget.after(10, lambda: entry_widget.config(
-                    bg=Theme.BG_TERTIARY, 
-                    fg=Theme.TEXT_PRIMARY,
-                    insertbackground=Theme.TEXT_PRIMARY
-                ))
             except:
                 pass
-        
-        # 绑定多个事件，确保颜色始终正确
-        entry_widget.bind("<FocusIn>", force_dark_colors)
-        entry_widget.bind("<FocusOut>", force_dark_colors)
-        entry_widget.bind("<Button-1>", force_dark_colors)
-        entry_widget.bind("<KeyPress>", force_dark_colors)
-        entry_widget.bind("<KeyRelease>", force_dark_colors)
-        entry_widget.bind("<ButtonRelease-1>", force_dark_colors)
-        
+
+        def _cancel_guard(_event=None):
+            job = getattr(entry_widget, "_dark_guard_job", None)
+            try:
+                if job:
+                    entry_widget.after_cancel(job)
+            except:
+                pass
+            entry_widget._dark_guard_job = None
+
+        def _schedule_guard(retries: int = 10):
+            _cancel_guard()
+            if retries <= 0:
+                return
+
+            def _tick(left: int):
+                try:
+                    if not entry_widget.winfo_exists():
+                        entry_widget._dark_guard_job = None
+                        return
+                    current_bg = str(entry_widget.cget("bg"))
+                    if current_bg != Theme.BG_TERTIARY:
+                        _apply_dark_colors()
+                    if left > 1:
+                        entry_widget._dark_guard_job = entry_widget.after(200, lambda: _tick(left - 1))
+                    else:
+                        entry_widget._dark_guard_job = None
+                except:
+                    entry_widget._dark_guard_job = None
+
+            _tick(retries)
+
+        def force_dark_colors(event=None):
+            _apply_dark_colors()
+            # 在焦点/输入等关键阶段做短时守护，避免长期循环
+            _schedule_guard(retries=10)
+
+        # 绑定多个事件，确保颜色在关键交互时恢复
+        entry_widget.bind("<FocusIn>", force_dark_colors, add="+")
+        entry_widget.bind("<FocusOut>", force_dark_colors, add="+")
+        entry_widget.bind("<Button-1>", force_dark_colors, add="+")
+        entry_widget.bind("<KeyPress>", force_dark_colors, add="+")
+        entry_widget.bind("<KeyRelease>", force_dark_colors, add="+")
+        entry_widget.bind("<ButtonRelease-1>", force_dark_colors, add="+")
+        entry_widget.bind("<Map>", force_dark_colors, add="+")
+        entry_widget.bind("<Destroy>", _cancel_guard, add="+")
+
         # 初始设置
         force_dark_colors()
-        
-        # 持续监控（每100ms检查一次）
-        def keep_dark():
-            try:
-                current_bg = entry_widget.cget("bg")
-                if current_bg != Theme.BG_TERTIARY:
-                    force_dark_colors()
-                entry_widget.after(100, keep_dark)
-            except:
-                pass
-        keep_dark()
     
     def _build_settings_page(self) -> None:
         """构建统一设置页面"""
@@ -202,6 +230,168 @@ class SettingsMixin:
         self.spin_len = tk.Spinbox(params_frame, from_=500, to=30000, increment=500, textvariable=self.target_chars,
                                    width=8, bg=Theme.SURFACE, fg=Theme.TEXT_PRIMARY, relief=tk.FLAT)
         self.spin_len.pack(side="left")
+
+        if not hasattr(self, "rag_min_score"):
+            self.rag_min_score = tk.DoubleVar(value=0.12)
+        tk.Label(params_frame, text="RAG阈值:", bg=Theme.BG_SECONDARY, fg=Theme.TEXT_PRIMARY, font=("", 11, "bold")).pack(side="left", padx=(20, 5))
+        self.spin_rag_min_score = tk.Spinbox(
+            params_frame,
+            from_=0.0,
+            to=1.0,
+            increment=0.05,
+            textvariable=self.rag_min_score,
+            width=6,
+            bg=Theme.SURFACE,
+            fg=Theme.TEXT_PRIMARY,
+            relief=tk.FLAT,
+        )
+        self.spin_rag_min_score.pack(side="left")
+
+        if not hasattr(self, "story_template_key"):
+            self.story_template_key = tk.StringVar(value=DEFAULT_STORY_TEMPLATE_KEY)
+
+        template_frame = tk.Frame(grp_params, bg=Theme.BG_SECONDARY)
+        template_frame.pack(fill="x", padx=8, pady=(0, 8))
+        tk.Label(
+            template_frame,
+            text="故事模版:",
+            bg=Theme.BG_SECONDARY,
+            fg=Theme.TEXT_PRIMARY,
+            font=("", 11, "bold"),
+        ).pack(side="left", padx=(0, 5))
+
+        template_items = list_story_templates()
+        self.story_template_key_to_label = {
+            item["key"]: item["label"] for item in template_items
+        }
+        self.story_template_label_to_key = {
+            item["label"]: item["key"] for item in template_items
+        }
+        if self.story_template_key.get() not in self.story_template_key_to_label:
+            self.story_template_key.set(DEFAULT_STORY_TEMPLATE_KEY)
+
+        default_label = self.story_template_key_to_label.get(
+            self.story_template_key.get(), template_items[0]["label"]
+        )
+        self.story_template_select_var = tk.StringVar(value=default_label)
+        self.combo_story_template = ttk.Combobox(
+            template_frame,
+            textvariable=self.story_template_select_var,
+            values=list(self.story_template_label_to_key.keys()),
+            state="readonly",
+            width=22,
+        )
+        self.combo_story_template.pack(side="left", padx=(0, 10))
+        self.combo_story_template.bind("<<ComboboxSelected>>", self._on_story_template_changed)
+
+        self.story_template_desc_label = tk.Label(
+            template_frame,
+            text="",
+            bg=Theme.BG_SECONDARY,
+            fg=Theme.TEXT_SECONDARY,
+            justify="left",
+            anchor="w",
+        )
+        self.story_template_desc_label.pack(side="left", fill="x", expand=True)
+        self._update_story_template_desc()
+
+        if not hasattr(self, "story_template_strategy"):
+            self.story_template_strategy = tk.StringVar(value=DEFAULT_STORY_TEMPLATE_STRATEGY)
+
+        strategy_items = list_story_template_strategies()
+        self.story_template_strategy_key_to_label = {
+            item["key"]: item["label"] for item in strategy_items
+        }
+        self.story_template_strategy_label_to_key = {
+            item["label"]: item["key"] for item in strategy_items
+        }
+        current_strategy_key = normalize_story_template_strategy(self.story_template_strategy.get())
+        self.story_template_strategy.set(current_strategy_key)
+
+        strategy_frame = tk.Frame(grp_params, bg=Theme.BG_SECONDARY)
+        strategy_frame.pack(fill="x", padx=8, pady=(0, 8))
+        tk.Label(
+            strategy_frame,
+            text="模版策略:",
+            bg=Theme.BG_SECONDARY,
+            fg=Theme.TEXT_PRIMARY,
+            font=("", 11, "bold"),
+        ).pack(side="left", padx=(0, 5))
+
+        strategy_default_label = self.story_template_strategy_key_to_label.get(
+            current_strategy_key, strategy_items[0]["label"]
+        )
+        self.story_template_strategy_select_var = tk.StringVar(value=strategy_default_label)
+        self.combo_story_template_strategy = ttk.Combobox(
+            strategy_frame,
+            textvariable=self.story_template_strategy_select_var,
+            values=list(self.story_template_strategy_label_to_key.keys()),
+            state="readonly",
+            width=22,
+        )
+        self.combo_story_template_strategy.pack(side="left", padx=(0, 10))
+        self.combo_story_template_strategy.bind(
+            "<<ComboboxSelected>>", self._on_story_template_strategy_changed
+        )
+
+        self.story_template_strategy_desc_label = tk.Label(
+            strategy_frame,
+            text="",
+            bg=Theme.BG_SECONDARY,
+            fg=Theme.TEXT_SECONDARY,
+            justify="left",
+            anchor="w",
+        )
+        self.story_template_strategy_desc_label.pack(side="left", fill="x", expand=True)
+        self._update_story_template_strategy_desc()
+
+        if not hasattr(self, "story_creativity_mode"):
+            self.story_creativity_mode = tk.StringVar(value=DEFAULT_STORY_CREATIVITY_MODE)
+
+        creativity_items = list_story_creativity_modes()
+        self.story_creativity_key_to_label = {
+            item["key"]: item["label"] for item in creativity_items
+        }
+        self.story_creativity_label_to_key = {
+            item["label"]: item["key"] for item in creativity_items
+        }
+        current_creativity_key = normalize_story_creativity_mode(self.story_creativity_mode.get())
+        self.story_creativity_mode.set(current_creativity_key)
+
+        creativity_frame = tk.Frame(grp_params, bg=Theme.BG_SECONDARY)
+        creativity_frame.pack(fill="x", padx=8, pady=(0, 8))
+        tk.Label(
+            creativity_frame,
+            text="创新模式:",
+            bg=Theme.BG_SECONDARY,
+            fg=Theme.TEXT_PRIMARY,
+            font=("", 11, "bold"),
+        ).pack(side="left", padx=(0, 5))
+
+        creativity_default_label = self.story_creativity_key_to_label.get(
+            current_creativity_key, creativity_items[0]["label"]
+        )
+        self.story_creativity_select_var = tk.StringVar(value=creativity_default_label)
+        self.combo_story_creativity = ttk.Combobox(
+            creativity_frame,
+            textvariable=self.story_creativity_select_var,
+            values=list(self.story_creativity_label_to_key.keys()),
+            state="readonly",
+            width=22,
+        )
+        self.combo_story_creativity.pack(side="left", padx=(0, 10))
+        self.combo_story_creativity.bind("<<ComboboxSelected>>", self._on_story_creativity_mode_changed)
+
+        self.story_creativity_desc_label = tk.Label(
+            creativity_frame,
+            text="",
+            bg=Theme.BG_SECONDARY,
+            fg=Theme.TEXT_SECONDARY,
+            justify="left",
+            anchor="w",
+        )
+        self.story_creativity_desc_label.pack(side="left", fill="x", expand=True)
+        self._update_story_creativity_mode_desc()
         
         scrollable_frame = api_frame
         # 页面说明
@@ -676,6 +866,138 @@ class SettingsMixin:
         # 加载快速 API 切换配置
         if hasattr(self, '_load_quick_api_switch'):
             self._load_quick_api_switch()
+
+        if hasattr(self, "_update_story_template_desc"):
+            self._update_story_template_desc()
+        if hasattr(self, "_update_story_template_strategy_desc"):
+            self._update_story_template_strategy_desc()
+        if hasattr(self, "_update_story_creativity_mode_desc"):
+            self._update_story_creativity_mode_desc()
+
+    def _on_story_template_changed(self, _event=None):
+        label = self.story_template_select_var.get().strip() if hasattr(self, "story_template_select_var") else ""
+        key = ""
+        if hasattr(self, "story_template_label_to_key"):
+            key = self.story_template_label_to_key.get(label, "")
+        if not key:
+            key = DEFAULT_STORY_TEMPLATE_KEY
+        if hasattr(self, "story_template_key"):
+            self.story_template_key.set(key)
+        self._update_story_template_desc()
+        self._persist_story_template_selection()
+
+    def _update_story_template_desc(self):
+        if not hasattr(self, "story_template_desc_label"):
+            return
+        key = self.story_template_key.get().strip() if hasattr(self, "story_template_key") else DEFAULT_STORY_TEMPLATE_KEY
+        template = get_story_template(key)
+        label = template.get("label", key)
+        desc = template.get("description", "")
+        self.story_template_desc_label.config(text=f"{label}: {desc}")
+
+    def _persist_story_template_selection(self):
+        try:
+            from pathlib import Path
+            from dotenv import find_dotenv, set_key
+
+            key = self.story_template_key.get().strip() if hasattr(self, "story_template_key") else DEFAULT_STORY_TEMPLATE_KEY
+            if not key:
+                key = DEFAULT_STORY_TEMPLATE_KEY
+            env_path_str = find_dotenv(usecwd=True)
+            env_path = Path(env_path_str) if env_path_str else Path.cwd() / ".env"
+            env_path.touch(exist_ok=True)
+            set_key(str(env_path), "STORY_TEMPLATE_KEY", key)
+        except Exception as e:
+            if hasattr(self, "settings_log"):
+                self.settings_log.insert(END, f"⚠ 保存故事模版失败: {e}\n")
+
+    def _on_story_template_strategy_changed(self, _event=None):
+        label = (
+            self.story_template_strategy_select_var.get().strip()
+            if hasattr(self, "story_template_strategy_select_var")
+            else ""
+        )
+        strategy = ""
+        if hasattr(self, "story_template_strategy_label_to_key"):
+            strategy = self.story_template_strategy_label_to_key.get(label, "")
+        strategy = normalize_story_template_strategy(strategy or DEFAULT_STORY_TEMPLATE_STRATEGY)
+        if hasattr(self, "story_template_strategy"):
+            self.story_template_strategy.set(strategy)
+        self._update_story_template_strategy_desc()
+        self._persist_story_template_strategy()
+
+    def _update_story_template_strategy_desc(self):
+        if not hasattr(self, "story_template_strategy_desc_label"):
+            return
+        strategy_key = DEFAULT_STORY_TEMPLATE_STRATEGY
+        if hasattr(self, "story_template_strategy"):
+            strategy_key = normalize_story_template_strategy(self.story_template_strategy.get())
+        for item in list_story_template_strategies():
+            if item.get("key") == strategy_key:
+                self.story_template_strategy_desc_label.config(
+                    text=f"{item.get('label', strategy_key)}: {item.get('description', '')}"
+                )
+                return
+        self.story_template_strategy_desc_label.config(text=strategy_key)
+
+    def _persist_story_template_strategy(self):
+        try:
+            from pathlib import Path
+            from dotenv import find_dotenv, set_key
+
+            strategy = DEFAULT_STORY_TEMPLATE_STRATEGY
+            if hasattr(self, "story_template_strategy"):
+                strategy = normalize_story_template_strategy(self.story_template_strategy.get())
+                self.story_template_strategy.set(strategy)
+            env_path_str = find_dotenv(usecwd=True)
+            env_path = Path(env_path_str) if env_path_str else Path.cwd() / ".env"
+            env_path.touch(exist_ok=True)
+            set_key(str(env_path), "STORY_TEMPLATE_STRATEGY", strategy)
+        except Exception as e:
+            if hasattr(self, "settings_log"):
+                self.settings_log.insert(END, f"⚠ 保存模版策略失败: {e}\n")
+
+    def _on_story_creativity_mode_changed(self, _event=None):
+        label = self.story_creativity_select_var.get().strip() if hasattr(self, "story_creativity_select_var") else ""
+        mode = ""
+        if hasattr(self, "story_creativity_label_to_key"):
+            mode = self.story_creativity_label_to_key.get(label, "")
+        mode = normalize_story_creativity_mode(mode or DEFAULT_STORY_CREATIVITY_MODE)
+        if hasattr(self, "story_creativity_mode"):
+            self.story_creativity_mode.set(mode)
+        self._update_story_creativity_mode_desc()
+        self._persist_story_creativity_mode()
+
+    def _update_story_creativity_mode_desc(self):
+        if not hasattr(self, "story_creativity_desc_label"):
+            return
+        mode_key = DEFAULT_STORY_CREATIVITY_MODE
+        if hasattr(self, "story_creativity_mode"):
+            mode_key = normalize_story_creativity_mode(self.story_creativity_mode.get())
+        for item in list_story_creativity_modes():
+            if item.get("key") == mode_key:
+                self.story_creativity_desc_label.config(
+                    text=f"{item.get('label', mode_key)}: {item.get('description', '')}"
+                )
+                return
+        self.story_creativity_desc_label.config(text=mode_key)
+
+    def _persist_story_creativity_mode(self):
+        try:
+            from pathlib import Path
+            from dotenv import find_dotenv, set_key
+
+            mode = DEFAULT_STORY_CREATIVITY_MODE
+            if hasattr(self, "story_creativity_mode"):
+                mode = normalize_story_creativity_mode(self.story_creativity_mode.get())
+                self.story_creativity_mode.set(mode)
+            env_path_str = find_dotenv(usecwd=True)
+            env_path = Path(env_path_str) if env_path_str else Path.cwd() / ".env"
+            env_path.touch(exist_ok=True)
+            set_key(str(env_path), "STORY_CREATIVITY_MODE", mode)
+        except Exception as e:
+            if hasattr(self, "settings_log"):
+                self.settings_log.insert(END, f"⚠ 保存创新模式失败: {e}\n")
 
     def _load_model_routing_from_file(self) -> None:
         """从文件加载模型路由配置"""
@@ -1410,6 +1732,17 @@ class SettingsMixin:
             set_key(str(env_path), f"STORY_{safe_preset_name}_KEY", key)
             set_key(str(env_path), f"STORY_{safe_preset_name}_BASE_URL", base_url)
             set_key(str(env_path), f"STORY_{safe_preset_name}_MODEL", model)
+            if hasattr(self, "story_template_key"):
+                template_key = self.story_template_key.get().strip() or DEFAULT_STORY_TEMPLATE_KEY
+                set_key(str(env_path), "STORY_TEMPLATE_KEY", template_key)
+            if hasattr(self, "story_template_strategy"):
+                template_strategy = normalize_story_template_strategy(self.story_template_strategy.get())
+                self.story_template_strategy.set(template_strategy)
+                set_key(str(env_path), "STORY_TEMPLATE_STRATEGY", template_strategy)
+            if hasattr(self, "story_creativity_mode"):
+                creativity_mode = normalize_story_creativity_mode(self.story_creativity_mode.get())
+                self.story_creativity_mode.set(creativity_mode)
+                set_key(str(env_path), "STORY_CREATIVITY_MODE", creativity_mode)
             if hasattr(self, 'target_chars'):
                 try:
                     chars_value = int(self.target_chars.get())
@@ -1417,6 +1750,19 @@ class SettingsMixin:
                     chars_value = 1800
                 chars_value = max(500, min(30000, chars_value))
                 set_key(str(env_path), "TARGET_CHARS", str(chars_value))
+            if hasattr(self, 'model_only'):
+                try:
+                    model_only_value = bool(self.model_only.get())
+                except Exception:
+                    model_only_value = False
+                set_key(str(env_path), "MODEL_ONLY", "1" if model_only_value else "0")
+            if hasattr(self, 'rag_min_score'):
+                try:
+                    rag_min_score_value = float(self.rag_min_score.get())
+                except Exception:
+                    rag_min_score_value = 0.12
+                rag_min_score_value = max(0.0, min(1.0, rag_min_score_value))
+                set_key(str(env_path), "RAG_MIN_SCORE", f"{rag_min_score_value:.2f}")
 
             if hasattr(self, 'quick_story_api'):
                 self.quick_story_api.set(provider_name)
@@ -1636,6 +1982,7 @@ class SettingsMixin:
             # 启动时自动同步图片API到运行时（即使未打开设置页）
             if hasattr(self, '_sync_img_runtime_from_config'):
                 self._sync_img_runtime_from_config()
+            self._api_config_from_file_loaded = True
                 
         except Exception as e:
             print(f"[WARN] 加载配置失败: {e}")
@@ -1660,6 +2007,17 @@ class SettingsMixin:
             story_api = self.quick_story_api.get()
             set_key(str(env_path), "STORY_OUTLINE_GEN_API", story_api)
             set_key(str(env_path), "STORY_STORY_GEN_API", story_api)
+            if hasattr(self, "story_template_key"):
+                template_key = self.story_template_key.get().strip() or DEFAULT_STORY_TEMPLATE_KEY
+                set_key(str(env_path), "STORY_TEMPLATE_KEY", template_key)
+            if hasattr(self, "story_template_strategy"):
+                template_strategy = normalize_story_template_strategy(self.story_template_strategy.get())
+                self.story_template_strategy.set(template_strategy)
+                set_key(str(env_path), "STORY_TEMPLATE_STRATEGY", template_strategy)
+            if hasattr(self, "story_creativity_mode"):
+                creativity_mode = normalize_story_creativity_mode(self.story_creativity_mode.get())
+                self.story_creativity_mode.set(creativity_mode)
+                set_key(str(env_path), "STORY_CREATIVITY_MODE", creativity_mode)
             
             # 保存图片生成 API 选择
             image_api = self.quick_image_api.get()
@@ -1671,6 +2029,19 @@ class SettingsMixin:
                     chars_value = 1800
                 chars_value = max(500, min(30000, chars_value))
                 set_key(str(env_path), "TARGET_CHARS", str(chars_value))
+            if hasattr(self, 'model_only'):
+                try:
+                    model_only_value = bool(self.model_only.get())
+                except Exception:
+                    model_only_value = False
+                set_key(str(env_path), "MODEL_ONLY", "1" if model_only_value else "0")
+            if hasattr(self, 'rag_min_score'):
+                try:
+                    rag_min_score_value = float(self.rag_min_score.get())
+                except Exception:
+                    rag_min_score_value = 0.12
+                rag_min_score_value = max(0.0, min(1.0, rag_min_score_value))
+                set_key(str(env_path), "RAG_MIN_SCORE", f"{rag_min_score_value:.2f}")
             
             # 同步到其他页面的变量
             if hasattr(self, 'outline_gen_api'):
@@ -1693,7 +2064,8 @@ class SettingsMixin:
             import os
             from dotenv import load_dotenv
             
-            load_dotenv(override=True)
+            # Keep runtime/env overrides (e.g. tests or launcher env), and use .env as fallback only.
+            load_dotenv(override=False)
             
             # 加载故事生成 API
             story_api = os.getenv("STORY_OUTLINE_GEN_API", "DeepSeek")
@@ -1705,6 +2077,42 @@ class SettingsMixin:
             if hasattr(self, 'api_preset') and hasattr(self, 'api_presets'):
                 if story_api in self.api_presets:
                     self.api_preset.set(story_api)
+
+            template_key = (os.getenv("STORY_TEMPLATE_KEY", "") or "").strip() or DEFAULT_STORY_TEMPLATE_KEY
+            if hasattr(self, "story_template_key"):
+                self.story_template_key.set(template_key)
+            if hasattr(self, "story_template_key_to_label") and hasattr(self, "story_template_select_var"):
+                template_label = self.story_template_key_to_label.get(template_key)
+                if template_label:
+                    self.story_template_select_var.set(template_label)
+            if hasattr(self, "_update_story_template_desc"):
+                self._update_story_template_desc()
+
+            template_strategy = normalize_story_template_strategy(
+                (os.getenv("STORY_TEMPLATE_STRATEGY", "") or "").strip() or DEFAULT_STORY_TEMPLATE_STRATEGY
+            )
+            if hasattr(self, "story_template_strategy"):
+                self.story_template_strategy.set(template_strategy)
+            if hasattr(self, "story_template_strategy_key_to_label") and hasattr(
+                self, "story_template_strategy_select_var"
+            ):
+                strategy_label = self.story_template_strategy_key_to_label.get(template_strategy)
+                if strategy_label:
+                    self.story_template_strategy_select_var.set(strategy_label)
+            if hasattr(self, "_update_story_template_strategy_desc"):
+                self._update_story_template_strategy_desc()
+
+            creativity_mode = normalize_story_creativity_mode(
+                (os.getenv("STORY_CREATIVITY_MODE", "") or "").strip() or DEFAULT_STORY_CREATIVITY_MODE
+            )
+            if hasattr(self, "story_creativity_mode"):
+                self.story_creativity_mode.set(creativity_mode)
+            if hasattr(self, "story_creativity_key_to_label") and hasattr(self, "story_creativity_select_var"):
+                creativity_label = self.story_creativity_key_to_label.get(creativity_mode)
+                if creativity_label:
+                    self.story_creativity_select_var.set(creativity_label)
+            if hasattr(self, "_update_story_creativity_mode_desc"):
+                self._update_story_creativity_mode_desc()
             
             # 加载图片生成 API
             image_api = os.getenv("IMAGE_GEN_API", "") or os.getenv("IMG_API_PRESET", "OpenAI (DALL-E)")
@@ -1717,6 +2125,19 @@ class SettingsMixin:
                         chars_value = int(chars_raw)
                         chars_value = max(500, min(30000, chars_value))
                         self.target_chars.set(chars_value)
+                    except Exception:
+                        pass
+            if hasattr(self, 'model_only'):
+                model_only_raw = (os.getenv("MODEL_ONLY", "") or "").strip().lower()
+                if model_only_raw:
+                    self.model_only.set(model_only_raw in {"1", "true", "yes", "on"})
+            if hasattr(self, 'rag_min_score'):
+                rag_raw = (os.getenv("RAG_MIN_SCORE", "") or "").strip()
+                if rag_raw:
+                    try:
+                        rag_value = float(rag_raw)
+                        rag_value = max(0.0, min(1.0, rag_value))
+                        self.rag_min_score.set(rag_value)
                     except Exception:
                         pass
             if hasattr(self, 'settings_img_provider') and hasattr(self, 'img_api_providers'):
@@ -1759,4 +2180,3 @@ class SettingsMixin:
             print(f"[OK] 已加载快速 API 切换: 故事={story_api}, 图片={image_api}")
         except Exception as e:
             print(f"[WARN] 加载快速 API 切换失败: {e}")
-
