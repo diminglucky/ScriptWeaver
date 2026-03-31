@@ -31,6 +31,11 @@ class OutlineGeneratorMixin:
 		if not requirement:
 			messagebox.showwarning("提示", "请先输入创作需求/主题")
 			return
+		try:
+			import time
+			self._story_creativity_nonce = str(time.time_ns())
+		except Exception:
+			self._story_creativity_nonce = ""
 		
 		# 目录生成：根据模型路由选择 API
 		fallback_provider = None
@@ -69,43 +74,63 @@ class OutlineGeneratorMixin:
 				return
 		def task(api_config=api_config, selected_api=selected_api, selected_model=selected_model):
 			try:
-				self.set_busy(True)
+				self._ui(self.set_busy, True)
 				self._ui(self.status.set, f"使用 {selected_api} 检索素材并生成目录中...")
 				# 更新顶部状态栏
 				if hasattr(self, 'update_header_status'):
-					self.update_header_status("正在生成目录...", "📝")
+					self._ui(self.update_header_status, "正在生成目录...", "📝")
 				from src.kb.ingest import IngestConfig, KnowledgeBaseIngestor
 				from src.kb.search import KnowledgeBaseSearcher, SearchConfig
 				
 				load_dotenv()
 				if need_build:
 					if hasattr(self, 'update_header_status'):
-						self.update_header_status("正在构建索引...", "⏳")
-					cfg = IngestConfig(data_root=Path(self.data_dir.get()), index_dir=Path(self.index_dir.get()))
+						self._ui(self.update_header_status, "正在构建索引...", "⏳")
+					cfg = IngestConfig(data_root=Path(self._ui_get(self.data_dir.get)), index_dir=Path(self._ui_get(self.index_dir.get)))
 					KnowledgeBaseIngestor(cfg).build()
 				
-				if hasattr(self, 'update_header_status'):
-					self.update_header_status("检索资料中...", "🔍")
-				searcher = KnowledgeBaseSearcher(SearchConfig(index_dir=Path(self.index_dir.get()), top_k=self.top_k.get()))
-				results = searcher.search(requirement, self.top_k.get())
-				contexts = [c for c, _s, _m in results]
+					if hasattr(self, 'update_header_status'):
+						self._ui(self.update_header_status, "检索资料中...", "🔍")
+					searcher = KnowledgeBaseSearcher(SearchConfig(index_dir=Path(self._ui_get(self.index_dir.get)), top_k=self._ui_get(self.top_k.get)))
+					results = searcher.search(requirement, self._ui_get(self.top_k.get))
+					rag_rows = self._postprocess_rag_results(results) if hasattr(self, "_postprocess_rag_results") else results
+					contexts = [c for c, _s, _m in rag_rows]
 				
 				# 使用选中的API配置
 				if hasattr(self, 'update_header_status'):
-					self.update_header_status("AI生成目录中...", "📝")
+					self._ui(self.update_header_status, "AI生成目录中...", "📝")
 				
 				client = DeepSeekClient(
 					api_key=api_key,
 					base_url=_sanitize(api_config.get("base_url", "")),
 					model=selected_model,
 				)
-				outline_prompt = self._build_outline_prompt(requirement, contexts, self.category.get())
+				outline_prompt = self._build_outline_prompt(requirement, contexts, self._ui_get(self.category.get))
+				template = (
+					self._get_story_template_profile(
+						requirement=requirement,
+						category=self._ui_get(self.category.get),
+					)
+					if hasattr(self, "_get_story_template_profile")
+					else {}
+				)
+				outline_system_prompt = template.get(
+					"outline_system_prompt",
+					"你是资深中文创作者与编辑。请先产出结构化目录，不要写正文。",
+				)
 				self._ui(self.output.delete, "1.0", END)
+				if hasattr(self, "_build_story_run_banner"):
+					banner = self._build_story_run_banner(requirement, self._ui_get(self.category.get), rag_rows)
+					if banner:
+						self._ui(self.output.insert, END, banner + "\n\n")
 				self._ui(self.output.insert, END, "生成目录中...\n\n")
+				
+				# For chat api, we can't easily stream to tk directly if not implemented
+				# The client.chat call is blocking, we do it in background
 				outline_text = client.chat([
-					{"role": "system", "content": "你是资深知乎创作者与编辑。请先产出结构化目录，不要写正文。"},
+					{"role": "system", "content": outline_system_prompt},
 					{"role": "user", "content": outline_prompt},
-				], temperature=max(0.4, self.temperature.get() - 0.2))
+				], temperature=max(0.4, self._ui_get(self.temperature.get) - 0.2))
 				self.current_outline = outline_text.strip()
 				estimate = self._estimate_chars(self.current_outline)
 				
@@ -117,7 +142,7 @@ class OutlineGeneratorMixin:
 				self._ui(self.status.set, "目录已生成")
 				# 更新顶部状态栏
 				if hasattr(self, 'update_header_status'):
-					self.update_header_status("目录生成完成", "✅")
+					self._ui(self.update_header_status, "目录生成完成", "✅")
 			except Exception as e:
 				import traceback
 				self._ui(self.output.insert, END, "生成目录出错:\n" + traceback.format_exc() + "\n")
@@ -125,9 +150,9 @@ class OutlineGeneratorMixin:
 				self._ui(self.status.set, "生成目录失败")
 				# 更新顶部状态栏
 				if hasattr(self, 'update_header_status'):
-					self.update_header_status("生成目录失败", "❌")
+					self._ui(self.update_header_status, "生成目录失败", "❌")
 			finally:
-				self.set_busy(False)
+				self._ui(self.set_busy, False)
 		threading.Thread(target=task, daemon=True).start()
 
 	
@@ -141,6 +166,11 @@ class OutlineGeneratorMixin:
 		if not query:
 			messagebox.showwarning("提示", "请先输入创作需求/主题")
 			return
+		try:
+			import time
+			self._story_creativity_nonce = str(time.time_ns())
+		except Exception:
+			self._story_creativity_nonce = ""
 		
 		# 章节生成前置检查：根据模型路由确认 API Key
 		fallback_provider = None
@@ -182,23 +212,24 @@ class OutlineGeneratorMixin:
 			
 			def task():
 				try:
-					self.set_busy(True)
+					self._ui(self.set_busy, True)
 					from src.kb.ingest import IngestConfig, KnowledgeBaseIngestor
 					from src.kb.search import KnowledgeBaseSearcher, SearchConfig
 					load_dotenv()
 					if need_build:
-						cfg = IngestConfig(data_root=Path(self.data_dir.get()), index_dir=Path(self.index_dir.get()))
+						cfg = IngestConfig(data_root=Path(self._ui_get(self.data_dir.get)), index_dir=Path(self._ui_get(self.index_dir.get)))
 						KnowledgeBaseIngestor(cfg).build()
-					searcher = KnowledgeBaseSearcher(SearchConfig(index_dir=Path(self.index_dir.get()), top_k=self.top_k.get()))
-					results = searcher.search(query, self.top_k.get())
-					contexts = [c for c, _s, _m in results]
-					self._generate_single_section_with_contexts(query, contexts, selected_index)
+						searcher = KnowledgeBaseSearcher(SearchConfig(index_dir=Path(self._ui_get(self.index_dir.get)), top_k=self._ui_get(self.top_k.get)))
+						results = searcher.search(query, self._ui_get(self.top_k.get))
+						rag_rows = self._postprocess_rag_results(results) if hasattr(self, "_postprocess_rag_results") else results
+						contexts = [c for c, _s, _m in rag_rows]
+						self._generate_single_section_with_contexts(query, contexts, selected_index)
 				except Exception as e:
 					import traceback
 					self._ui(self.output.insert, END, "\n生成出错:\n" + traceback.format_exc() + "\n")
 					self._ui(messagebox.showerror, "错误", str(e))
 				finally:
-					self.set_busy(False)
+					self._ui(self.set_busy, False)
 			threading.Thread(target=task, daemon=True).start()
 	
 	
@@ -224,30 +255,30 @@ class OutlineGeneratorMixin:
 	def _generate_outline_model_only(self, requirement) -> None:
 		def task():
 			try:
-				self.set_busy(True)
+				self._ui(self.set_busy, True)
 				
 				# 目录生成：根据模型路由选择 API
 				fallback_provider = None
 				if hasattr(self, 'outline_gen_api'):
-					fallback_provider = self.outline_gen_api.get()
+					fallback_provider = self._ui_get(self.outline_gen_api.get)
 				if not fallback_provider and hasattr(self, 'quick_story_api'):
-					fallback_provider = self.quick_story_api.get()
+					fallback_provider = self._ui_get(self.quick_story_api.get)
 				if not fallback_provider and hasattr(self, 'api_preset'):
-					fallback_provider = self.api_preset.get()
+					fallback_provider = self._ui_get(self.api_preset.get)
 				fallback_model = None
 				if hasattr(self, 'story_model_var'):
-					fallback_model = self.story_model_var.get()
+					fallback_model = self._ui_get(self.story_model_var.get)
 				elif hasattr(self, 'model'):
-					fallback_model = self.model.get()
+					fallback_model = self._ui_get(self.model.get)
 				
-				api_config = self._resolve_task_api("story_outline", fallback_provider=fallback_provider, fallback_model=fallback_model)
+				api_config = self._ui_get(lambda: self._resolve_task_api("story_outline", fallback_provider=fallback_provider, fallback_model=fallback_model))
 				selected_api = api_config.get("provider", "")
 				api_key = _sanitize(api_config.get("key", ""))
 				
 				self._ui(self.status.set, f"使用 {selected_api} 生成目录中...")
 				# 更新顶部状态栏
 				if hasattr(self, 'update_header_status'):
-					self.update_header_status("AI生成目录中...", "📝")
+					self._ui(self.update_header_status, "AI生成目录中...", "📝")
 				
 				# 获取用户选择的模型
 				selected_model = api_config.get("model", "")
@@ -258,13 +289,31 @@ class OutlineGeneratorMixin:
 					base_url=_sanitize(api_config.get("base_url", "")),
 					model=selected_model,
 				)
-				prompt = self._build_outline_prompt(requirement, [], self.category.get())
+				prompt = self._ui_get(lambda: self._build_outline_prompt(requirement, [], self.category.get()))
+				template = (
+					self._get_story_template_profile(
+						requirement=requirement,
+						category=self._ui_get(self.category.get),
+					)
+					if hasattr(self, "_get_story_template_profile")
+					else {}
+				)
+				outline_system_prompt = template.get(
+					"outline_system_prompt",
+					"你是资深中文创作者与编辑。请先产出结构化目录，不要写正文。",
+				)
 				self._ui(self.output.delete, "1.0", END)
+				if hasattr(self, "_build_story_run_banner"):
+					banner = self._build_story_run_banner(requirement, self._ui_get(self.category.get), [])
+					if banner:
+						self._ui(self.output.insert, END, banner + "\n\n")
 				self._ui(self.output.insert, END, "生成目录中...\n\n")
+				
+				temperature_val = self._ui_get(self.temperature.get)
 				outline_text = client.chat([
-					{"role": "system", "content": "你是资深知乎创作者与编辑。请先产出结构化目录，不要写正文。"},
+					{"role": "system", "content": outline_system_prompt},
 					{"role": "user", "content": prompt},
-				], temperature=max(0.4, self.temperature.get() - 0.2))
+				], temperature=max(0.4, temperature_val - 0.2))
 				self.current_outline = outline_text.strip()
 				estimate = self._estimate_chars(self.current_outline)
 				
@@ -276,15 +325,15 @@ class OutlineGeneratorMixin:
 				self._ui(self.status.set, "目录已生成")
 				# 更新顶部状态栏
 				if hasattr(self, 'update_header_status'):
-					self.update_header_status("目录生成完成", "✅")
+					self._ui(self.update_header_status, "目录生成完成", "✅")
 			except Exception as e:
 				self._ui(messagebox.showerror, "错误", str(e))
 				self._ui(self.status.set, "生成目录失败")
 				# 更新顶部状态栏
 				if hasattr(self, 'update_header_status'):
-					self.update_header_status("生成目录失败", "❌")
+					self._ui(self.update_header_status, "生成目录失败", "❌")
 			finally:
-				self.set_busy(False)
+				self._ui(self.set_busy, False)
 		threading.Thread(target=task, daemon=True).start()
 
 	
@@ -307,7 +356,7 @@ class OutlineGeneratorMixin:
 			self._ui(self.output.see, END)
 			# 更新顶部状态栏
 			if hasattr(self, 'update_header_status'):
-				self.update_header_status(f"生成中 ({idx+1}/{total_sections})", "📝")
+				self._ui(self.update_header_status, f"生成中 ({idx+1}/{total_sections})", "📝")
 			
 			# 构建本段提示词
 			section_prompt = self._build_section_prompt(
@@ -321,11 +370,20 @@ class OutlineGeneratorMixin:
 				style_part=style_part,
 				target_chars_per_section=target_per_section
 			)
+			template = (
+				self._get_story_template_profile(requirement=requirement, category=category)
+				if hasattr(self, "_get_story_template_profile")
+				else {}
+			)
+			story_system_prompt = template.get(
+				"story_system_prompt",
+				"你是资深中文叙事作者，擅长结合资料写出有观点、有结构的中文故事。",
+			)
 			
 			# 流式生成本段
 			section_content = ""
 			for delta in client.stream([
-				{"role": "system", "content": "你是资深知乎创作者，擅长结合资料写出有观点、有结构的中文故事。"},
+				{"role": "system", "content": story_system_prompt},
 				{"role": "user", "content": section_prompt},
 			], temperature=self.temperature.get(), max_tokens=int(target_per_section*2.5)):
 				self._ui(self.output.insert, END, delta)
@@ -351,23 +409,23 @@ class OutlineGeneratorMixin:
 		"""生成单个章节（无知识库）"""
 		def task():
 			try:
-				self.set_busy(True)
+				self._ui(self.set_busy, True)
 				
 				# 章节生成：根据模型路由选择 API
 				fallback_provider = None
 				if hasattr(self, 'story_gen_api'):
-					fallback_provider = self.story_gen_api.get()
+					fallback_provider = self._ui_get(self.story_gen_api.get)
 				if not fallback_provider and hasattr(self, 'quick_story_api'):
-					fallback_provider = self.quick_story_api.get()
+					fallback_provider = self._ui_get(self.quick_story_api.get)
 				if not fallback_provider and hasattr(self, 'api_preset'):
-					fallback_provider = self.api_preset.get()
+					fallback_provider = self._ui_get(self.api_preset.get)
 				fallback_model = None
 				if hasattr(self, 'story_model_var'):
-					fallback_model = self.story_model_var.get()
+					fallback_model = self._ui_get(self.story_model_var.get)
 				elif hasattr(self, 'model'):
-					fallback_model = self.model.get()
+					fallback_model = self._ui_get(self.model.get)
 				
-				api_config = self._resolve_task_api("story_generate", fallback_provider=fallback_provider, fallback_model=fallback_model)
+				api_config = self._ui_get(lambda: self._resolve_task_api("story_generate", fallback_provider=fallback_provider, fallback_model=fallback_model))
 				selected_api = api_config.get("provider", "")
 				api_key = _sanitize(api_config.get("key", ""))
 				if not api_key:
@@ -389,7 +447,7 @@ class OutlineGeneratorMixin:
 				self._ui(self.output.insert, END, "\n生成出错:\n" + traceback.format_exc() + "\n")
 				self._ui(messagebox.showerror, "错误", str(e))
 			finally:
-				self.set_busy(False)
+				self._ui(self.set_busy, False)
 		threading.Thread(target=task, daemon=True).start()
 	
 	
@@ -451,12 +509,16 @@ class OutlineGeneratorMixin:
 				self.generated_content = parts[2]  # 跳过"生成目录中..."和目录本身
 			elif len(parts) == 2:
 				self.generated_content = current_output.split(self.current_outline)[-1].strip()
+		if not self.generated_content and hasattr(self, "_build_story_run_banner"):
+			banner = self._build_story_run_banner(query, self.category.get(), contexts)
+			if banner:
+				self._ui(self.output.insert, END, banner + "\n\n")
 		
 		# 更新状态
 		self._ui(self.status.set, f"生成第 {section_index+1}/{total_sections} 章: {section['title']}")
 		# 更新顶部状态栏
 		if hasattr(self, 'update_header_status'):
-			self.update_header_status(f"生成章节 ({section_index+1}/{total_sections})", "📝")
+			self._ui(self.update_header_status, f"生成章节 ({section_index+1}/{total_sections})", "📝")
 		self._ui(self.output.insert, END, f"\n{'='*50}\n")
 		self._ui(self.output.insert, END, f"【第 {section_index+1}/{total_sections} 章：{section['title']}】\n\n")
 		self._ui(self.output.see, END)
@@ -473,11 +535,20 @@ class OutlineGeneratorMixin:
 			style_part=self.style.get().strip(),
 			target_chars_per_section=target_per_section
 		)
+		template = (
+			self._get_story_template_profile(requirement=query, category=self.category.get())
+			if hasattr(self, "_get_story_template_profile")
+			else {}
+		)
+		story_system_prompt = template.get(
+			"story_system_prompt",
+			"你是资深中文叙事作者，擅长结合资料写出有观点、有结构的中文故事。",
+		)
 		
 		# 流式生成
 		section_content = ""
 		for delta in client.stream([
-			{"role": "system", "content": "你是资深知乎创作者，擅长结合资料写出有观点、有结构的中文故事。"},
+			{"role": "system", "content": story_system_prompt},
 			{"role": "user", "content": section_prompt},
 		], temperature=self.temperature.get(), max_tokens=int(target_per_section*2.5)):
 			self._ui(self.output.insert, END, delta)
@@ -493,7 +564,7 @@ class OutlineGeneratorMixin:
 		self._ui(self.status.set, f"第 {section_index+1} 章完成（{len(section_content)} 字）")
 		# 更新顶部状态栏
 		if hasattr(self, 'update_header_status'):
-			self.update_header_status(f"第 {section_index+1} 章完成", "✅")
+			self._ui(self.update_header_status, f"第 {section_index+1} 章完成", "✅")
 		
 		# 自动保存
 		self._auto_save_to_project()
@@ -503,23 +574,23 @@ class OutlineGeneratorMixin:
 		"""自动生成所有章节（无知识库）"""
 		def task():
 			try:
-				self.set_busy(True)
+				self._ui(self.set_busy, True)
 				
 				# 自动生成章节：根据模型路由选择 API
 				fallback_provider = None
 				if hasattr(self, 'story_gen_api'):
-					fallback_provider = self.story_gen_api.get()
+					fallback_provider = self._ui_get(self.story_gen_api.get)
 				if not fallback_provider and hasattr(self, 'quick_story_api'):
-					fallback_provider = self.quick_story_api.get()
+					fallback_provider = self._ui_get(self.quick_story_api.get)
 				if not fallback_provider and hasattr(self, 'api_preset'):
-					fallback_provider = self.api_preset.get()
+					fallback_provider = self._ui_get(self.api_preset.get)
 				fallback_model = None
 				if hasattr(self, 'story_model_var'):
-					fallback_model = self.story_model_var.get()
+					fallback_model = self._ui_get(self.story_model_var.get)
 				elif hasattr(self, 'model'):
-					fallback_model = self.model.get()
+					fallback_model = self._ui_get(self.model.get)
 				
-				api_config = self._resolve_task_api("story_generate", fallback_provider=fallback_provider, fallback_model=fallback_model)
+				api_config = self._ui_get(lambda: self._resolve_task_api("story_generate", fallback_provider=fallback_provider, fallback_model=fallback_model))
 				selected_api = api_config.get("provider", "")
 				api_key = _sanitize(api_config.get("key", ""))
 				
@@ -556,7 +627,7 @@ class OutlineGeneratorMixin:
 				self._ui(self.status.set, f"全部完成（{len(self.generated_content)} 字）")
 				# 更新顶部状态栏
 				if hasattr(self, 'update_header_status'):
-					self.update_header_status("全部章节完成", "✅")
+					self._ui(self.update_header_status, "全部章节完成", "✅")
 				self._ui(messagebox.showinfo, "完成", f"所有章节已生成完成！\n\n共 {total_sections} 章，总字数：{len(self.generated_content)} 字")
 			except Exception as e:
 				import traceback
@@ -564,9 +635,9 @@ class OutlineGeneratorMixin:
 				self._ui(messagebox.showerror, "错误", str(e))
 				# 更新顶部状态栏
 				if hasattr(self, 'update_header_status'):
-					self.update_header_status("自动生成失败", "❌")
+					self._ui(self.update_header_status, "自动生成失败", "❌")
 			finally:
-				self.set_busy(False)
+				self._ui(self.set_busy, False)
 		threading.Thread(target=task, daemon=True).start()
 	
 	

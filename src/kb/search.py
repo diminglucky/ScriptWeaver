@@ -6,6 +6,8 @@ from typing import List, Tuple
 
 import numpy as np
 
+from src.kb.model_cache import get_sentence_transformer
+
 
 def _load_kb_backends():
 	"""Load optional KB backends lazily so app startup is platform-safe."""
@@ -43,9 +45,9 @@ class SearchConfig:
 class KnowledgeBaseSearcher:
 	def __init__(self, config: SearchConfig) -> None:
 		self.config = config
-		faiss_backend, sentence_transformer_cls = _load_kb_backends()
+		faiss_backend, _sentence_transformer_cls = _load_kb_backends()
 		self._faiss = faiss_backend
-		self.model = sentence_transformer_cls(config.embedding_model_name)
+		self.model = get_sentence_transformer(config.embedding_model_name)
 		self._load()
 
 	def _load(self) -> None:
@@ -68,4 +70,3 @@ class KnowledgeBaseSearcher:
 				continue
 			results.append((self.chunks[int(idx)], float(score), self.metas[int(idx)]))
 		return results
-

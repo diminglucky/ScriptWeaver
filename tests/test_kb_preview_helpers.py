@@ -4,6 +4,7 @@ from pathlib import Path
 
 from src.gui.mixins.kb_enhancements import _clear_known_index_artifacts
 from src.gui.mixins.kb_enhancements import _discover_supported_files
+from src.gui.mixins.kb_enhancements import _has_valid_index_artifacts
 from src.gui.mixins.kb_enhancements import _search_text_matches
 
 
@@ -65,6 +66,18 @@ class KBPreviewHelperTests(unittest.TestCase):
             self.assertFalse((root / "kb.index").exists())
             self.assertFalse((root / "chunks.npy").exists())
             self.assertTrue(keep.exists())
+
+    def test_has_valid_index_artifacts_accepts_kb_index(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "kb.index").write_bytes(b"a")
+            self.assertTrue(_has_valid_index_artifacts(root))
+
+    def test_has_valid_index_artifacts_accepts_legacy_faiss_index(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "faiss.index").write_bytes(b"a")
+            self.assertTrue(_has_valid_index_artifacts(root))
 
 
 if __name__ == "__main__":

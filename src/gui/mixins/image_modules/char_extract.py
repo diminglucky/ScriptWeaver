@@ -47,8 +47,7 @@ class CharacterExtractMixin:
         self.char_btn_extract.config(state=DISABLED)
         self.char_btn_refresh.config(state=DISABLED)
         self.status.set("🔍 正在分析故事，提取人物设定...")
-        if hasattr(self, 'update_header_status'):
-            self.update_header_status("分析人物...", "🔍")
+        self._header_status("分析人物...", "🔍")
         
         def extract_thread():
             try:
@@ -69,24 +68,22 @@ class CharacterExtractMixin:
                     )
                     self.character_list.append(char)
                 
-                self.after(0, lambda: self._save_all_characters_info())
-                self.after(0, lambda: self._update_character_listbox())
+                self._ui(self._save_all_characters_info)
+                self._ui(self._update_character_listbox)
                 
                 count = len(self.character_list)
-                self.after(0, lambda: self.status.set(f"✅ 成功分析 {count} 个人物的设定"))
-                if hasattr(self, 'update_header_status'):
-                    self.after(0, lambda: self.update_header_status("分析完成", "✅"))
+                self._ui(lambda: self.status.set(f"✅ 成功分析 {count} 个人物的设定"))
+                self._header_status("分析完成", "✅")
                 
             except Exception as e:
                 import traceback
                 traceback.print_exc()
-                self.after(0, lambda: messagebox.showerror("错误", f"提取失败: {str(e)}"))
-                self.after(0, lambda: self.status.set("❌ 提取失败"))
+                self._ui(lambda: messagebox.showerror("错误", f"提取失败: {str(e)}"))
+                self._ui(lambda: self.status.set("❌ 提取失败"))
             finally:
-                self.after(0, lambda: self.char_btn_extract.config(state=NORMAL))
-                self.after(0, lambda: self.char_btn_refresh.config(state=NORMAL))
-                pass
-        
+                self._ui(lambda: self.char_btn_extract.config(state=NORMAL))
+                self._ui(lambda: self.char_btn_refresh.config(state=NORMAL))
+                
         threading.Thread(target=extract_thread, daemon=True).start()
     
     def _update_character_listbox(self) -> None:

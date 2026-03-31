@@ -266,8 +266,9 @@ class CharacterSheetBuilder:
 					photo_path = photos_dir / filename
 					if photo_path.exists():
 						try:
-							img = Image.open(photo_path)
-							photos[(angle, expr)] = img
+							with Image.open(photo_path) as tmp_img:
+								# Keep a copy in memory as we use it to build the sheet
+								photos[(angle, expr)] = tmp_img.copy()
 							print(f"✅ 找到照片: {filename}")
 							break
 						except Exception as e:

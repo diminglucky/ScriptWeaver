@@ -1,5 +1,7 @@
 """Runtime sync helpers extracted from settings mixin."""
 
+from __future__ import annotations
+
 import logging
 import os
 

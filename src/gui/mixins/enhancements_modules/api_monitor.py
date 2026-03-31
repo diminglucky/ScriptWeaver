@@ -101,15 +101,22 @@ class APIMonitorMixin:
 
         if hasattr(self, "status"):
             try:
-                self.status.set(summary)
+                if hasattr(self, "_ui"):
+                    self._ui(self.status.set, summary)
+                else:
+                    self.status.set(summary)
             except Exception as e:
                 logger.debug("set status text failed: %s", e)
 
         if hasattr(self, "update_header_status"):
             try:
-                self.update_header_status(
-                    f"{name}{'可用' if ok else '不可用'}",
-                    "✅" if ok else "❌",
-                )
+                header_text = f"{name}{'可用' if ok else '不可用'}"
+                header_icon = "✅" if ok else "❌"
+                if hasattr(self, "_header_status"):
+                    self._header_status(header_text, header_icon)
+                elif hasattr(self, "_ui"):
+                    self._ui(self.update_header_status, header_text, header_icon)
+                else:
+                    self.update_header_status(header_text, header_icon)
             except Exception as e:
                 logger.debug("update header status failed: %s", e)

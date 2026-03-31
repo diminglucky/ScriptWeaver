@@ -1,5 +1,7 @@
 """Image UI构建"""
 
+from __future__ import annotations
+
 from tkinter import BOTH, LEFT, RIGHT, DISABLED, NORMAL, END, VERTICAL, Y, messagebox, filedialog
 import tkinter as tk
 from tkinter import ttk

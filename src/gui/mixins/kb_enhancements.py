@@ -10,12 +10,13 @@ from pathlib import Path
 from typing import List, Dict, Optional
 import threading
 import logging
+from src.utils.text import read_file_text
 
 
 logger = logging.getLogger(__name__)
 
-SUPPORTED_KB_EXTENSIONS = (".txt", ".md", ".json", ".csv", ".docx", ".pdf")
-SEARCHABLE_KB_EXTENSIONS = {".txt", ".md", ".json", ".csv"}
+SUPPORTED_KB_EXTENSIONS = (".txt", ".md", ".markdown", ".json", ".csv", ".docx", ".pdf")
+SEARCHABLE_KB_EXTENSIONS = {".txt", ".md", ".markdown", ".json", ".csv", ".docx", ".pdf"}
 INDEX_ARTIFACT_NAMES = {"kb.index", "faiss.index", "chunks.npy", "meta.npy"}
 
 
@@ -42,8 +43,7 @@ def _search_text_matches(
         try:
             if file_path.suffix.lower() not in SEARCHABLE_KB_EXTENSIONS:
                 continue
-            with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
-                content = f.read()
+            content = read_file_text(file_path)
             content_lower = content.lower()
             if query_lower not in content_lower:
                 continue
@@ -83,6 +83,12 @@ def _clear_known_index_artifacts(index_dir: Path) -> tuple[int, int]:
         else:
             kept += 1
     return removed, kept
+
+
+def _has_valid_index_artifacts(index_dir: Path) -> bool:
+    if not index_dir.exists():
+        return False
+    return any((index_dir / name).exists() for name in ("kb.index", "faiss.index"))
 
 
 class KBPreviewDialog:
@@ -260,13 +266,8 @@ class KBPreviewDialog:
         try:
             ext = file_path.suffix.lower()
             
-            if ext in ['.txt', '.md', '.json', '.csv']:
-                with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
-                    content = f.read()
-            elif ext == '.docx':
-                content = self._read_docx(file_path)
-            elif ext == '.pdf':
-                content = self._read_pdf(file_path)
+            if ext in SUPPORTED_KB_EXTENSIONS:
+                content = read_file_text(file_path)
             else:
                 content = "不支持的文件格式"
             
@@ -289,33 +290,6 @@ class KBPreviewDialog:
             
         except Exception as e:
             self.preview_text.insert("1.0", f"读取文件失败: {str(e)}")
-    
-    def _read_docx(self, file_path: Path) -> str:
-        """读取Word文档"""
-        try:
-            from docx import Document
-            doc = Document(file_path)
-            paragraphs = [p.text for p in doc.paragraphs]
-            return '\n'.join(paragraphs)
-        except ImportError:
-            return "需要安装 python-docx 库来读取Word文档\npip install python-docx"
-        except Exception as e:
-            return f"读取Word文档失败: {str(e)}"
-    
-    def _read_pdf(self, file_path: Path) -> str:
-        """读取PDF文档"""
-        try:
-            import PyPDF2
-            with open(file_path, 'rb') as f:
-                reader = PyPDF2.PdfReader(f)
-                text = []
-                for page in reader.pages:
-                    text.append(page.extract_text())
-                return '\n'.join(text)
-        except ImportError:
-            return "需要安装 PyPDF2 库来读取PDF文档\npip install PyPDF2"
-        except Exception as e:
-            return f"读取PDF文档失败: {str(e)}"
     
     def _on_search(self, event=None):
         """搜索知识库内容"""
@@ -437,11 +411,11 @@ class KBManagerDialog:
                  font=("", 11, "bold")).pack(anchor="w", padx=15, pady=10)
         
         formats_text = """• 纯文本: .txt
-• Markdown: .md  
+• Markdown: .md / .markdown
 • JSON: .json
 • CSV: .csv
 • Word文档: .docx (需安装 python-docx)
-• PDF文档: .pdf (需安装 PyPDF2)"""
+• PDF文档: .pdf (需安装 pypdf 或 PyPDF2)"""
         
         tk.Label(format_frame, text=formats_text, bg="#2b2b2b", fg="#9CA3AF",
                  justify="left").pack(anchor="w", padx=15, pady=(0, 10))
@@ -493,8 +467,8 @@ class KBManagerDialog:
             stats.append(f"索引文件: {len(index_files)} 个")
             stats.append(f"索引大小: {size_str}")
             
-            # 检查索引是否有效
-            if (self.index_dir / "faiss.index").exists():
+            # 检查索引是否有效（兼容新旧索引文件名）
+            if _has_valid_index_artifacts(self.index_dir):
                 stats.append("索引状态: ✅ 有效")
             else:
                 stats.append("索引状态: ❌ 未构建")
@@ -522,9 +496,9 @@ class KBManagerDialog:
         files = filedialog.askopenfilenames(
             title="选择要添加的文档",
             filetypes=[
-                ("所有支持的格式", "*.txt;*.md;*.json;*.csv;*.docx;*.pdf"),
+                ("所有支持的格式", "*.txt;*.md;*.markdown;*.json;*.csv;*.docx;*.pdf"),
                 ("文本文件", "*.txt"),
-                ("Markdown", "*.md"),
+                ("Markdown", "*.md;*.markdown"),
                 ("JSON", "*.json"),
                 ("CSV", "*.csv"),
                 ("Word文档", "*.docx"),

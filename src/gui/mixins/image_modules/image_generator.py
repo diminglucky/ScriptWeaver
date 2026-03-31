@@ -202,8 +202,7 @@ class ImageGeneratorMixin:
 			try:
 				self._ui(self.img_btn_gen.configure, state=DISABLED)
 				self._ui(self.status.set, "🎨 准备生成图片...")
-				if hasattr(self, 'update_header_status'):
-					self.update_header_status("准备生成图片...", "🎨")
+				self._header_status("准备生成图片...", "🎨")
 				
 				# 步骤1: 判断使用哪个API提供商
 				current_preset = self.img_api_preset.get()
@@ -215,8 +214,7 @@ class ImageGeneratorMixin:
 				
 				self._ui(self.status.set, f"📝 正在翻译【{img_type}】风格图片描述为英文...（步骤1/3）")
 				# 更新顶部状态栏
-				if hasattr(self, 'update_header_status'):
-					self.update_header_status("翻译提示词 (1/3)", "📝")
+				self._header_status("翻译提示词 (1/3)", "📝")
 				
 				# 根据图片类型定义英文风格关键词
 				style_keywords = {
@@ -354,8 +352,7 @@ class ImageGeneratorMixin:
 				
 				self._ui(self.status.set, f"🖼️ 翻译完成，正在调用图片生成API...（步骤2/3）")
 				# 更新顶部状态栏
-				if hasattr(self, 'update_header_status'):
-					self.update_header_status("正在生成图片 (2/3)", "🎨")
+				self._header_status("正在生成图片 (2/3)", "🎨")
 				
 				# 3. 使用对应的客户端生成图片
 				if provider == "hunyuan":
@@ -364,8 +361,7 @@ class ImageGeneratorMixin:
 					
 					self._ui(self.status.set, f"🎨 使用腾讯混元API生成【{img_type}】风格图片...（步骤2/3）")
 					# 更新顶部状态栏
-					if hasattr(self, 'update_header_status'):
-						self.update_header_status("腾讯混元生成中 (2/3)", "🎨")
+					self._header_status("腾讯混元生成中 (2/3)", "🎨")
 					
 					secret_id = self.img_api_key.get().strip()
 					secret_key = self.img_secret_key.get().strip()
@@ -524,16 +520,14 @@ class ImageGeneratorMixin:
 					
 					self._ui(self.status.set, f"✅ 处理生成结果...（步骤3/3）")
 					# 更新顶部状态栏
-					if hasattr(self, 'update_header_status'):
-						self.update_header_status("处理结果 (3/3)", "✅")
+					self._header_status("处理结果 (3/3)", "✅")
 					
 					self.img_last_image = result.image
 					self._ui(self._update_img_preview)
 					self._ui(self.img_btn_save.configure, state=NORMAL)
 					self._ui(self.status.set, f"✨ 【{img_type}】风格图片生成成功！使用腾讯混元模型")
 					# 更新顶部状态栏
-					if hasattr(self, 'update_header_status'):
-						self.update_header_status("图片生成完成", "✅")
+					self._header_status("图片生成完成", "✅")
 					# 自动保存图片到项目
 					self._auto_save_image_to_project()
 					
@@ -559,8 +553,7 @@ class ImageGeneratorMixin:
 					
 					self._ui(self.status.set, f"🎨 使用OpenAI API生成【{img_type}】风格图片...（模型：{model_name}）")
 					# 更新顶部状态栏
-					if hasattr(self, 'update_header_status'):
-						self.update_header_status("OpenAI生成中 (2/3)", "🎨")
+					self._header_status("OpenAI生成中 (2/3)", "🎨")
 					
 					img_client = OpenAIImageClient(
 						api_key=img_api_key, 
@@ -618,16 +611,14 @@ class ImageGeneratorMixin:
 					
 					self._ui(self.status.set, f"✅ 处理生成结果...（步骤3/3）")
 					# 更新顶部状态栏
-					if hasattr(self, 'update_header_status'):
-						self.update_header_status("处理结果 (3/3)", "✅")
+					self._header_status("处理结果 (3/3)", "✅")
 					
 				self.img_last_image = results[0].image
 				self._ui(self._update_img_preview)
 				self._ui(self.img_btn_save.configure, state=NORMAL)
 				self._ui(self.status.set, f"✨ 【{img_type}】风格图片生成成功！提示词：{prompt_en[:40]}...")
 				# 更新顶部状态栏
-				if hasattr(self, 'update_header_status'):
-					self.update_header_status("图片生成完成", "✅")
+				self._header_status("图片生成完成", "✅")
 				# 自动保存图片到项目
 				self._auto_save_image_to_project()
 				
@@ -650,8 +641,7 @@ class ImageGeneratorMixin:
 				self._ui(messagebox.showerror, "错误", msg)
 				self._ui(self.status.set, "❌ 图片生成失败，请检查配置和网络")
 				# 更新顶部状态栏
-				if hasattr(self, 'update_header_status'):
-					self.update_header_status("图片生成失败", "❌")
+				self._header_status("图片生成失败", "❌")
 			finally:
 				self._ui(self.img_btn_gen.configure, state=NORMAL)
 		

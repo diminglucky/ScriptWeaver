@@ -1,0 +1,45 @@
+{
+  "version": 1,
+  "routes": {
+    "story_outline": {
+      "provider": "自定义",
+      "model": "claude-3-7-sonnet-20250219"
+    },
+    "story_generate": {
+      "provider": "自定义",
+      "model": "claude-3-7-sonnet-20250219"
+    },
+    "character_extract": {
+      "provider": "自定义",
+      "model": "gemini-2.5-flash"
+    },
+    "character_description": {
+      "provider": "自定义",
+      "model": "gemini-2.5-pro"
+    },
+    "image_prompt_translate": {
+      "provider": "自定义",
+      "model": "gemini-2.5-pro"
+    },
+    "image_prompt_enhance": {
+      "provider": "自定义",
+      "model": "claude-3-7-sonnet-20250219"
+    },
+    "image_prompt_from_story": {
+      "provider": "自定义",
+      "model": "gemini-2.5-pro"
+    },
+    "image_shot_extract": {
+      "provider": "自定义",
+      "model": "gemini-3-pro-image"
+    },
+    "image_shot_to_desc": {
+      "provider": "自定义",
+      "model": "gemini-3-pro-preview"
+    },
+    "image_prompt_from_shots": {
+      "provider": "自定义",
+      "model": "gemini-2.0-flash"
+    }
+  }
+}

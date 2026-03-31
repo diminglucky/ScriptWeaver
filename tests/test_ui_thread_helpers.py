@@ -9,10 +9,14 @@ from src.gui.mixins.ui_mixin import UiMixin
 class _DummyUi(UiMixin):
     def __init__(self):
         self.after_calls = 0
+        self.header_calls = []
 
     def after(self, delay, callback):
         self.after_calls += 1
         callback()
+
+    def update_header_status(self, text, icon, color=None):
+        self.header_calls.append((text, icon, color))
 
 
 class _DummyMonitor(APIMonitorMixin):
@@ -53,6 +57,11 @@ class UiThreadHelperTests(unittest.TestCase):
     def test_ui_get_returns_value(self):
         obj = _DummyUi()
         self.assertEqual(obj._ui_get(lambda: "v"), "v")
+
+    def test_header_status_wrapper(self):
+        obj = _DummyUi()
+        obj._header_status("ok", "✅")
+        self.assertEqual(obj.header_calls, [("ok", "✅", None)])
 
 
 class ApiMonitorThreadingTests(unittest.TestCase):

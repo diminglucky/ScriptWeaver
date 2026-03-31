@@ -33,13 +33,18 @@
 pip install -r requirements.txt
 ```
 
-可选（仅知识库向量检索需要）：
+可选（知识库高级能力需要）：
 
 ```bash
 pip install faiss-cpu
+pip install python-docx pypdf
 ```
 
-如果 `faiss-cpu` 在当前 Python/平台没有可用 wheel，应用仍可启动；只是在使用“构建索引/检索”时会提示缺依赖。
+说明：
+- `faiss-cpu`：向量索引/检索必需。
+- `python-docx`：读取 `.docx` 必需。
+- `pypdf`：读取 `.pdf` 必需（也兼容已安装 `PyPDF2` 的环境）。
+- 以上依赖缺失时应用仍可启动，但对应能力会提示缺依赖。
 
 ### 2. 配置 API
 
@@ -50,12 +55,22 @@ API_PRESET=DeepSeek
 STORY_DeepSeek_KEY=your_key_here
 STORY_DeepSeek_BASE_URL=https://api.deepseek.com/v1
 STORY_DeepSeek_MODEL=deepseek-chat
+STORY_TEMPLATE_KEY=zhihu_realistic
+STORY_TEMPLATE_STRATEGY=fixed # fixed / rotate / shuffle
+STORY_CREATIVITY_MODE=blend  # stable / blend / wild
+MODEL_ONLY=0                 # 1=仅模型, 0=启用知识库检索
+RAG_MIN_SCORE=0.12           # 检索最低相似度阈值（0-1）
 
 # 兼容旧配置（可选）
 # DEEPSEEK_API_KEY=your_key_here
 # DEEPSEEK_BASE_URL=https://api.deepseek.com/v1
 # DEEPSEEK_MODEL=deepseek-chat
 ```
+
+说明：
+- `STORY_TEMPLATE_STRATEGY`：控制模版多样性。`fixed` 稳定、`rotate` 轮换、`shuffle` 随机。
+- `blend/wild` 会启用“跨模版融合引擎”，在主模版不变的前提下借入副模版规则，提高题材与叙事差异度。
+- `RAG_MIN_SCORE`：检索过滤阈值，数值越高越严格。
 
 ### 3. 启动应用
 
@@ -73,7 +88,7 @@ python run_modern_app.py
 
 ```
 1. 准备素材
-   将参考小说(.txt/.md)放入 data/ 目录
+   将参考素材(.txt/.md/.markdown/.json/.csv/.docx/.pdf)放入 data/ 目录
 
 2. 构建索引
    点击「构建索引」按钮

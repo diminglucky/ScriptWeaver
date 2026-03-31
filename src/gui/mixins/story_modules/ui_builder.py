@@ -16,6 +16,18 @@ except Exception:  # pragma: no cover - fallback for minimal environments
 from src.clients.deepseek_client import DeepSeekClient
 from src.utils.text import sanitize as _sanitize
 from ...theme import Theme
+from ...helpers.story_templates import (
+	DEFAULT_STORY_TEMPLATE_STRATEGY,
+	get_story_template,
+	list_story_template_strategies,
+	normalize_story_template_strategy,
+	resolve_story_template,
+)
+from ...helpers.story_creativity import (
+	DEFAULT_STORY_CREATIVITY_MODE,
+	build_story_creativity_block,
+	normalize_story_creativity_mode,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -474,11 +486,176 @@ class StoryUIBuilderMixin:
 		
 		# 配置行列权重，让output区域可以扩展
 		self.story_tab_create.rowconfigure(3, weight=1)
+		
+		
+	def _get_story_template_strategy(self) -> str:
+		strategy = DEFAULT_STORY_TEMPLATE_STRATEGY
+		if hasattr(self, "story_template_strategy"):
+			try:
+				strategy = self.story_template_strategy.get()
+			except Exception:
+				strategy = DEFAULT_STORY_TEMPLATE_STRATEGY
+		return normalize_story_template_strategy(strategy)
 
-	
+	def _get_story_template_profile(self, requirement: str = "", category: str = ""):
+		key = ""
+		if hasattr(self, "story_template_key"):
+			try:
+				key = (self.story_template_key.get() or "").strip()
+			except Exception:
+				key = ""
+		strategy = self._get_story_template_strategy()
+		return resolve_story_template(
+			key,
+			strategy,
+			nonce=self._get_story_creativity_nonce(),
+			requirement=requirement,
+			category=category,
+		)
+
+	def _get_story_creativity_mode(self) -> str:
+		mode = DEFAULT_STORY_CREATIVITY_MODE
+		if hasattr(self, "story_creativity_mode"):
+			try:
+				mode = self.story_creativity_mode.get()
+			except Exception:
+				mode = DEFAULT_STORY_CREATIVITY_MODE
+		return normalize_story_creativity_mode(mode)
+
+	def _get_story_creativity_nonce(self) -> str:
+		return str(getattr(self, "_story_creativity_nonce", "") or "").strip()
+
+	def _format_story_rules(self, rules):
+		items = []
+		for rule in (rules or []):
+			text = str(rule).strip()
+			if text:
+				items.append(text)
+		if not items:
+			return "- 无"
+		return "\n".join(f"- {item}" for item in items)
+
+	def _get_rag_min_score(self) -> float:
+		raw = 0.12
+		if hasattr(self, "rag_min_score"):
+			try:
+				raw = float(self.rag_min_score.get())
+			except Exception:
+				raw = 0.12
+		return max(0.0, min(1.0, raw))
+
+	def _postprocess_rag_results(self, results):
+		rows = list(results or [])
+		if not rows:
+			return []
+
+		min_score = self._get_rag_min_score()
+		accepted = []
+		seen = set()
+
+		for chunk, score, meta in rows:
+			text = str(chunk or "").strip()
+			if not text:
+				continue
+			try:
+				score_value = float(score)
+			except Exception:
+				score_value = 0.0
+			if score_value < min_score:
+				continue
+			signature = re.sub(r"\s+", " ", text[:260]).strip().lower()
+			if not signature or signature in seen:
+				continue
+			seen.add(signature)
+			accepted.append((text, score_value, meta))
+
+		# 如果阈值过严导致清空，保底返回去重后的前2条，避免完全失去检索上下文。
+		if not accepted:
+			for chunk, score, meta in rows:
+				text = str(chunk or "").strip()
+				if not text:
+					continue
+				signature = re.sub(r"\s+", " ", text[:260]).strip().lower()
+				if not signature or signature in seen:
+					continue
+				seen.add(signature)
+				try:
+					score_value = float(score)
+				except Exception:
+					score_value = 0.0
+				accepted.append((text, score_value, meta))
+				if len(accepted) >= 2:
+					break
+
+		top_k = 6
+		if hasattr(self, "top_k"):
+			try:
+				top_k = int(self.top_k.get())
+			except Exception:
+				top_k = 6
+		return accepted[: max(1, top_k)]
+
+	def _build_story_run_banner(self, requirement: str, category: str, rag_rows=None) -> str:
+		template = self._get_story_template_profile(requirement=requirement, category=category)
+		base_key = str(template.get("base_key", template.get("key", "")) or "").strip()
+		resolved_key = str(template.get("resolved_key", template.get("key", "")) or "").strip()
+		strategy_key = str(template.get("strategy", self._get_story_template_strategy()) or "").strip()
+		strategy_label = strategy_key
+		for row in list_story_template_strategies():
+			if row.get("key") == strategy_key:
+				strategy_label = row.get("label", strategy_key)
+				break
+
+		base_label = get_story_template(base_key).get("label", base_key) if base_key else "默认模版"
+		resolved_label = template.get("label", resolved_key or "默认模版")
+
+		lines = []
+		if base_key and resolved_key and base_key != resolved_key:
+			lines.append(f"🎭 本次模版：{resolved_label}（策略：{strategy_label}，基准：{base_label}）")
+		else:
+			lines.append(f"🎭 本次模版：{resolved_label}（策略：{strategy_label}）")
+
+		rag_items = list(rag_rows or [])
+		if rag_items:
+			lines.append(f"🔎 RAG检索：命中 {len(rag_items)} 条（阈值≥{self._get_rag_min_score():.2f}）")
+			for idx, (_chunk, score, meta) in enumerate(rag_items[:4], start=1):
+				source = "未知来源"
+				if isinstance(meta, (list, tuple)) and meta:
+					try:
+						source = Path(str(meta[0])).name or str(meta[0])
+					except Exception:
+						source = str(meta[0])
+				lines.append(f"  {idx}. {source}（score={float(score):.3f}）")
+		return "\n".join(lines)
+
 	def _build_outline_prompt(self, requirement, contexts, category):
 		ctx = "\n\n".join(f"【资料{i+1}】\n{c}" for i, c in enumerate(contexts))
 		target_chars = self.target_chars.get()
+		style_part = ""
+		if hasattr(self, "style"):
+			try:
+				style_part = self.style.get().strip()
+			except Exception:
+				style_part = ""
+		template = self._get_story_template_profile(requirement=requirement, category=category)
+		template_label = template.get("label", "默认模版")
+		outline_focus = template.get("outline_focus", "围绕主题构建起承转合")
+		outline_rules = self._format_story_rules(template.get("outline_rules", []))
+		creativity_mode = self._get_story_creativity_mode()
+		creativity_rules = build_story_creativity_block(
+			creativity_mode,
+			requirement=requirement,
+			category=category,
+			style_hint=style_part,
+			stage="outline",
+			nonce=self._get_story_creativity_nonce(),
+			primary_template_key=template.get("key", ""),
+		)
+		creativity_part = (
+			f"【创新引擎（{creativity_mode}）】\n{creativity_rules}\n\n"
+			if creativity_rules
+			else ""
+		)
 		# 根据目标字数动态决定章节数
 		if target_chars <= 3000:
 			suggested_sections = "3-4"
@@ -490,13 +667,18 @@ class StoryUIBuilderMixin:
 			suggested_sections = "8-10"
 		
 		return (
-			"基于资料，为知乎读者产出一个简洁的写作目录（仅目录，不要正文）。\n\n"
+			"基于资料产出一个可执行的写作目录（仅目录，不要正文）。\n\n"
 			"【核心要求】\n"
 			f"- 只输出 {suggested_sections} 个主要章节标题，不要子标题、不要要点列表\n"
 			"- 每个章节用数字编号（1. 2. 3. ...）\n"
 			"- 章节名简短有力（5-10字），能体现故事发展\n"
 			"- 结构要符合：开端 → 发展 → 高潮 → 结局\n"
 			"- 不要写\"第一章\"、\"第二章\"，直接写章节内容主题\n\n"
+			"【模版要求】\n"
+			f"- 当前模版：{template_label}\n"
+			f"- 模版导向：{outline_focus}\n"
+			f"{outline_rules}\n\n"
+			f"{creativity_part}"
 			f"【创作信息】\n"
 			f"- 主题/需求：{requirement}\n"
 			f"- 种类：{category}\n"
@@ -516,16 +698,41 @@ class StoryUIBuilderMixin:
 		outline_part = ("\n\n请严格参照下述目录完成写作：\n" + outline.strip()) if outline else ""
 		style_part = self.style.get().strip()
 		target = self.target_chars.get()
+		template = self._get_story_template_profile(requirement=requirement, category=category)
+		template_label = template.get("label", "默认模版")
+		story_focus = template.get("story_focus", "叙事连贯，冲突清晰，结尾有回扣")
+		story_rules = self._format_story_rules(template.get("story_rules", []))
+		creativity_mode = self._get_story_creativity_mode()
+		creativity_rules = build_story_creativity_block(
+			creativity_mode,
+			requirement=requirement,
+			category=category,
+			style_hint=style_part,
+			stage="story",
+			nonce=self._get_story_creativity_nonce(),
+			primary_template_key=template.get("key", ""),
+		)
+		creativity_part = (
+			f"【创新引擎（{creativity_mode}）】\n{creativity_rules}\n\n"
+			if creativity_rules
+			else ""
+		)
+		style_value = style_part if style_part else "自动匹配模版风格"
 		# 计算字数范围
 		min_chars = int(target * 0.9)
 		max_chars = int(target * 1.1)
 		return (
-			"请基于以下资料，创作一篇知乎风格的长篇故事/回答。\n\n"
+			"请基于以下资料，创作一篇长篇中文故事。\n\n"
 			"【核心要求】\n"
 			f"1. **字数要求（强制）**：必须写足 {min_chars}-{max_chars} 字之间，目标 {target} 字。请务必写够长度，不要过早结束。\n"
-			f"2. **种类**：{category}\n"
-			f"3. **风格倾向**：{style_part}\n"
-			f"4. **创作主题/需求**：{requirement}\n\n"
+			f"2. **模版**：{template_label}\n"
+			f"3. **模版导向**：{story_focus}\n"
+			f"4. **种类**：{category}\n"
+			f"5. **风格倾向**：{style_value}\n"
+			f"6. **创作主题/需求**：{requirement}\n\n"
+			"【模版规则】\n"
+			f"{story_rules}\n\n"
+			f"{creativity_part}"
 			"【写作规范】\n"
 			"- 语言自然口语化，逻辑清晰，富有生活气息；\n"
 			"- 不要写标题，直接进入正文；段落衔接自然，避免列表化与生硬小标题；\n"
@@ -547,6 +754,25 @@ class StoryUIBuilderMixin:
 	def _build_section_prompt(self, section, section_index, total_sections, previous_content, requirement, contexts, category, style_part, target_chars_per_section):
 		"""构建单个章节的生成提示词"""
 		ctx = "\n\n".join(f"【资料{i+1}】\n{c}" for i, c in enumerate(contexts)) if contexts else ""
+		template = self._get_story_template_profile(requirement=requirement, category=category)
+		template_label = template.get("label", "默认模版")
+		section_rules = self._format_story_rules(template.get("section_rules", []))
+		creativity_mode = self._get_story_creativity_mode()
+		creativity_rules = build_story_creativity_block(
+			creativity_mode,
+			requirement=requirement,
+			category=category,
+			style_hint=style_part,
+			stage="section",
+			nonce=self._get_story_creativity_nonce(),
+			primary_template_key=template.get("key", ""),
+		)
+		creativity_part = (
+			f"【创新引擎（{creativity_mode}）】\n{creativity_rules}\n\n"
+			if creativity_rules
+			else ""
+		)
+		style_value = style_part if style_part else "自动匹配模版风格"
 		
 		# 计算本节字数范围
 		min_chars = int(target_chars_per_section * 0.85)
@@ -566,13 +792,16 @@ class StoryUIBuilderMixin:
 			context_hint = f"这是故事的第 {section_index + 1} 部分，需要承上启下，保持情节连贯。\n\n前文最后部分：\n{previous_content[-500:] if previous_content else '无'}"
 		
 		return (
-			f"请继续创作知乎风格故事的第 {section_index + 1}/{total_sections} 部分。\n\n"
+			f"请继续创作故事的第 {section_index + 1}/{total_sections} 部分。\n\n"
 			f"【本节要求】\n"
 			f"1. **字数**：必须写足 {min_chars}-{max_chars} 字，目标 {target_chars_per_section} 字\n"
 			f"2. **章节主题**：{section_title}\n"
 			f"3. **要点**：\n{section_items if section_items else '  根据标题自由发挥'}\n"
-			f"4. **种类**：{category}\n"
-			f"5. **风格**：{style_part}\n\n"
+			f"4. **模版**：{template_label}\n"
+			f"5. **种类**：{category}\n"
+			f"6. **风格**：{style_value}\n\n"
+			f"【模版规则】\n{section_rules}\n\n"
+			f"{creativity_part}"
 			f"【上下文】\n{context_hint}\n\n"
 			f"【写作规范】\n"
 			f"- 语言自然口语化，逻辑清晰，富有生活气息\n"
@@ -779,4 +1008,3 @@ class StoryUIBuilderMixin:
 				_ui_call(self.char_model_var.set, default_models[0])
 			
 		logger.info("Using default model list (%d entries)", len(default_models))
-

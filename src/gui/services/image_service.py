@@ -325,7 +325,8 @@ class ImageService:
         
         if isinstance(result, dict) and "ResultImage" in result:
             img_data = base64.b64decode(result["ResultImage"])
-            return Image.open(BytesIO(img_data))
+            with Image.open(BytesIO(img_data)) as tmp_img:
+                return tmp_img.copy()
         return getattr(result, 'image', None)
     
     def generate_with_consistency(

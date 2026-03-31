@@ -42,6 +42,14 @@ class TryChatAPITests(unittest.TestCase):
         self.assertTrue(ok)
         self.assertIn("ok", msg)
 
+    @patch("src.clients.custom_openai_client.create_compatible_client")
+    def test_normalizes_chat_completions_base_url(self, mock_create_client):
+        mock_create_client.return_value = _make_client("pong")
+        ok, _ = try_chat_api("k", "https://api.gpt.ge/v1/chat/completions", "test-model")
+        self.assertTrue(ok)
+        kwargs = mock_create_client.call_args.kwargs
+        self.assertEqual(kwargs.get("base_url"), "https://api.gpt.ge/v1")
+
 
 if __name__ == "__main__":
     unittest.main()

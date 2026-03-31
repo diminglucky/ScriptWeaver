@@ -161,8 +161,7 @@ class CharacterPhotoMixin:
 		# 禁用按钮
 		self.char_btn_gen_photo.config(state=DISABLED)
 		self.status.set(f"🎨 正在生成\"{character_name}\"的照片 (共{total_count}张)...")
-		if hasattr(self, 'update_header_status'):
-			self.update_header_status(f"生成人物照片...", "🎨")
+		self._header_status("生成人物照片...", "🎨")
 
 		# 确保运行时图片配置已同步（即使用户未打开设置页）
 		if hasattr(self, '_sync_img_runtime_from_config'):
@@ -289,10 +288,7 @@ class CharacterPhotoMixin:
 						self.after(0, lambda i=current_index, a=angle_name, e=expr_name: self.status.set(
 							f"🎨 [{i}/{total_count}] 正在生成\"{character_name}\"的{a}照片（{e}）..."
 						))
-						if hasattr(self, 'update_header_status'):
-							self.after(0, lambda i=current_index, a=angle_name, e=expr_name: self.update_header_status(
-								f"[{i}/{total_count}] {a}+{e}...", "🎨"
-							))
+						self._header_status(f"[{current_index}/{total_count}] {angle_name}+{expr_name}...", "🎨")
 						
 						if img_api_type == "hunyuan":
 							# 使用腾讯混元
@@ -304,8 +300,7 @@ class CharacterPhotoMixin:
 								print("腾讯混元API密钥未配置")
 								self.after(0, lambda: messagebox.showerror("错误", "请先在【设置 → 图片生成 API】配置腾讯混元API密钥"))
 								self.after(0, lambda: self.status.set("❌ 未配置API密钥"))
-								if hasattr(self, 'update_header_status'):
-									self.after(0, lambda: self.update_header_status("未配置API", "❌"))
+								self._header_status("未配置API", "❌")
 								return
 							
 							# 🎯 使用专业的提示词构建器（使用当前角度、表情、变体和一致性优化）
@@ -367,7 +362,10 @@ class CharacterPhotoMixin:
 							# 解析base64图片
 							img_base64 = result["ResultImage"]
 							img_data = base64.b64decode(img_base64)
-							img = Image.open(BytesIO(img_data))
+							with Image.open(BytesIO(img_data)) as tmp_img:
+								# If we need to keep the image in memory (e.g., self.character_last_image),
+								# we must copy it before the file-like object is closed.
+								img = tmp_img.copy()
 							
 						else:
 							# 使用OpenAI DALL-E或兼容API
@@ -384,8 +382,7 @@ class CharacterPhotoMixin:
 								print("图片API密钥未配置")
 								self.after(0, lambda: messagebox.showerror("错误", "请先在【设置 → 图片生成 API】配置API密钥"))
 								self.after(0, lambda: self.status.set("❌ 未配置API密钥"))
-								if hasattr(self, 'update_header_status'):
-									self.after(0, lambda: self.update_header_status("未配置API", "❌"))
+								self._header_status("未配置API", "❌")
 								return
 							
 							# Gemini网关对长提示词更敏感，走简化中文提示词路径
@@ -553,8 +550,7 @@ class CharacterPhotoMixin:
 					# 更新参考人物列表
 					self._update_reference_character_list()
 					# 更新顶部状态
-					if hasattr(self, 'update_header_status'):
-						self.update_header_status("照片生成完成", "✅")
+					self._header_status("照片生成完成", "✅")
 				
 				self.after(0, update_ui_and_save)
 				
@@ -599,14 +595,13 @@ class CharacterPhotoMixin:
 							last_prompt = getattr(self, '_last_character_photo_prompt', '')
 							self.settings_log.insert(END, f"📝 最后提示词: {last_prompt[:320]}\n")
 						self.settings_log.see(END)
-					self.after(0, _log_error)
+					self._ui(_log_error)
 				
-				self.after(0, lambda msg=error_msg: messagebox.showerror("生成失败", msg))
-				self.after(0, lambda: self.status.set("❌ 生成照片失败"))
-				if hasattr(self, 'update_header_status'):
-					self.after(0, lambda: self.update_header_status("生成失败", "❌"))
+				self._ui(lambda msg=error_msg: messagebox.showerror("生成失败", msg))
+				self._ui(lambda: self.status.set("❌ 生成照片失败"))
+				self._header_status("生成失败", "❌")
 			finally:
-				self.after(0, lambda: self.char_btn_gen_photo.config(state=NORMAL))
+				self._ui(lambda: self.char_btn_gen_photo.config(state=NORMAL))
 		
 		threading.Thread(target=generate_photo_thread, daemon=True).start()
 	
@@ -854,8 +849,7 @@ class CharacterPhotoMixin:
 		# 禁用按钮
 		self.char_btn_turnaround.config(state=DISABLED)
 		self.status.set(f"🎯 正在生成\"{character_name}\"的三视图组合图...")
-		if hasattr(self, 'update_header_status'):
-			self.update_header_status("生成三视图...", "🎯")
+		self._header_status("生成三视图...", "🎯")
 		
 		def generate_thread():
 			try:
@@ -880,14 +874,14 @@ class CharacterPhotoMixin:
 					secret_key = self.hunyuan_secret_key.get() if hasattr(self, 'hunyuan_secret_key') else ""
 					
 					if not secret_id or not secret_key:
-						self.after(0, lambda: messagebox.showerror("错误", "请先在【设置 → 图片生成 API】配置腾讯混元API密钥"))
+						self._ui(lambda: messagebox.showerror("错误", "请先在【设置 → 图片生成 API】配置腾讯混元API密钥"))
 						return
 					
 					# 优化提示词
 					optimized_prompt = CharacterPromptBuilder.optimize_for_api(turnaround_prompt, "hunyuan", 256)
 					optimized_prompt = CharacterPromptBuilder.sanitize_for_image_safety(optimized_prompt, language="zh")
 					
-					self.after(0, lambda: self.status.set("🚀 正在调用腾讯混元API..."))
+					self._ui(lambda: self.status.set("🚀 正在调用腾讯混元API..."))
 					
 					client = HunyuanImageClient(secret_id=secret_id, secret_key=secret_key)
 					try:
@@ -915,7 +909,8 @@ class CharacterPhotoMixin:
 					
 					img_base64 = result["ResultImage"]
 					img_data = base64.b64decode(img_base64)
-					img = Image.open(BytesIO(img_data))
+					with Image.open(BytesIO(img_data)) as tmp_img:
+						img = tmp_img.copy()
 				else:
 					# 使用OpenAI
 					api_key = self.img_api_key.get().strip() if hasattr(self, 'img_api_key') else ""
@@ -935,10 +930,10 @@ class CharacterPhotoMixin:
 					base_url = base_url or None
 					
 					if not api_key:
-						self.after(0, lambda: messagebox.showerror("错误", "请先在【设置 → 图片生成 API】配置API密钥"))
+						self._ui(lambda: messagebox.showerror("错误", "请先在【设置 → 图片生成 API】配置API密钥"))
 						return
 					
-					self.after(0, lambda: self.status.set("🚀 正在调用图片API..."))
+					self._ui(lambda: self.status.set("🚀 正在调用图片API..."))
 					
 					client = OpenAIImageClient(api_key=api_key, base_url=base_url, model=model)
 					try:
@@ -988,8 +983,7 @@ class CharacterPhotoMixin:
 				def update_ui():
 					self._update_character_photo_preview(img)
 					self.status.set(f"✅ 三视图组合图已生成！可用于保持人物一致性")
-					if hasattr(self, 'update_header_status'):
-						self.update_header_status("三视图完成", "✅")
+					self._header_status("三视图完成", "✅")
 					
 					messagebox.showinfo(
 						"成功", 
@@ -999,18 +993,18 @@ class CharacterPhotoMixin:
 						f"   可将此图作为参考，保持人物一致性"
 					)
 					
-					self._update_reference_character_list()
+					self._ui(self._update_reference_character_list)
 				
-				self.after(0, update_ui)
+				self._ui(update_ui)
 				
 			except Exception as e:
 				import traceback
 				error_detail = traceback.format_exc()
 				print(f"❌ 生成三视图失败:\n{error_detail}")
-				self.after(0, lambda: messagebox.showerror("错误", f"生成失败: {str(e)}"))
-				self.after(0, lambda: self.status.set("❌ 三视图生成失败"))
+				self._ui(lambda: messagebox.showerror("错误", f"生成失败: {str(e)}"))
+				self._ui(lambda: self.status.set("❌ 三视图生成失败"))
 			finally:
-				self.after(0, lambda: self.char_btn_turnaround.config(state=NORMAL))
+				self._ui(lambda: self.char_btn_turnaround.config(state=NORMAL))
 		
 		threading.Thread(target=generate_thread, daemon=True).start()
 	

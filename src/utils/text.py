@@ -6,19 +6,73 @@ from pathlib import Path
 from typing import List
 
 
+KB_SUPPORTED_EXTENSIONS = (
+	".txt",
+	".md",
+	".markdown",
+	".json",
+	".csv",
+	".docx",
+	".pdf",
+)
+
+
 def discover_text_files(root: str | os.PathLike[str]) -> List[Path]:
-	"""Recursively discover likely text files (.txt, .md, .markdown, .md.txt)."""
+	"""Recursively discover KB source files supported by ingest."""
 	root_path = Path(root)
 	candidates: List[Path] = []
 	for path in root_path.rglob("*"):
-		if path.is_file():
-			lower = path.name.lower()
-			if lower.endswith(".txt") or lower.endswith(".md") or lower.endswith(".markdown"):
-				candidates.append(path)
+		if path.is_file() and path.suffix.lower() in KB_SUPPORTED_EXTENSIONS:
+			candidates.append(path)
 	return sorted(candidates)
 
 
+def _read_docx_text(path: Path) -> str:
+	try:
+		from docx import Document  # type: ignore
+	except Exception as exc:
+		raise RuntimeError("读取 .docx 需要安装 python-docx（pip install python-docx）") from exc
+
+	doc = Document(str(path))
+	lines: list[str] = []
+	for p in doc.paragraphs:
+		text = (p.text or "").strip()
+		if text:
+			lines.append(text)
+	for table in doc.tables:
+		for row in table.rows:
+			cells = [(c.text or "").strip() for c in row.cells]
+			cells = [c for c in cells if c]
+			if cells:
+				lines.append(" | ".join(cells))
+	return "\n".join(lines)
+
+
+def _read_pdf_text(path: Path) -> str:
+	reader_cls = None
+	try:
+		from pypdf import PdfReader as reader_cls  # type: ignore
+	except Exception:
+		try:
+			from PyPDF2 import PdfReader as reader_cls  # type: ignore
+		except Exception as exc:
+			raise RuntimeError("读取 .pdf 需要安装 pypdf 或 PyPDF2（pip install pypdf）") from exc
+
+	reader = reader_cls(str(path))
+	parts: list[str] = []
+	for page in reader.pages:
+		text = (page.extract_text() or "").strip()
+		if text:
+			parts.append(text)
+	return "\n\n".join(parts)
+
+
 def read_file_text(path: Path) -> str:
+	ext = path.suffix.lower()
+	if ext == ".docx":
+		return _read_docx_text(path)
+	if ext == ".pdf":
+		return _read_pdf_text(path)
 	with path.open("r", encoding="utf-8", errors="ignore") as f:
 		return f.read()
 
@@ -146,12 +200,23 @@ def _extract_chat_reply(resp) -> str:
 	return _stringify_chat_content(resp)
 
 
+def _normalize_openai_base_url(base_url: str) -> str:
+	"""Normalize OpenAI-compatible base URL to API root."""
+	base = (base_url or "").strip().rstrip("/")
+	if not base:
+		return ""
+	if base.endswith("/chat/completions"):
+		base = base[: -len("/chat/completions")]
+	return base.rstrip("/")
+
+
 def try_chat_api(key: str, base_url: str, model: str) -> tuple[bool, str]:
 	"""测试聊天API是否可用。"""
 	try:
 		from src.clients.custom_openai_client import create_compatible_client
 
-		client = create_compatible_client(api_key=key, base_url=base_url, timeout=30)
+		normalized_base_url = _normalize_openai_base_url(base_url)
+		client = create_compatible_client(api_key=key, base_url=normalized_base_url, timeout=30)
 		resp = client.chat.completions.create(
 			model=model,
 			messages=[{"role": "user", "content": "ping"}],
@@ -180,7 +245,8 @@ def try_image_api(key: str, base_url: str, model: str) -> tuple[bool, str]:
 	try:
 		from src.clients.custom_openai_client import create_compatible_client
 		
-		client = create_compatible_client(api_key=key, base_url=base_url, timeout=30)
+		normalized_base_url = _normalize_openai_base_url(base_url)
+		client = create_compatible_client(api_key=key, base_url=normalized_base_url, timeout=30)
 		
 		# 根据模型选择合适的测试参数
 		if "dall-e-2" in model.lower():
@@ -256,4 +322,3 @@ def parse_outline_sections(outline: str) -> list[dict[str, str]]:
 			})
 	
 	return sections
-

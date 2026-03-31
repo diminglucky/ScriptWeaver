@@ -29,6 +29,7 @@ class ConfigExportMixin:
                 "temperature": self.temperature.get() if hasattr(self, "temperature") else 0.7,
                 "top_k": self.top_k.get() if hasattr(self, "top_k") else 6,
                 "target_chars": self.target_chars.get() if hasattr(self, "target_chars") else 1800,
+                "rag_min_score": self.rag_min_score.get() if hasattr(self, "rag_min_score") else 0.12,
             },
             "api_providers": {},
             "img_api_providers": {},
@@ -89,6 +90,12 @@ class ConfigExportMixin:
                     self.top_k.set(settings.get("top_k", 6))
                 if hasattr(self, "target_chars"):
                     self.target_chars.set(settings.get("target_chars", 1800))
+                if hasattr(self, "rag_min_score"):
+                    try:
+                        raw_rag = float(settings.get("rag_min_score", 0.12))
+                    except Exception:
+                        raw_rag = 0.12
+                    self.rag_min_score.set(max(0.0, min(1.0, raw_rag)))
 
             if "api_providers" in config and hasattr(self, "api_providers"):
                 for name, provider in config["api_providers"].items():

@@ -140,7 +140,8 @@ class CharacterPhotoGallery(tk.Toplevel):
             
             try:
                 # 加载并缩放图片
-                img = Image.open(photo_path)
+                with Image.open(photo_path) as tmp_img:
+                    img = tmp_img.copy()
                 img.thumbnail((THUMB_SIZE, THUMB_SIZE), Image.Resampling.LANCZOS)
                 photo_img = ImageTk.PhotoImage(img)
                 self.photo_images.append(photo_img)  # 保持引用
@@ -184,7 +185,8 @@ class CharacterPhotoGallery(tk.Toplevel):
             preview.configure(bg="#1a1a1a")
             
             # 加载图片
-            img = Image.open(photo_path)
+            with Image.open(photo_path) as tmp_img:
+                img = tmp_img.copy()
             
             # 限制最大尺寸
             max_size = 800

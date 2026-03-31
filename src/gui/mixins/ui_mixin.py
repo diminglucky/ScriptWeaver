@@ -39,6 +39,15 @@ class UiMixin:
         """Read UI state safely from worker threads."""
         return self._ui(func, *args, **kwargs)
 
+    def _header_status(self, text: str, icon: str = "🔄", color: str | None = None):
+        """Thread-safe wrapper for top header status updates."""
+        if not hasattr(self, "update_header_status"):
+            return
+        if color is None:
+            self._ui(self.update_header_status, text, icon)
+            return
+        self._ui(self.update_header_status, text, icon, color)
+
     def _build_ui(self) -> None:
         # Pages container with styled notebook
         self.notebook = ttk.Notebook(self)

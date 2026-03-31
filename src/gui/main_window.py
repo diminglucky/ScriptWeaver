@@ -3,6 +3,7 @@ from __future__ import annotations
 import tkinter as tk
 from tkinter import ttk
 from pathlib import Path
+import os
 
 try:
 	from dotenv import load_dotenv
@@ -13,6 +14,7 @@ except Exception:  # pragma: no cover - optional dependency
 # 组合各功能模块
 from src.gui.mixins import ProjectMixin, StoryMixin, ImageMixin, KbMixin, ConfigMixin, UiMixin, SettingsMixin
 from src.project_manager import ProjectManager
+from src.gui.helpers.story_templates import DEFAULT_STORY_TEMPLATE_KEY
 
 
 class App(tk.Tk, ProjectMixin, StoryMixin, ImageMixin, KbMixin, ConfigMixin, UiMixin, SettingsMixin):
@@ -51,6 +53,8 @@ class App(tk.Tk, ProjectMixin, StoryMixin, ImageMixin, KbMixin, ConfigMixin, UiM
 		self.requirement = tk.StringVar()
 		self.style = tk.StringVar()
 		self.target_chars = tk.IntVar(value=1800)
+		template_key = (os.getenv("STORY_TEMPLATE_KEY", "") or "").strip() or DEFAULT_STORY_TEMPLATE_KEY
+		self.story_template_key = tk.StringVar(value=template_key)
 		
 		# 模型参数
 		self.top_k = tk.IntVar(value=6)

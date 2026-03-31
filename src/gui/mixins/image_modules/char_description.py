@@ -72,8 +72,7 @@ class CharacterDescriptionMixin:
         
         self.char_btn_gen_desc.config(state=DISABLED)
         self.status.set(f"🎨 正在为\"{character_name}\"设计外貌...")
-        if hasattr(self, 'update_header_status'):
-            self.update_header_status("设计外貌...", "🎨")
+        self._header_status("设计外貌...", "🎨")
         
         def design_thread():
             try:
@@ -125,26 +124,25 @@ class CharacterDescriptionMixin:
                     if dna_prompt:
                         self.character_list[index]["dna_prompt"] = dna_prompt
                 
+                
                 # 保存
-                self.after(0, lambda: self._save_all_characters_info())
+                self._ui(self._save_all_characters_info)
                 
                 # 更新UI
-                self.after(0, lambda: self._update_character_description_display(index))
-                self.after(0, lambda: self._update_character_listbox())
-                self.after(0, lambda idx=index: self.char_listbox.selection_set(idx))
+                self._ui(self._update_character_description_display, index)
+                self._ui(self._update_character_listbox)
+                self._ui(self.char_listbox.selection_set, index)
                 
-                self.after(0, lambda: self.status.set(f"✅ 已为\"{character_name}\"设计外貌并生成角色DNA"))
-                if hasattr(self, 'update_header_status'):
-                    self.after(0, lambda: self.update_header_status("设计完成", "✅"))
+                self._ui(self.status.set, f"✅ 已为\"{character_name}\"设计外貌并生成角色DNA")
+                self._header_status("设计完成", "✅")
                 
             except Exception as e:
                 import traceback
                 traceback.print_exc()
-                self.after(0, lambda: messagebox.showerror("错误", f"设计失败: {str(e)}"))
-                self.after(0, lambda: self.status.set("❌ 设计失败"))
+                self._ui(messagebox.showerror, "错误", f"设计失败: {str(e)}")
+                self._ui(self.status.set, "❌ 设计失败")
             finally:
-                self.after(0, lambda: self.char_btn_gen_desc.config(state=NORMAL))
-                pass
+                self._ui(self.char_btn_gen_desc.config, state=NORMAL)
         
         threading.Thread(target=design_thread, daemon=True).start()
     

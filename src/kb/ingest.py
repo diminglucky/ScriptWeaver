@@ -11,6 +11,7 @@ from typing import List, Tuple
 import numpy as np
 from tqdm import tqdm
 
+from src.kb.model_cache import get_sentence_transformer
 from src.utils.text import discover_text_files, read_file_text, clean_text, split_by_length
 
 
@@ -52,9 +53,9 @@ class IngestConfig:
 class KnowledgeBaseIngestor:
 	def __init__(self, config: IngestConfig) -> None:
 		self.config = config
-		faiss_backend, sentence_transformer_cls = _load_kb_backends()
+		faiss_backend, _sentence_transformer_cls = _load_kb_backends()
 		self._faiss = faiss_backend
-		self.model = sentence_transformer_cls(config.embedding_model_name)
+		self.model = get_sentence_transformer(config.embedding_model_name)
 
 	def _embed(self, texts: List[str]) -> np.ndarray:
 		return self.model.encode(texts, show_progress_bar=False, convert_to_numpy=True, normalize_embeddings=True)
@@ -67,13 +68,32 @@ class KnowledgeBaseIngestor:
 
 		chunks: List[str] = []
 		metas: List[Tuple[str, int]] = []  # (source_path, chunk_idx)
+		skipped_files: List[Tuple[Path, str]] = []
 
 		for fp in tqdm(files, desc="Reading & chunking"):
-			text = clean_text(read_file_text(fp))
+			try:
+				text = clean_text(read_file_text(fp))
+			except Exception as e:
+				skipped_files.append((fp, str(e)))
+				continue
+			if not text:
+				continue
 			parts = split_by_length(text, self.config.max_chars, self.config.overlap)
+			if not parts:
+				continue
 			for i, part in enumerate(parts):
 				chunks.append(part)
 				metas.append((str(fp), i))
+
+		if not chunks:
+			if skipped_files:
+				preview = "\n".join([f"- {fp.name}: {msg}" for fp, msg in skipped_files[:5]])
+				raise RuntimeError(
+					"未能从知识库文件提取可索引文本。"
+					"\n请检查文件内容或安装文档解析依赖（python-docx / pypdf）。"
+					f"\n解析失败示例:\n{preview}"
+				)
+			raise RuntimeError(f"No chunkable text found under {self.config.data_root}")
 
 		embeddings = self._embed(chunks).astype("float32")
 		index = self._faiss.IndexFlatIP(embeddings.shape[1])
@@ -83,5 +103,7 @@ class KnowledgeBaseIngestor:
 		np.save(self.config.index_dir / "chunks.npy", np.array(chunks, dtype=object))
 		np.save(self.config.index_dir / "meta.npy", np.array(metas, dtype=object))
 
-		print(f"Saved index to {self.config.index_dir}")
+		if skipped_files:
+			print(f"[WARN] skipped {len(skipped_files)} unreadable files during ingest")
 
+		print(f"Saved index to {self.config.index_dir}")

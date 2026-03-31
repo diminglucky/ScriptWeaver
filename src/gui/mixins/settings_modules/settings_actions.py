@@ -123,3 +123,6 @@ class SettingsActionsMixin:
 
         if hasattr(self, "_load_quick_api_switch"):
             self._load_quick_api_switch()
+
+        if hasattr(self, "_update_story_template_desc"):
+            self._update_story_template_desc()

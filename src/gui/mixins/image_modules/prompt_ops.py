@@ -34,8 +34,7 @@ class PromptOperationsMixin:
 		self._ui(self.status.set, f"✨ 【{img_type}】风格图片生成成功！")
 		
 		# 更新顶部状态栏
-		if hasattr(self, 'update_header_status'):
-			self.update_header_status("图片生成完成", "✅")
+		self._header_status("图片生成完成", "✅")
 		
 		# 自动保存图片到项目
 		self._auto_save_image_to_project()
@@ -479,8 +478,7 @@ class PromptOperationsMixin:
 		from pathlib import Path
 		
 		self.status.set(f"🎨 正在生成\"{character_name}\"的角色设定表...")
-		if hasattr(self, 'update_header_status'):
-			self.update_header_status("生成角色设定表...", "🎨")
+		self._header_status("生成角色设定表...", "🎨")
 		
 		# 禁用按钮
 		if hasattr(self, 'char_btn_generate_sheet'):
@@ -521,19 +519,17 @@ class PromptOperationsMixin:
 							subprocess.run(["xdg-open", str(result_path)], check=False)
 					except (subprocess.SubprocessError, FileNotFoundError) as e:
 						logger.debug("Auto-open generated character sheet failed: %s", e)
+					self.after(0, lambda: self._header_status("设定表生成完成", "✅"))
 				else:
 					self.after(0, lambda: self.status.set("❌ 生成角色设定表失败"))
 					self.after(0, lambda: messagebox.showerror("失败", "生成角色设定表失败！\n请检查是否有足够的照片。"))
+					self.after(0, lambda: self._header_status("生成失败", "❌"))
 				
-				if hasattr(self, 'update_header_status'):
-					self.after(0, lambda: self.update_header_status("设定表生成完成", "✅"))
-			
 			except Exception as e:
 				logger.exception("Failed to generate character sheet")
 				self.after(0, lambda: self.status.set("❌ 生成失败"))
 				self.after(0, lambda: messagebox.showerror("错误", f"生成角色设定表失败：\n{str(e)}"))
-				if hasattr(self, 'update_header_status'):
-					self.after(0, lambda: self.update_header_status("生成失败", "❌"))
+				self.after(0, lambda: self._header_status("生成失败", "❌"))
 			
 			finally:
 				if hasattr(self, 'char_btn_generate_sheet'):

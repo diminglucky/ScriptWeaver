@@ -1,4 +1,38 @@
+import sys
+import types
 import unittest
+
+# --- lightweight stubs to avoid heavy model imports during test discovery ---
+if "sentence_transformers" not in sys.modules:
+    _st_mod = types.ModuleType("sentence_transformers")
+
+    class _DummySentenceTransformer:
+        def __init__(self, *a, **kw):
+            pass
+        def encode(self, *a, **kw):
+            return []
+
+    _st_mod.SentenceTransformer = _DummySentenceTransformer
+    sys.modules["sentence_transformers"] = _st_mod
+
+if "faiss" not in sys.modules:
+    _faiss_mod = types.ModuleType("faiss")
+
+    class _DummyIndex:
+        def __init__(self, *a, **kw):
+            pass
+        def add(self, *a, **kw):
+            pass
+        def search(self, *a, **kw):
+            return [[0.0]], [[-1]]
+
+    def _noop(*a, **kw):
+        return _DummyIndex()
+
+    _faiss_mod.IndexFlatIP = _DummyIndex
+    _faiss_mod.read_index = _noop
+    _faiss_mod.write_index = _noop
+    sys.modules["faiss"] = _faiss_mod
 
 from src.gui.modern_app import ModernApp
 from src.gui.mixins.story_modules.ui_builder import StoryUIBuilderMixin

@@ -74,6 +74,10 @@ class ConfigManager:
 				data = json.load(f)
 				self.custom_presets = data.get('custom_presets', {})
 				return self.custom_presets
+		except json.JSONDecodeError as e:
+			logger.warning("Failed to parse custom presets from %s: %s", self.config_file, e)
+			messagebox.showerror("配置加载失败", f"API预设配置文件格式可能已损坏 ({self.config_file})。\n将使用空配置启动。\n\n详细错误：{str(e)}")
+			return {}
 		except Exception as e:
 			logger.warning("Failed to load custom presets from %s: %s", self.config_file, e)
 			return {}
@@ -140,6 +144,10 @@ class ConfigManager:
 				data = json.load(f)
 				self.custom_image_presets = data.get('custom_image_presets', {})
 				return self.custom_image_presets
+		except json.JSONDecodeError as e:
+			logger.warning("Failed to parse custom image presets from %s: %s", self.config_file, e)
+			messagebox.showerror("配置加载失败", f"图片API预设配置文件格式可能已损坏 ({self.config_file})。\n将使用空配置启动。\n\n详细错误：{str(e)}")
+			return {}
 		except Exception as e:
 			logger.warning("Failed to load custom image presets from %s: %s", self.config_file, e)
 			return {}

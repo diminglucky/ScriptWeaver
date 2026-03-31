@@ -17,8 +17,16 @@ class KbMixin:
 		if not Path(self.data_dir.get()).exists():
 			messagebox.showwarning("提示", "数据目录不存在，请先选择有效的数据目录")
 			return
-		if not any(Path(self.data_dir.get()).rglob("*.txt")) and not any(Path(self.data_dir.get()).rglob("*.md")) and not any(Path(self.data_dir.get()).rglob("*.markdown")):
-			messagebox.showwarning("提示", "数据目录下未发现 .txt/.md/.markdown 文件")
+		if (
+			not any(Path(self.data_dir.get()).rglob("*.txt"))
+			and not any(Path(self.data_dir.get()).rglob("*.md"))
+			and not any(Path(self.data_dir.get()).rglob("*.markdown"))
+			and not any(Path(self.data_dir.get()).rglob("*.json"))
+			and not any(Path(self.data_dir.get()).rglob("*.csv"))
+			and not any(Path(self.data_dir.get()).rglob("*.docx"))
+			and not any(Path(self.data_dir.get()).rglob("*.pdf"))
+		):
+			messagebox.showwarning("提示", "数据目录下未发现 .txt/.md/.markdown/.json/.csv/.docx/.pdf 文件")
 			return
 		def ui_call(func, *args, **kwargs):
 			if hasattr(self, '_ui'):
@@ -114,5 +122,3 @@ class KbMixin:
 		):
 			if hasattr(self, name):
 				getattr(self, name).configure(state=state)
-
-

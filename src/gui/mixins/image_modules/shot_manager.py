@@ -2,6 +2,8 @@
 负责分镜头提取和管理
 """
 
+from __future__ import annotations
+
 from tkinter import BOTH, LEFT, RIGHT, DISABLED, NORMAL, END, VERTICAL, Y, messagebox, filedialog
 import tkinter as tk
 from tkinter import ttk
@@ -178,8 +180,7 @@ class ShotManagerMixin:
 					self.status.set,
 					f"🎞️ 正在使用 {selected_api} 生成导演脚本包（{min_shots}-{max_shots} 镜）..."
 				)
-				if hasattr(self, 'update_header_status'):
-					self.update_header_status("生成导演脚本包...", "🎞️")
+				self._header_status("生成导演脚本包...", "🎞️")
 
 				client = DeepSeekClient(
 					api_key=api_key,
@@ -232,8 +233,7 @@ class ShotManagerMixin:
 				self._ui(self._apply_director_package_to_ui, package, markdown_path)
 			except Exception as e:
 				self._ui(messagebox.showerror, "导演脚本生成失败", str(e))
-				if hasattr(self, 'update_header_status'):
-					self.update_header_status("导演脚本生成失败", "❌")
+				self._header_status("导演脚本生成失败", "❌")
 			finally:
 				self.set_busy(False)
 
@@ -279,8 +279,7 @@ class ShotManagerMixin:
 		if markdown_path:
 			msg += f"（已保存到 {markdown_path}）"
 		self.status.set(msg)
-		if hasattr(self, "update_header_status"):
-			self.update_header_status("导演脚本包生成完成", "✅")
+		self._header_status("导演脚本包生成完成", "✅")
 
 	def _sync_characters_from_director_package(self, package: dict) -> None:
 		"""把导演脚本包中的人物同步到人物列表（用于后续角色图生成）。"""
@@ -600,8 +599,7 @@ class ShotManagerMixin:
 				self.set_busy(True)
 				self._ui(self.status.set, f"🎬 正在使用 {selected_api} 生成{mode_name}分镜（目标{shot_count}个）...")
 				# 更新顶部状态栏
-				if hasattr(self, 'update_header_status'):
-					self.update_header_status(f"生成{mode_name}分镜...", "🎬")
+				self._header_status(f"生成{mode_name}分镜...", "🎬")
 				
 				client = DeepSeekClient(
 					api_key=api_key,
@@ -618,8 +616,7 @@ class ShotManagerMixin:
 				
 				self._ui(self.status.set, "📋 解析分镜头列表...")
 				# 更新顶部状态栏
-				if hasattr(self, 'update_header_status'):
-					self.update_header_status("解析分镜中...", "📋")
+				self._header_status("解析分镜中...", "📋")
 				
 				# 解析分镜列表
 				shots = self._parse_shot_response(resp)
@@ -648,15 +645,13 @@ class ShotManagerMixin:
 						
 						self._ui(self.status.set, f"🎬 已生成{mode_name} {len(shots)} 个分镜（点击列表中的分镜即可选择）")
 						# 更新顶部状态栏
-						if hasattr(self, 'update_header_status'):
-							self.update_header_status("分镜生成完成", "✅")
+						self._header_status("分镜生成完成", "✅")
 					
 					self._ui(update_shots_ui)
 			except Exception as e:
 				self._ui(messagebox.showerror, "错误", str(e))
 				# 更新顶部状态栏
-				if hasattr(self, 'update_header_status'):
-					self.update_header_status("分镜生成失败", "❌")
+				self._header_status("分镜生成失败", "❌")
 			finally:
 				self.set_busy(False)
 		
@@ -867,8 +862,7 @@ class ShotManagerMixin:
 				mode_text = "图生图（只生成动作表情）" if has_photo else "文生图（完整描述）"
 				self._ui(self.status.set, f"📸 正在使用 {selected_api} 生成图片描述（{mode_text}，第{selected_index+1}个分镜）...")
 				# 更新顶部状态栏
-				if hasattr(self, 'update_header_status'):
-					self.update_header_status("生成图片描述...", "📸")
+				self._header_status("生成图片描述...", "📸")
 				client = DeepSeekClient(
 					api_key=api_key,
 					base_url=base_url,
@@ -964,16 +958,14 @@ class ShotManagerMixin:
 				api_type = "腾讯混元简洁版" if is_hunyuan else "精简版"
 				self._ui(self.status.set, f"✨ 已生成【{img_type}】{api_type}图片描述（{char_count}字，可编辑后生成）")
 				# 更新顶部状态栏
-				if hasattr(self, 'update_header_status'):
-					self.update_header_status("图片描述完成", "✅")
+				self._header_status("图片描述完成", "✅")
 			
 				# 智能识别并自动选择参考人物
 				self.after(100, lambda: self._auto_select_characters_from_shot(current_shot, description))
 			except Exception as e:
 				self._ui(messagebox.showerror, "错误", str(e))
 				# 更新顶部状态栏
-				if hasattr(self, 'update_header_status'):
-					self.update_header_status("生成描述失败", "❌")
+				self._header_status("生成描述失败", "❌")
 			finally:
 				self.set_busy(False)
 		
@@ -1055,10 +1047,9 @@ class ShotManagerMixin:
 					self.after(0, lambda idx=i, total=shot_count: self._ui(self.status.set, 
 						f"🎨 [{idx+1}/{total}] 正在生成第 {idx+1} 个分镜的图片..."
 					))
-					if hasattr(self, 'update_header_status'):
-						self.after(0, lambda idx=i, total=shot_count: self.update_header_status(
-							f"[{idx+1}/{total}] 批量生成...", "🎨"
-						))
+					self.after(0, lambda idx=i, total=shot_count: self._header_status(
+						f"[{idx+1}/{total}] 批量生成...", "🎨"
+					))
 					
 					try:
 						# 选择当前分镜
@@ -1086,8 +1077,7 @@ class ShotManagerMixin:
 				# 完成
 				def on_complete():
 					self._ui(self.status.set, f"✅ 批量生成完成！成功 {generated_count} 张，失败 {failed_count} 张")
-					if hasattr(self, 'update_header_status'):
-						self.update_header_status("批量完成", "✅")
+					self._header_status("批量完成", "✅")
 					
 					messagebox.showinfo(
 						"批量生成完成",
