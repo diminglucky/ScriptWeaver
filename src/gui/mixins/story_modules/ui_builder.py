@@ -479,10 +479,16 @@ class StoryUIBuilderMixin:
 												 relief=tk.FLAT, borderwidth=0, highlightthickness=0,
 												 padx=15, pady=15)
 		self.output.grid(row=3, column=0, columnspan=2, sticky="nsew", padx=0, pady=0)
+
+		# 知乎发布区域
+		zhihu_frame = tk.Frame(self.story_tab_create, bg="#2b2b2b")
+		zhihu_frame.grid(row=4, column=0, columnspan=2, sticky="we", padx=10, pady=(0, 4))
+		if hasattr(self, "_build_zhihu_publish_ui"):
+			self._build_zhihu_publish_ui(zhihu_frame)
 		
 		self.status = tk.StringVar(value="就绪")
 		status_bar = ttk.Label(self.story_tab_create, textvariable=self.status, anchor="w")
-		status_bar.grid(row=4, column=0, columnspan=2, sticky="we", padx=10, pady=(0, 8))
+		status_bar.grid(row=5, column=0, columnspan=2, sticky="we", padx=10, pady=(0, 8))
 		
 		# 配置行列权重，让output区域可以扩展
 		self.story_tab_create.rowconfigure(3, weight=1)

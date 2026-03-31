@@ -25,6 +25,69 @@ def print(*args, **kwargs):  # type: ignore[override]
 
 class OutlineGeneratorMixin:
 	"""Story outline_generator 功能"""
+
+	def _is_section_tail_complete(self, text: str) -> bool:
+		"""Heuristic check: whether a chapter tail looks complete."""
+		tail = (text or "").strip()
+		if not tail:
+			return False
+		# Ends with terminal punctuation (allow trailing closing quotes/brackets)
+		if re.search(r"[。！？!?…；;][”’」』】》）)]*\s*$", tail):
+			return True
+		return False
+
+	def _repair_section_tail_if_needed(self, client, section_title: str, section_content: str) -> str:
+		"""
+		If section tail looks truncated, ask model for a short natural ending.
+		Returns extra text to append (may be empty).
+		"""
+		if self._is_section_tail_complete(section_content):
+			return ""
+
+		tail = (section_content or "").strip()
+		if len(tail) < 60:
+			return ""
+		tail = tail[-450:]
+		try:
+			temp = float(self.temperature.get())
+		except Exception:
+			temp = 0.7
+		temp = max(0.4, min(0.9, temp))
+
+		prompt = (
+			"你是中文小说润色编辑。下面这一章的结尾疑似被截断。\n"
+			"请只补写一个自然收束的结尾段（约80-220字），满足：\n"
+			"1) 仅续写，不重复已出现原句；\n"
+			"2) 不新增章节标题、不总结全文；\n"
+			"3) 保持当前叙事语气；\n"
+			"4) 最后必须以完整句号/问号/感叹号结束。\n\n"
+			f"章节标题：{section_title}\n"
+			f"当前结尾片段：\n{tail}\n\n"
+			"请直接输出补写内容："
+		)
+		try:
+			extra = client.chat(
+				[{"role": "user", "content": prompt}],
+				temperature=temp,
+			).strip()
+		except Exception as e:
+			logger.debug("repair section tail failed: %s", e)
+			return ""
+
+		if not extra:
+			return ""
+
+		# Keep patch small and avoid model adding extra headers.
+		extra = re.sub(r"^\s*【?第.*?章[：:】]\s*", "", extra)
+		extra = re.sub(r"^\s*(补写|续写|续：)\s*", "", extra)
+		extra = extra.strip()
+		if not extra:
+			return ""
+		if len(extra) > 280:
+			extra = extra[:280].rstrip()
+		if not self._is_section_tail_complete(extra):
+			extra = extra.rstrip("，,：:；;、") + "。"
+		return extra
 	
 	def on_generate_outline(self) -> None:
 		requirement = self._get_prompt_content()
@@ -547,13 +610,24 @@ class OutlineGeneratorMixin:
 		
 		# 流式生成
 		section_content = ""
+		max_tokens = max(1200, min(8192, int(target_per_section * 3.2)))
 		for delta in client.stream([
 			{"role": "system", "content": story_system_prompt},
 			{"role": "user", "content": section_prompt},
-		], temperature=self.temperature.get(), max_tokens=int(target_per_section*2.5)):
+		], temperature=self.temperature.get(), max_tokens=max_tokens):
 			self._ui(self.output.insert, END, delta)
 			self._ui(self.output.see, END)
 			section_content += delta
+
+		# 如果章节末尾疑似截断，自动补一个收束段，避免上下章衔接断裂
+		tail_patch = self._repair_section_tail_if_needed(client, section.get("title", ""), section_content)
+		if tail_patch:
+			if not section_content.endswith("\n"):
+				section_content += "\n"
+				self._ui(self.output.insert, END, "\n")
+			section_content += tail_patch
+			self._ui(self.output.insert, END, tail_patch)
+			self._ui(self.output.see, END)
 		
 		# 累积内容
 		self.generated_content += "\n\n" + section_content
