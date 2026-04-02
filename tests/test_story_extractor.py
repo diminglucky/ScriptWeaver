@@ -63,6 +63,8 @@ class StoryExtractorTests(unittest.TestCase):
         text = (
             "No text-like files found under /tmp/data\n"
             "未找到索引，是否现在根据当前数据目录自动构建？\n"
+            "🧭 题材纠偏：检测到需求更偏“校园”\n"
+            "对齐检查提示：章节标题过于通用\n"
             "正在构建索引...\n"
             "这是正文第一段。\n"
             "这是正文第二段。"
@@ -72,7 +74,34 @@ class StoryExtractorTests(unittest.TestCase):
         self.assertIn("这是正文第二段。", cleaned)
         self.assertNotIn("No text-like files found under", cleaned)
         self.assertNotIn("未找到索引", cleaned)
+        self.assertNotIn("题材纠偏", cleaned)
+        self.assertNotIn("对齐检查提示", cleaned)
         self.assertNotIn("正在构建索引", cleaned)
+
+    def test_sanitize_for_zhihu_publish_neutralizes_mentions_but_keeps_email(self):
+        text = (
+            "正文第一段。\n"
+            "@张三 你说得对。\n"
+            "邮箱: test.user@example.com\n"
+            "他说：@李四 继续。\n"
+            "他说@王五，后来沉默。"
+        )
+        cleaned = StoryExtractor.sanitize_for_zhihu_publish(text)
+        self.assertIn("＠张三", cleaned)
+        self.assertIn("＠李四", cleaned)
+        self.assertIn("他说＠王五", cleaned)
+        self.assertIn("test.user@example.com", cleaned)
+        self.assertNotIn("@张三", cleaned)
+        self.assertNotIn("@李四", cleaned)
+
+    def test_extract_pure_story_keeps_numbered_lines_after_story_started(self):
+        text = (
+            "这是第一段正文。\n"
+            "1. 证据清单。\n"
+            "第二段正文。"
+        )
+        pure = StoryExtractor.extract_pure_story(text)
+        self.assertIn("1. 证据清单。", pure)
 
 
 if __name__ == "__main__":

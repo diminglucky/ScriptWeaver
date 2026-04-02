@@ -15,6 +15,7 @@ class StoryExtractor:
         r"^\s*\d+[\.、]\s*.+[（(]\s*score\s*=\s*\d+(?:\.\d+)?\s*[）)]\s*$",
         re.IGNORECASE,
     )
+    _EMAIL_PATTERN = re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b")
 
     @staticmethod
     def _is_runtime_marker_line(stripped: str) -> bool:
@@ -26,6 +27,8 @@ class StoryExtractor:
             "🔎 RAG检索：",
             "🧠 创新引擎",
             "📊 RAG检索：",
+            "🧭 题材纠偏：",
+            "对齐检查提示：",
         )
         if stripped.startswith(fixed_prefixes):
             return True
@@ -42,6 +45,7 @@ class StoryExtractor:
             r"^正在生成第\s*\d+/\d+\s*章.*$",
             r"^No text-like files found under .+$",
             r"^未找到索引.*$",
+            r"^目录对齐不足.*$",
             r"^[🎭🔎📊🧭📝⏳✅❌]+\s*.*(策略|命中|score=|阈值).*$",
         )
         for pattern in patterns:
@@ -103,12 +107,13 @@ class StoryExtractor:
             if re.match(r"^[🎉]*\s*全部章节生成完成[！!]\s*共\s*\d+\s*章.*总字数[：:]\s*\d+\s*字", stripped):
                 continue
 
-            if re.match(r"^目录\s*[（\(].*共.*[章节篇].*字.*[）\)]", stripped):
-                continue
-            if re.match(r"^\d+[\.、]\s*.{1,30}$", stripped):
-                continue
-            if re.match(r"^第[一二三四五六七八九十百千\d]+[章节篇][\s：:]*.*$", stripped) and len(stripped) < 35:
-                continue
+            if not in_story:
+                if re.match(r"^目录\s*[（\(].*共.*[章节篇].*字.*[）\)]", stripped):
+                    continue
+                if re.match(r"^\d+[\.、]\s*.{1,30}$", stripped):
+                    continue
+                if re.match(r"^第[一二三四五六七八九十百千\d]+[章节篇][\s：:]*.*$", stripped) and len(stripped) < 35:
+                    continue
             if re.match(r"^[=\-_]{3,}$", stripped):
                 continue
             if re.match(r"^[*#\-=_\s]+$", stripped):
@@ -141,6 +146,30 @@ class StoryExtractor:
         cleaned = "\n".join(cleaned_lines).strip()
         cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
         return cleaned
+
+    @staticmethod
+    def sanitize_for_zhihu_publish(text: str) -> str:
+        """
+        Zhihu-specific sanitize pass.
+        Neutralize mention-style `@` to avoid editor mention popups while keeping emails.
+        """
+        cleaned = StoryExtractor.sanitize_for_publish(text)
+        if not cleaned:
+            return ""
+
+        protected_emails: list[str] = []
+
+        def _protect_email(match: re.Match[str]) -> str:
+            protected_emails.append(match.group(0))
+            return f"__EMAIL_TOKEN_{len(protected_emails) - 1}__"
+
+        text_with_tokens = StoryExtractor._EMAIL_PATTERN.sub(_protect_email, cleaned)
+        text_with_tokens = text_with_tokens.replace("@", "＠")
+
+        for idx, email in enumerate(protected_emails):
+            text_with_tokens = text_with_tokens.replace(f"__EMAIL_TOKEN_{idx}__", email)
+
+        return text_with_tokens
 
     @staticmethod
     def extract_title_from_story(full_text: str) -> Optional[str]:

@@ -218,11 +218,17 @@ class ZhihuPublisher:
                 await asyncio.sleep(0.4)
                 await self.page.keyboard.press("Control+A")
                 await asyncio.sleep(0.2)
-                await self.page.keyboard.type(title, delay=25)
+                try:
+                    await self.page.keyboard.insert_text(title)
+                except Exception:
+                    await self.page.keyboard.type(title, delay=25)
                 await self.page.keyboard.press("Tab")
                 await asyncio.sleep(0.4)
             else:
-                await self.page.keyboard.type(title, delay=25)
+                try:
+                    await self.page.keyboard.insert_text(title)
+                except Exception:
+                    await self.page.keyboard.type(title, delay=25)
                 await self.page.keyboard.press("Tab")
                 await asyncio.sleep(0.4)
 
@@ -255,7 +261,11 @@ class ZhihuPublisher:
                 if not paragraph.strip():
                     continue
                 current += 1
-                await self.page.keyboard.type(paragraph.strip(), delay=8)
+                text = paragraph.strip()
+                try:
+                    await self.page.keyboard.insert_text(text)
+                except Exception:
+                    await self.page.keyboard.type(text, delay=8)
                 await self.page.keyboard.press("Enter")
                 if current % 5 == 0 and progress_callback:
                     progress = int((current / total_paragraphs) * 100)
@@ -334,4 +344,3 @@ def publish_to_zhihu_sync(
                 loop.close()
             except Exception:
                 pass
-

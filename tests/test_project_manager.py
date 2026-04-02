@@ -63,6 +63,36 @@ class ProjectManagerMetadataTests(unittest.TestCase):
 
             self.assertFalse(target.exists())
 
+    def test_last_project_marker_roundtrip_and_clear(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            workspace = root / "projects"
+            workspace.mkdir(parents=True, exist_ok=True)
+            manager = ProjectManager(workspace=workspace)
+            project = manager.create_project("最近项目")
+
+            manager.set_last_project(project.project_dir)
+            last_project = manager.get_last_project()
+            self.assertIsNotNone(last_project)
+            self.assertEqual(Path(last_project), Path(project.project_dir).resolve())
+
+            manager.clear_last_project()
+            self.assertIsNone(manager.get_last_project())
+
+    def test_last_project_marker_ignores_deleted_project(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            workspace = root / "projects"
+            workspace.mkdir(parents=True, exist_ok=True)
+            manager = ProjectManager(workspace=workspace)
+            project = manager.create_project("临时项目")
+            marker_target = Path(project.project_dir)
+
+            manager.set_last_project(marker_target)
+            manager.delete_project(marker_target)
+
+            self.assertIsNone(manager.get_last_project())
+
 
 if __name__ == "__main__":
     unittest.main()

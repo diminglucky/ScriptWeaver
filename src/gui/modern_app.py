@@ -279,6 +279,8 @@ class ModernApp(tk.Tk, ProjectMixin, StoryMixin, ImageMixin, DirectorMixin, KbMi
                 self._load_api_config_from_file()  # 先从 JSON 文件加载（仅一次）
             self._auto_load_api_config()       # 再从 .env 加载（可能覆盖）
             self._auto_load_story_api_selection()
+            if hasattr(self, "_auto_restore_last_project_on_startup"):
+                self._auto_restore_last_project_on_startup()
         except Exception as e:
             logger.warning("startup config load failed: %s", e)
     

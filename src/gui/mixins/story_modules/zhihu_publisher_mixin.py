@@ -4,18 +4,48 @@ Zhihu publish feature mixin.
 
 from __future__ import annotations
 
+import os
 import threading
 import tkinter as tk
+from pathlib import Path
 from tkinter import END, messagebox, scrolledtext, ttk
 
 from src.clients.deepseek_client import DeepSeekClient
-from src.gui.helpers.story_writing_guardrails import normalize_article_title
+from src.gui.helpers.story_writing_guardrails import (
+    get_article_title_limits,
+    get_non_ai_banned_phrases,
+    normalize_article_title,
+)
 from src.utils.story_extractor import StoryExtractor
 from src.utils.text import sanitize as _sanitize
+
+try:
+    from dotenv import find_dotenv, set_key
+except Exception:  # pragma: no cover - optional dependency
+    def find_dotenv(*args, **kwargs):
+        return ""
+
+    def set_key(*args, **kwargs):
+        return None
 
 
 class ZhihuPublisherMixin:
     """Provide UI and actions for publishing stories to Zhihu."""
+
+    def _is_zhihu_mention_neutralize_enabled(self) -> bool:
+        raw = str(os.getenv("ZHIHU_NEUTRALIZE_MENTIONS", "0") or "0").strip().lower()
+        return raw in {"1", "true", "yes", "on"}
+
+    def _persist_zhihu_publish_preferences(self) -> None:
+        """Persist Zhihu publish preferences to .env."""
+        try:
+            env_path_str = find_dotenv(usecwd=True)
+            env_path = env_path_str if env_path_str else str(Path.cwd() / ".env")
+            value = "1" if bool(self.zhihu_neutralize_mentions_var.get()) else "0"
+            set_key(env_path, "ZHIHU_NEUTRALIZE_MENTIONS", value)
+        except Exception:
+            # Persist failure should never block publish flow.
+            pass
 
     def _build_zhihu_publish_ui(self, parent_frame) -> None:
         publish_frame = ttk.Frame(parent_frame)
@@ -49,6 +79,18 @@ class ZhihuPublisherMixin:
             text="后台运行",
             variable=self.zhihu_headless_var,
             width=8,
+        ).pack(side="left", padx=(0, 10))
+
+        self.zhihu_neutralize_mentions_var = tk.BooleanVar(value=self._is_zhihu_mention_neutralize_enabled())
+        try:
+            self.zhihu_neutralize_mentions_var.trace_add("write", lambda *_: self._persist_zhihu_publish_preferences())
+        except Exception:
+            pass
+        ttk.Checkbutton(
+            publish_frame,
+            text="中和@提及(兼容)",
+            variable=self.zhihu_neutralize_mentions_var,
+            width=14,
         ).pack(side="left", padx=(0, 10))
 
         self.zhihu_publish_btn = ttk.Button(
@@ -153,13 +195,15 @@ class ZhihuPublisherMixin:
                     model=_sanitize(api_config.get("model", "")),
                 )
                 summary = story_text[:500]
+                article_title_min_len, article_title_max_len = get_article_title_limits()
+                banned_phrase_preview = " / ".join(get_non_ai_banned_phrases()[:4]) or "总的来说 / 不难发现"
                 prompt = f"""请为以下故事生成一个吸引点击的知乎标题。
 
 要求：
-1. 12-20字，超过20字必须压缩
+1. {article_title_min_len}-{article_title_max_len}字，超过{article_title_max_len}字必须压缩
 2. 有冲突、悬念或反转，但表达克制
 3. 禁止营销号措辞（如“震惊”“逆天”“看哭了”“绝了”）
-4. 不要使用“总的来说/不难发现/值得一提的是”这类模板化表达
+4. 不要使用“{banned_phrase_preview}”这类模板化表达
 5. 只返回标题文本，不要附加解释
 
 故事内容摘要：
@@ -167,7 +211,11 @@ class ZhihuPublisherMixin:
 
 请直接输出标题："""
                 title = client.chat([{"role": "user", "content": prompt}], temperature=0.7).strip()
-                title = normalize_article_title(title, min_len=12, max_len=20)
+                title = normalize_article_title(
+                    title,
+                    min_len=article_title_min_len,
+                    max_len=article_title_max_len,
+                )
 
                 self.after(0, lambda: self.zhihu_title_var.set(title))
                 self.after(0, lambda: self.zhihu_progress_label.config(text="✅ 标题生成完成"))
@@ -180,7 +228,12 @@ class ZhihuPublisherMixin:
         threading.Thread(target=generate_title_task, daemon=True).start()
 
     def _on_publish_to_zhihu(self) -> None:
-        title = normalize_article_title(self.zhihu_title_var.get().strip(), min_len=12, max_len=20)
+        article_title_min_len, article_title_max_len = get_article_title_limits()
+        title = normalize_article_title(
+            self.zhihu_title_var.get().strip(),
+            min_len=article_title_min_len,
+            max_len=article_title_max_len,
+        )
         if title != self.zhihu_title_var.get().strip():
             self.zhihu_title_var.set(title)
         if not title:
@@ -195,7 +248,17 @@ class ZhihuPublisherMixin:
             messagebox.showwarning("提示", "故事内容太短，建议至少100字以上")
             return
 
-        content = StoryExtractor.sanitize_for_publish(raw_content)
+        neutralize_mentions = True
+        if hasattr(self, "zhihu_neutralize_mentions_var"):
+            try:
+                neutralize_mentions = bool(self.zhihu_neutralize_mentions_var.get())
+            except Exception:
+                neutralize_mentions = True
+        content = (
+            StoryExtractor.sanitize_for_zhihu_publish(raw_content)
+            if neutralize_mentions
+            else StoryExtractor.sanitize_for_publish(raw_content)
+        )
         if not content or len(content) < 100:
             messagebox.showwarning("提示", "无法提取有效的故事内容")
             return
@@ -223,7 +286,8 @@ class ZhihuPublisherMixin:
         def _on_mousewheel(event):
             main_canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
 
-        main_canvas.bind_all("<MouseWheel>", _on_mousewheel)
+        main_canvas.bind("<MouseWheel>", _on_mousewheel)
+        main_canvas.bind("<Enter>", lambda _event: main_canvas.focus_set())
         main_canvas.pack(side="left", fill="both", expand=True)
         main_scrollbar.pack(side="right", fill="y")
 
@@ -282,7 +346,11 @@ class ZhihuPublisherMixin:
         def confirm_publish():
             edited_title = title_var.get().strip()
             edited_content = content_text.get("1.0", "end-1c").strip()
-            edited_content = StoryExtractor.sanitize_for_publish(edited_content)
+            edited_content = (
+                StoryExtractor.sanitize_for_zhihu_publish(edited_content)
+                if neutralize_mentions
+                else StoryExtractor.sanitize_for_publish(edited_content)
+            )
             if not edited_title:
                 messagebox.showwarning("提示", "标题不能为空")
                 return
@@ -290,13 +358,14 @@ class ZhihuPublisherMixin:
                 messagebox.showwarning("提示", "内容不能为空")
                 return
             self.zhihu_title_var.set(edited_title)
+            self._zhihu_edited_title = edited_title
             self._zhihu_edited_content = edited_content
             publish_confirmed[0] = True
-            main_canvas.unbind_all("<MouseWheel>")
+            main_canvas.unbind("<MouseWheel>")
             preview_window.destroy()
 
         def cancel_publish():
-            main_canvas.unbind_all("<MouseWheel>")
+            main_canvas.unbind("<MouseWheel>")
             preview_window.destroy()
 
         ttk.Button(
@@ -313,6 +382,9 @@ class ZhihuPublisherMixin:
         if not publish_confirmed[0]:
             return
 
+        if hasattr(self, "_zhihu_edited_title"):
+            title = self._zhihu_edited_title
+            delattr(self, "_zhihu_edited_title")
         if hasattr(self, "_zhihu_edited_content"):
             content = self._zhihu_edited_content
             delattr(self, "_zhihu_edited_content")
@@ -336,6 +408,13 @@ class ZhihuPublisherMixin:
                 from src.gui.services.zhihu_publisher import publish_to_zhihu_sync
 
                 headless = bool(self.zhihu_headless_var.get())
+                if headless:
+                    # Zhihu 发布流程通常需要人工最终确认，后台模式无法手动点击发布按钮。
+                    headless = False
+                    self.after(
+                        0,
+                        lambda: self.zhihu_progress_label.config(text="⚠ 后台模式已切换为前台"),
+                    )
 
                 def progress_callback(message: str):
                     self.after(0, lambda msg=message: self.zhihu_progress_label.config(text=msg))

@@ -1,0 +1,50 @@
+{
+  "emotion_arc": {
+    "story_lines": [
+      "主角情绪至少经历三段变化（压抑/犹豫→爆发/决断→余震/代价），每段要有事件触发；",
+      "关键情绪通过动作、停顿、对话细节体现，不直接喊口号；",
+      "高潮必须体现选择成本，结尾保留情绪余波而非说教总结。"
+    ],
+    "section_lines": [
+      "本节要明确情绪起点与终点，至少发生一次可感知的情绪位移；",
+      "用微动作和场景细节承载情绪变化，避免直接解释“他很痛苦/她很感动”；",
+      "章节结尾留一个情绪钩子，驱动下一章。"
+    ]
+  },
+  "quality_review": {
+    "dimensions": [
+      { "key": "realism", "label": "真实感" },
+      { "key": "detail", "label": "细节密度" },
+      { "key": "coherence", "label": "逻辑连贯" },
+      { "key": "naturalness", "label": "语言自然度" }
+    ],
+    "json_schema": "{\"scores\":{\"realism\":0,\"detail\":0,\"coherence\":0,\"naturalness\":0},\"strengths\":[\"\"],\"issues\":[\"\"],\"key_fix\":\"\"}",
+    "rules": [
+      "issues 至少给1条且可执行；",
+      "key_fix 20字以内；",
+      "禁止输出 JSON 以外内容。"
+    ]
+  },
+  "polish": {
+    "fallback_fix": "语言模板腔和细节不足",
+    "rules": [
+      "保留原剧情顺序与关键事件，不新增大剧情；",
+      "优先修复：{fix_goal}；",
+      "增加可感知细节（动作/环境/心理），减少空泛评价句；",
+      "语言自然克制，禁止模板腔（如：首先/其次/最后/总的来说）；",
+      "字数控制在 {target_low}-{target_high} 字附近（当前约{current_chars}字）；",
+      "只输出最终章节正文，不要解释。"
+    ]
+  },
+  "memory_ledger": {
+    "json_schema": "{\"summary\":\"\",\"plot_points\":[\"\"],\"relation_changes\":[\"\"],\"unresolved_hooks\":[\"\"],\"state_shift\":\"\"}",
+    "rules": [
+      "summary 40-120字；",
+      "plot_points 最多4条，聚焦事实事件；",
+      "relation_changes 最多3条，写清人物关系变化；",
+      "unresolved_hooks 最多3条，写未回收问题；",
+      "state_shift 30字以内；",
+      "禁止输出 JSON 以外内容。"
+    ]
+  }
+}

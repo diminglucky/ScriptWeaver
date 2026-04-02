@@ -242,6 +242,33 @@ class StoryTemplateHeadlessTests(unittest.TestCase):
         self.assertIn("【创新引擎（blend）】", full_prompt)
         self.assertIn("跨模版融合", full_prompt)
 
+    def test_prompt_builder_requirement_alignment_overrides_conflicting_category(self):
+        obj = _DummyPromptBuilder()
+        obj.target_chars = _Var(3000)
+        obj.style = _Var("情感真实")
+        obj.story_template_key = _Var("zhihu_realistic")
+
+        requirement = "写一个校园混混的故事，要情感真实"
+        outline_prompt = obj._build_outline_prompt(requirement, [], "职场")
+        full_prompt = obj._build_prompt(requirement, [], "职场", "")
+        banner = obj._build_story_run_banner(requirement, "职场", [])
+
+        self.assertIn("需求对齐锚点", outline_prompt)
+        self.assertIn("种类（最终）：校园", outline_prompt)
+        self.assertIn("种类（界面）：职场", outline_prompt)
+        self.assertIn("种类（最终）**：校园", full_prompt)
+        self.assertIn("题材纠偏", banner)
+
+    def test_prompt_builder_requirement_alignment_keeps_selected_when_signals_close(self):
+        obj = _DummyPromptBuilder()
+        obj.target_chars = _Var(3000)
+        obj.style = _Var("写实")
+        obj.story_template_key = _Var("zhihu_realistic")
+
+        requirement = "写一个职场人误入校园社团的故事"
+        outline_prompt = obj._build_outline_prompt(requirement, [], "职场")
+        self.assertIn("种类（最终）：职场", outline_prompt)
+
 
 if __name__ == "__main__":
     unittest.main()

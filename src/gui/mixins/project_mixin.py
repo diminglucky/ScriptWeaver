@@ -3,9 +3,13 @@ Project相关功能模块
 """
 
 import re
+import logging
+from pathlib import Path
 from tkinter import BOTH, LEFT, RIGHT, DISABLED, NORMAL, END, messagebox, filedialog
 import tkinter as tk
 from tkinter import ttk
+
+logger = logging.getLogger(__name__)
 
 
 class ProjectMixin:
@@ -254,7 +258,162 @@ class ProjectMixin:
 				self.status.set(f"已加载 {len(projects)} 个项目")
 		except Exception as e:
 			messagebox.showerror("错误", f"刷新项目列表失败: {e}")
-	
+
+	def _remember_last_project_path(self, project_path: Path | str | None = None) -> None:
+		"""记住最后活跃项目，供下次启动自动恢复"""
+		if not hasattr(self, "project_manager"):
+			return
+		target = None
+		if project_path is not None:
+			target = Path(project_path)
+		elif getattr(self, "current_project", None) is not None and hasattr(self.current_project, "project_dir"):
+			target = Path(self.current_project.project_dir)
+		if target is None:
+			return
+		try:
+			self.project_manager.set_last_project(target)
+		except Exception as e:
+			logger.debug("remember last project failed: %s", e)
+
+	def _clear_last_project_path(self) -> None:
+		if not hasattr(self, "project_manager"):
+			return
+		try:
+			self.project_manager.clear_last_project()
+		except Exception as e:
+			logger.debug("clear last project failed: %s", e)
+
+	def _ensure_project_characters_dir(self) -> None:
+		if not getattr(self, "current_project", None):
+			return
+		try:
+			characters_dir = Path(self.current_project.project_dir) / "characters"
+			characters_dir.mkdir(parents=True, exist_ok=True)
+		except Exception as e:
+			logger.debug("ensure characters dir failed: %s", e)
+
+	def _select_project_in_tree(self, project_path: Path | str) -> None:
+		if not hasattr(self, "project_tree"):
+			return
+		try:
+			target = str(Path(project_path).resolve())
+		except Exception:
+			target = str(project_path)
+		for item in self.project_tree.get_children():
+			tags = self.project_tree.item(item, "tags")
+			if not tags:
+				continue
+			try:
+				item_path = str(Path(tags[0]).resolve())
+			except Exception:
+				item_path = str(tags[0])
+			if item_path != target:
+				continue
+			try:
+				self.project_tree.selection_set(item)
+				self.project_tree.focus(item)
+				self.project_tree.see(item)
+			except Exception:
+				pass
+			break
+
+	def _load_project_by_path(
+		self,
+		project_path: Path | str,
+		*,
+		show_popup: bool = True,
+		switch_to_story: bool = True,
+		remember_last: bool = True,
+		select_in_tree: bool = True,
+	) -> bool:
+		"""按路径加载项目（支持静默模式，供启动自动恢复使用）"""
+		try:
+			self.current_project = self.project_manager.load_project(project_path)
+			project_name = self.current_project.metadata.get("name", "")
+			self.lbl_current_project.config(text=f"当前项目: {project_name}", fg="#4CAF50")
+			self.btn_save_story.config(state=NORMAL)
+
+			# 恢复故事内容到输出框
+			story_content = self.current_project.load_story()
+			if story_content:
+				self.output.delete("1.0", END)
+				self.output.insert(END, story_content)
+				if hasattr(self, "status"):
+					self.status.set(f"已加载项目: {project_name} ({len(story_content)} 字)")
+			else:
+				if hasattr(self, "status"):
+					self.status.set(f"已加载项目: {project_name} (无故事内容)")
+
+			# 确保项目有 characters 文件夹（兼容旧项目）
+			self._ensure_project_characters_dir()
+
+			# 加载项目的人物照片
+			if hasattr(self, "_load_project_characters"):
+				self._load_project_characters()
+
+			# 恢复创作参数
+			meta = self.current_project.metadata
+			if meta.get("category"):
+				self.category.set(meta["category"])
+			if meta.get("requirement"):
+				self.prompt_text.delete("1.0", END)
+				self.prompt_text.insert("1.0", meta["requirement"])
+				self.prompt_text.tag_remove("placeholder", "1.0", "end")
+			if meta.get("style"):
+				self.style.set(meta["style"])
+			if meta.get("target_chars"):
+				self.target_chars.set(meta["target_chars"])
+
+			# 恢复目录与章节状态（兼容老项目 story.txt）
+			self._restore_story_structure_from_project(story_content, meta)
+
+			if select_in_tree:
+				self._select_project_in_tree(project_path)
+			if remember_last:
+				self._remember_last_project_path(project_path)
+
+			if show_popup:
+				messagebox.showinfo("成功", f"项目已加载: {project_name}\n\n故事内容已恢复到输出区域")
+			if switch_to_story:
+				self.notebook.select(self.page_story)
+			return True
+		except Exception as e:
+			if show_popup:
+				messagebox.showerror("错误", f"加载项目失败: {e}")
+			else:
+				logger.warning("auto-load project failed [%s]: %s", project_path, e)
+			return False
+
+	def _auto_restore_last_project_on_startup(self) -> None:
+		"""启动时自动恢复上次项目，若无记录则恢复最近更新项目"""
+		if not hasattr(self, "project_manager"):
+			return
+		project_path = None
+		try:
+			if hasattr(self.project_manager, "get_last_project"):
+				last_project = self.project_manager.get_last_project()
+				if last_project is not None:
+					project_path = str(last_project)
+			if not project_path:
+				projects = self.project_manager.list_projects()
+				if projects:
+					project_path = projects[0].get("path")
+		except Exception as e:
+			logger.debug("resolve startup project failed: %s", e)
+			return
+		if not project_path:
+			return
+		loaded = self._load_project_by_path(
+			project_path,
+			show_popup=False,
+			switch_to_story=False,
+			remember_last=False,
+			select_in_tree=True,
+		)
+		if loaded and hasattr(self, "status") and getattr(self, "current_project", None):
+			project_name = self.current_project.metadata.get("name", "")
+			self.status.set(f"已自动恢复项目: {project_name}")
+		
 	def _on_new_project(self) -> None:
 		"""创建新项目"""
 		# 弹出对话框让用户输入项目名称
@@ -269,13 +428,11 @@ class ProjectMixin:
 			self.btn_save_story.config(state=NORMAL)
 			
 			# 创建人物照片文件夹
-			if self.current_project:
-				from pathlib import Path
-				characters_dir = self.current_project.project_dir / "characters"
-				characters_dir.mkdir(parents=True, exist_ok=True)
-				print(f"📁 已创建人物照片文件夹：{characters_dir}")
+			self._ensure_project_characters_dir()
+			self._remember_last_project_path()
 			
 			self._refresh_project_list()
+			self._select_project_in_tree(self.current_project.project_dir)
 			if hasattr(self, 'status'):
 				self.status.set(f"已创建项目: {project_name}")
 			messagebox.showinfo("成功", f"项目已创建: {project_name}\n\n现在可以前往'故事生成'页面创作内容")
@@ -298,55 +455,13 @@ class ProjectMixin:
 			if not tags:
 				return
 			project_path = tags[0]
-			
-			# 加载项目
-			self.current_project = self.project_manager.load_project(project_path)
-			project_name = self.current_project.metadata.get("name", "")
-			self.lbl_current_project.config(text=f"当前项目: {project_name}", fg="#4CAF50")
-			self.btn_save_story.config(state=NORMAL)
-			
-			# 恢复故事内容到输出框
-			story_content = self.current_project.load_story()
-			if story_content:
-				self.output.delete("1.0", END)
-				self.output.insert(END, story_content)
-				if hasattr(self, 'status'):
-					self.status.set(f"已加载项目: {project_name} ({len(story_content)} 字)")
-			else:
-				if hasattr(self, 'status'):
-					self.status.set(f"已加载项目: {project_name} (无故事内容)")
-			
-			# 确保项目有 characters 文件夹（兼容旧项目）
-			if self.current_project:
-				from pathlib import Path
-				characters_dir = self.current_project.project_dir / "characters"
-				if not characters_dir.exists():
-					characters_dir.mkdir(parents=True, exist_ok=True)
-					print(f"📁 自动创建人物照片文件夹：{characters_dir}")
-			
-			# 加载项目的人物照片
-			if hasattr(self, '_load_project_characters'):
-				self._load_project_characters()
-			
-			# 恢复创作参数
-			meta = self.current_project.metadata
-			if meta.get("category"):
-				self.category.set(meta["category"])
-			if meta.get("requirement"):
-				self.prompt_text.delete("1.0", END)
-				self.prompt_text.insert("1.0", meta["requirement"])
-				self.prompt_text.tag_remove("placeholder", "1.0", "end")
-			if meta.get("style"):
-				self.style.set(meta["style"])
-			if meta.get("target_chars"):
-				self.target_chars.set(meta["target_chars"])
-
-			# 恢复目录与章节状态（兼容老项目 story.txt）
-			self._restore_story_structure_from_project(story_content, meta)
-			
-			messagebox.showinfo("成功", f"项目已加载: {project_name}\n\n故事内容已恢复到输出区域")
-			# 切换到故事生成页面
-			self.notebook.select(self.page_story)
+			self._load_project_by_path(
+				project_path,
+				show_popup=True,
+				switch_to_story=True,
+				remember_last=True,
+				select_in_tree=False,
+			)
 		except Exception as e:
 			messagebox.showerror("错误", f"加载项目失败: {e}")
 	
@@ -375,6 +490,7 @@ class ProjectMixin:
 				chapter_quality_reports=(getattr(self, "chapter_quality_reports", []) or []),
 				section_index=self.section_selector.current() if hasattr(self, "section_selector") else 0,
 			)
+			self._remember_last_project_path()
 			self._refresh_project_list()
 			if hasattr(self, 'status'):
 				self.status.set(f"故事已保存到项目: {self.current_project.metadata['name']}")
@@ -409,12 +525,27 @@ class ProjectMixin:
 		
 		try:
 			# 如果删除的是当前项目，清空当前项目
-			if self.current_project and str(self.current_project.project_dir) == project_path:
+			deleting_path = str(Path(project_path).resolve())
+			current_path = ""
+			if self.current_project and hasattr(self.current_project, "project_dir"):
+				try:
+					current_path = str(Path(self.current_project.project_dir).resolve())
+				except Exception:
+					current_path = str(self.current_project.project_dir)
+			if current_path and current_path == deleting_path:
 				self.current_project = None
 				self.lbl_current_project.config(text="未选择项目", fg="#888888")
 				self.btn_save_story.config(state=DISABLED)
+				self._clear_last_project_path()
 			
 			self.project_manager.delete_project(project_path)
+			last_project = self.project_manager.get_last_project() if hasattr(self.project_manager, "get_last_project") else None
+			if last_project is not None:
+				try:
+					if str(Path(last_project).resolve()) == deleting_path:
+						self._clear_last_project_path()
+				except Exception:
+					pass
 			self._refresh_project_list()
 			if hasattr(self, 'status'):
 				self.status.set(f"已删除项目: {project_name}")

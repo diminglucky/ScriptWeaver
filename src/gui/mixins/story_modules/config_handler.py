@@ -34,6 +34,12 @@ class StoryConfigMixin:
 		try:
 			with open(path, "w", encoding="utf-8") as f:
 				f.write(content)
+			# 导出文件后，同步保存到当前项目（如果已加载项目）
+			if hasattr(self, "_auto_save_to_project"):
+				try:
+					self._auto_save_to_project()
+				except Exception:
+					pass
 			messagebox.showinfo("成功", f"已保存到: {path}")
 		except Exception as e:
 			messagebox.showerror("错误", str(e))

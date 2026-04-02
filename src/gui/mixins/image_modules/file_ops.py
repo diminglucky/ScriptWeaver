@@ -123,6 +123,14 @@ class FileOperationsMixin:
 	def _auto_save_to_project(self) -> None:
 		"""自动保存故事到当前项目（如果有）"""
 		if not self.current_project:
+			if hasattr(self, "status"):
+				try:
+					if hasattr(self, "_ui"):
+						self._ui(self.status.set, "未选择项目：当前内容仅保存在界面，重启可能丢失。")
+					else:
+						self.status.set("未选择项目：当前内容仅保存在界面，重启可能丢失。")
+				except Exception:
+					pass
 			return
 
 		if hasattr(self, '_ui_get'):
@@ -165,6 +173,11 @@ class FileOperationsMixin:
 				chapter_quality_reports=chapter_quality_reports,
 				section_index=section_index,
 			)
+			if hasattr(self, "_remember_last_project_path"):
+				try:
+					self._remember_last_project_path()
+				except Exception:
+					pass
 			# 在后台更新项目列表（不显示弹窗）
 			if hasattr(self, 'project_tree'):
 				if hasattr(self, '_ui'):

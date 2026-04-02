@@ -180,6 +180,8 @@ class StoryGeneratorMixin:
 					self._ui(self.update_header_status, "准备生成故事...", "📝")
 				
 				load_dotenv()
+				contexts = []
+				rag_rows = []
 				if need_build:
 					if hasattr(self, 'update_header_status'):
 						self._ui(self.update_header_status, "正在构建索引...", "⏳")
@@ -187,13 +189,13 @@ class StoryGeneratorMixin:
 					cfg = IngestConfig(data_root=Path(data_dir_val), index_dir=Path(index_dir_val))
 					KnowledgeBaseIngestor(cfg).build()
 				
-					if hasattr(self, 'update_header_status'):
-						self._ui(self.update_header_status, "检索资料中...", "🔍")
-					from src.kb.search import KnowledgeBaseSearcher, SearchConfig
-					searcher = KnowledgeBaseSearcher(SearchConfig(index_dir=Path(index_dir_val), top_k=top_k_val))
-					results = searcher.search(query, top_k_val)
-					rag_rows = self._postprocess_rag_results(results) if hasattr(self, "_postprocess_rag_results") else results
-					contexts = [c for c, _s, _m in rag_rows]
+				if hasattr(self, 'update_header_status'):
+					self._ui(self.update_header_status, "检索资料中...", "🔍")
+				from src.kb.search import KnowledgeBaseSearcher, SearchConfig
+				searcher = KnowledgeBaseSearcher(SearchConfig(index_dir=Path(index_dir_val), top_k=top_k_val))
+				results = searcher.search(query, top_k_val)
+				rag_rows = self._postprocess_rag_results(results) if hasattr(self, "_postprocess_rag_results") else results
+				contexts = [c for c, _s, _m in rag_rows]
 				
 				# 使用选中的API配置
 				if hasattr(self, 'update_header_status'):
@@ -329,17 +331,18 @@ class StoryGeneratorMixin:
 				try:
 					self._ui(self.set_busy, True)
 					load_dotenv()
+					contexts = []
 					if need_build:
 						from src.kb.ingest import IngestConfig, KnowledgeBaseIngestor
 						cfg = IngestConfig(data_root=Path(data_dir_val), index_dir=Path(index_dir_val))
 						KnowledgeBaseIngestor(cfg).build()
-						from src.kb.search import KnowledgeBaseSearcher, SearchConfig
-						searcher = KnowledgeBaseSearcher(SearchConfig(index_dir=Path(index_dir_val), top_k=top_k_val))
-						results = searcher.search(query, top_k_val)
-						rag_rows = self._postprocess_rag_results(results) if hasattr(self, "_postprocess_rag_results") else results
-						contexts = [c for c, _s, _m in rag_rows]
-						# 修复：调用 _auto_generate_all_sections 而非未定义的方法
-						self._auto_generate_all_sections(query, contexts, start_index)
+					from src.kb.search import KnowledgeBaseSearcher, SearchConfig
+					searcher = KnowledgeBaseSearcher(SearchConfig(index_dir=Path(index_dir_val), top_k=top_k_val))
+					results = searcher.search(query, top_k_val)
+					rag_rows = self._postprocess_rag_results(results) if hasattr(self, "_postprocess_rag_results") else results
+					contexts = [c for c, _s, _m in rag_rows]
+					# 修复：调用 _auto_generate_all_sections 而非未定义的方法
+					self._auto_generate_all_sections(query, contexts, start_index)
 				except Exception as e:
 					import traceback
 					self._ui(self.output.insert, END, "\n自动生成出错:\n" + traceback.format_exc() + "\n")

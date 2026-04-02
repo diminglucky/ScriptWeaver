@@ -114,6 +114,7 @@ class ProjectManager:
 	def __init__(self, workspace: Path | str = "projects"):
 		self.workspace = Path(workspace)
 		self.workspace.mkdir(parents=True, exist_ok=True)
+		self.last_project_file = self.workspace / ".last_project"
 
 	def _validate_project_path(self, project_dir: Path | str) -> Path:
 		"""Ensure the target project directory is inside workspace."""
@@ -140,6 +141,39 @@ class ProjectManager:
 	def load_project(self, project_dir: Path | str) -> Project:
 		"""加载已有项目"""
 		return Project(project_dir)
+
+	def set_last_project(self, project_dir: Path | str) -> None:
+		"""记录最近活跃项目路径"""
+		project_path = self._validate_project_path(project_dir)
+		self.last_project_file.write_text(str(project_path), encoding="utf-8")
+
+	def get_last_project(self) -> Path | None:
+		"""读取最近活跃项目路径（不存在或无效返回 None）"""
+		if not self.last_project_file.exists():
+			return None
+		try:
+			raw = self.last_project_file.read_text(encoding="utf-8").strip()
+		except Exception as e:
+			logger.debug("failed reading last project marker: %s", e)
+			return None
+		if not raw:
+			return None
+		try:
+			project_path = self._validate_project_path(raw)
+		except Exception as e:
+			logger.debug("invalid last project marker path: %s", e)
+			return None
+		if not project_path.exists() or not (project_path / "project.json").exists():
+			return None
+		return project_path
+
+	def clear_last_project(self) -> None:
+		"""清除最近活跃项目标记"""
+		try:
+			if self.last_project_file.exists():
+				self.last_project_file.unlink()
+		except Exception as e:
+			logger.debug("failed clearing last project marker: %s", e)
 	
 	def list_projects(self) -> list[dict[str, Any]]:
 		"""列出所有项目"""
@@ -164,4 +198,3 @@ class ProjectManager:
 		project_path = self._validate_project_path(project_dir)
 		if project_path.exists() and project_path.is_dir():
 			shutil.rmtree(project_path)
-

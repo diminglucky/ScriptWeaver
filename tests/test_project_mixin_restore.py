@@ -55,6 +55,34 @@ class _DummyRestore(ProjectMixin):
         return sections
 
 
+class _ProjectManagerStartupStub:
+    def __init__(self, last_project=None, projects=None):
+        self._last_project = last_project
+        self._projects = projects or []
+
+    def get_last_project(self):
+        return self._last_project
+
+    def list_projects(self):
+        return list(self._projects)
+
+
+class _DummyStartup(ProjectMixin):
+    def __init__(self, project_manager, load_result=True):
+        self.project_manager = project_manager
+        self.status = _Var("")
+        self.current_project = None
+        self.loaded_paths = []
+        self.loaded_kwargs = []
+        self.load_result = load_result
+
+    def _load_project_by_path(self, project_path, **kwargs):
+        self.loaded_paths.append(str(project_path))
+        self.loaded_kwargs.append(dict(kwargs))
+        self.current_project = type("Project", (), {"metadata": {"name": "自动恢复项目"}})()
+        return self.load_result
+
+
 class ProjectMixinRestoreTests(unittest.TestCase):
     def test_restore_prefers_saved_outline_and_section_index(self):
         obj = _DummyRestore()
@@ -134,6 +162,53 @@ class ProjectMixinRestoreTests(unittest.TestCase):
         self.assertEqual(obj.current_section_index.get(), 1)
         self.assertTrue(obj.generated_content.startswith("【第 1/3 章：开场冲突】"))
         self.assertEqual(obj.selector_update_count, 1)
+
+    def test_auto_restore_prefers_last_project_marker(self):
+        manager = _ProjectManagerStartupStub(
+            last_project="/tmp/marker_project",
+            projects=[{"path": "/tmp/latest_project"}],
+        )
+        obj = _DummyStartup(manager)
+
+        obj._auto_restore_last_project_on_startup()
+
+        self.assertEqual(obj.loaded_paths, ["/tmp/marker_project"])
+        self.assertEqual(
+            obj.loaded_kwargs,
+            [
+                {
+                    "show_popup": False,
+                    "switch_to_story": False,
+                    "remember_last": False,
+                    "select_in_tree": True,
+                }
+            ],
+        )
+        self.assertEqual(obj.status.get(), "已自动恢复项目: 自动恢复项目")
+
+    def test_auto_restore_falls_back_to_latest_project(self):
+        manager = _ProjectManagerStartupStub(
+            last_project=None,
+            projects=[
+                {"path": "/tmp/latest_project"},
+                {"path": "/tmp/older_project"},
+            ],
+        )
+        obj = _DummyStartup(manager)
+
+        obj._auto_restore_last_project_on_startup()
+
+        self.assertEqual(obj.loaded_paths, ["/tmp/latest_project"])
+        self.assertEqual(obj.status.get(), "已自动恢复项目: 自动恢复项目")
+
+    def test_auto_restore_skips_when_no_project_available(self):
+        manager = _ProjectManagerStartupStub(last_project=None, projects=[])
+        obj = _DummyStartup(manager)
+
+        obj._auto_restore_last_project_on_startup()
+
+        self.assertEqual(obj.loaded_paths, [])
+        self.assertEqual(obj.status.get(), "")
 
 
 if __name__ == "__main__":

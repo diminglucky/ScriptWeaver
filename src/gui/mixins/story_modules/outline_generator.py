@@ -17,6 +17,12 @@ except Exception:  # pragma: no cover - optional dependency
 from src.clients.deepseek_client import DeepSeekClient
 from src.utils.text import sanitize as _sanitize
 from src.gui.helpers.story_writing_guardrails import normalize_chapter_title
+from src.gui.helpers.story_pipeline_profile import (
+	build_memory_ledger_prompt,
+	build_polish_prompt,
+	build_quality_review_prompt,
+	get_polish_fallback_fix,
+)
 from src.gui.helpers.story_quality import (
 	normalize_memory_entry,
 	parse_memory_entry,
@@ -148,20 +154,11 @@ class OutlineGeneratorMixin:
 				"key_fix": "先生成有效正文。",
 			}
 		preview = section_content[-1800:]
-		prompt = (
-			"你是严格的中文小说编辑，请评估以下章节文本质量，并仅返回 JSON。\n"
-			"评分维度（1-10）：realism(真实感), detail(细节密度), coherence(逻辑连贯), naturalness(语言自然度)。\n"
-			"返回格式：\n"
-			"{\"scores\":{\"realism\":0,\"detail\":0,\"coherence\":0,\"naturalness\":0},"
-			"\"strengths\":[\"\"],\"issues\":[\"\"],\"key_fix\":\"\"}\n"
-			"要求：\n"
-			"1) issues 至少给1条且可执行；\n"
-			"2) key_fix 20字以内；\n"
-			"3) 禁止输出 JSON 以外内容。\n\n"
-			f"主题：{requirement}\n"
-			f"题材：{category}\n"
-			f"章节标题：{section_title}\n"
-			f"章节文本：\n{preview}\n"
+		prompt = build_quality_review_prompt(
+			requirement=requirement,
+			category=category,
+			section_title=section_title,
+			preview=preview,
 		)
 		try:
 			raw = client.chat(
@@ -196,19 +193,13 @@ class OutlineGeneratorMixin:
 		chars = len(section_content.strip())
 		target_low = max(220, int(target_chars_per_section * 0.8))
 		target_high = max(target_low, int(target_chars_per_section * 1.15))
-		prompt = (
-			"你是中文小说精修编辑。请在不改变剧情事实和人物设定的前提下，"
-			"对下面章节做一次“真实细腻化”重写。\n"
-			"硬性要求：\n"
-			"1) 保留原剧情顺序与关键事件，不新增大剧情；\n"
-			"2) 优先修复："
-			f"{key_fix or issue_text or '语言模板腔和细节不足'}；\n"
-			"3) 增加可感知细节（动作/环境/心理），减少空泛评价句；\n"
-			"4) 语言自然克制，禁止“首先/其次/最后/总的来说”等模板腔；\n"
-			f"5) 字数控制在 {target_low}-{target_high} 字附近（当前约{chars}字）；\n"
-			"6) 只输出最终章节正文，不要解释。\n\n"
-			f"章节标题：{section_title}\n"
-			f"原文：\n{section_content}\n"
+		prompt = build_polish_prompt(
+			section_title=section_title,
+			section_content=section_content,
+			fix_goal=key_fix or issue_text or get_polish_fallback_fix(),
+			target_low=target_low,
+			target_high=target_high,
+			current_chars=chars,
 		)
 		try:
 			rewritten = client.chat(
@@ -245,17 +236,9 @@ class OutlineGeneratorMixin:
 
 	def _extract_memory_entry(self, client, section_index: int, section_title: str, section_content: str) -> dict:
 		preview = section_content[-2200:]
-		prompt = (
-			"你是小说连续性编辑。请从以下章节提取“记忆账本”，并仅返回 JSON：\n"
-			"{\"summary\":\"\",\"plot_points\":[\"\"],\"relation_changes\":[\"\"],\"unresolved_hooks\":[\"\"],\"state_shift\":\"\"}\n"
-			"要求：\n"
-			"1) summary 40-120字；\n"
-			"2) plot_points 最多4条，聚焦事实事件；\n"
-			"3) relation_changes 最多3条，写清人物关系变化；\n"
-			"4) unresolved_hooks 最多3条，写未回收问题；\n"
-			"5) state_shift 30字以内。\n\n"
-			f"章节标题：{section_title}\n"
-			f"章节文本：\n{preview}\n"
+		prompt = build_memory_ledger_prompt(
+			section_title=section_title,
+			preview=preview,
 		)
 		try:
 			raw = client.chat(
@@ -343,18 +326,21 @@ class OutlineGeneratorMixin:
 				from src.kb.search import KnowledgeBaseSearcher, SearchConfig
 				
 				load_dotenv()
+				contexts = []
+				rag_rows = []
 				if need_build:
 					if hasattr(self, 'update_header_status'):
 						self._ui(self.update_header_status, "正在构建索引...", "⏳")
 					cfg = IngestConfig(data_root=Path(self._ui_get(self.data_dir.get)), index_dir=Path(self._ui_get(self.index_dir.get)))
 					KnowledgeBaseIngestor(cfg).build()
 				
-					if hasattr(self, 'update_header_status'):
-						self._ui(self.update_header_status, "检索资料中...", "🔍")
-					searcher = KnowledgeBaseSearcher(SearchConfig(index_dir=Path(self._ui_get(self.index_dir.get)), top_k=self._ui_get(self.top_k.get)))
-					results = searcher.search(requirement, self._ui_get(self.top_k.get))
-					rag_rows = self._postprocess_rag_results(results) if hasattr(self, "_postprocess_rag_results") else results
-					contexts = [c for c, _s, _m in rag_rows]
+				# 索引存在则直接检索
+				if hasattr(self, 'update_header_status'):
+					self._ui(self.update_header_status, "检索资料中...", "🔍")
+				searcher = KnowledgeBaseSearcher(SearchConfig(index_dir=Path(self._ui_get(self.index_dir.get)), top_k=self._ui_get(self.top_k.get)))
+				results = searcher.search(requirement, self._ui_get(self.top_k.get))
+				rag_rows = self._postprocess_rag_results(results) if hasattr(self, "_postprocess_rag_results") else results
+				contexts = [c for c, _s, _m in rag_rows]
 				
 				# 使用选中的API配置
 				if hasattr(self, 'update_header_status'):
@@ -391,6 +377,54 @@ class OutlineGeneratorMixin:
 					{"role": "system", "content": outline_system_prompt},
 					{"role": "user", "content": outline_prompt},
 				], temperature=max(0.4, self._ui_get(self.temperature.get) - 0.2))
+				alignment_report = None
+				if hasattr(self, "_evaluate_outline_alignment"):
+					try:
+						alignment_report = self._ui_get(
+							lambda: self._evaluate_outline_alignment(
+								requirement,
+								self.category.get(),
+								outline_text,
+							)
+						)
+					except Exception as e:
+						logger.debug("outline alignment evaluate failed: %s", e)
+						alignment_report = None
+
+				if alignment_report and alignment_report.get("should_retry") and hasattr(self, "_build_outline_realign_prompt"):
+					reason = str(alignment_report.get("reason", "") or "目录与需求不够一致")
+					score = float(alignment_report.get("score", 0.0))
+					self._ui(self.status.set, f"目录对齐不足（{score:.2f}），自动纠偏重试...")
+					self._ui(self.output.insert, END, f"检测到目录偏题（{reason}），正在自动纠偏重试...\n\n")
+					try:
+						retry_prompt = self._ui_get(
+							lambda: self._build_outline_realign_prompt(
+								requirement,
+								contexts,
+								self.category.get(),
+								outline_text,
+								alignment_report,
+							)
+						)
+						retry_outline = client.chat(
+							[
+								{"role": "system", "content": outline_system_prompt},
+								{"role": "user", "content": retry_prompt},
+							],
+							temperature=max(0.35, self._ui_get(self.temperature.get) - 0.25),
+						)
+						retry_report = self._ui_get(
+							lambda: self._evaluate_outline_alignment(
+								requirement,
+								self.category.get(),
+								retry_outline,
+							)
+						)
+						if float(retry_report.get("score", 0.0)) >= score:
+							outline_text = retry_outline
+							alignment_report = retry_report
+					except Exception as e:
+						logger.debug("outline auto realign failed: %s", e)
 				self.current_outline = outline_text.strip()
 				estimate = self._estimate_chars(self.current_outline)
 				
@@ -402,11 +436,21 @@ class OutlineGeneratorMixin:
 				if hasattr(self, "_update_story_diagnostics_panel"):
 					self._ui(self._update_story_diagnostics_panel)
 				
-				self._ui(self.output.insert, END, f"目录（共{len(self.parsed_sections)}章，预估字数≈{estimate}字）\n\n{self.current_outline}\n\n")
-				self._ui(self.status.set, "目录已生成")
-				# 更新顶部状态栏
-				if hasattr(self, 'update_header_status'):
-					self._ui(self.update_header_status, "目录生成完成", "✅")
+				if alignment_report is not None:
+					final_score = float(alignment_report.get("score", 0.0))
+					final_reason = str(alignment_report.get("reason", "") or "")
+					self._ui(self.status.set, f"目录已生成（对齐评分 {final_score:.2f}）")
+					if final_reason and final_reason != "对齐通过":
+						self._ui(self.output.insert, END, f"对齐检查提示：{final_reason}\n\n")
+					self._ui(self.output.insert, END, f"目录（共{len(self.parsed_sections)}章，预估字数≈{estimate}字）\n\n{self.current_outline}\n\n")
+					if alignment_report is None:
+						self._ui(self.status.set, "目录已生成")
+					# 目录生成后也要持久化到项目，避免重启回到旧内容
+					if hasattr(self, "_auto_save_to_project"):
+						self._ui(self._auto_save_to_project)
+					# 更新顶部状态栏
+					if hasattr(self, 'update_header_status'):
+						self._ui(self.update_header_status, "目录生成完成", "✅")
 			except Exception as e:
 				import traceback
 				self._ui(self.output.insert, END, "生成目录出错:\n" + traceback.format_exc() + "\n")
@@ -578,6 +622,52 @@ class OutlineGeneratorMixin:
 					{"role": "system", "content": outline_system_prompt},
 					{"role": "user", "content": prompt},
 				], temperature=max(0.4, temperature_val - 0.2))
+				alignment_report = None
+				if hasattr(self, "_evaluate_outline_alignment"):
+					try:
+						alignment_report = self._ui_get(
+							lambda: self._evaluate_outline_alignment(
+								requirement,
+								self.category.get(),
+								outline_text,
+							)
+						)
+					except Exception as e:
+						logger.debug("outline alignment evaluate failed (model-only): %s", e)
+						alignment_report = None
+
+				if alignment_report and alignment_report.get("should_retry") and hasattr(self, "_build_outline_realign_prompt"):
+					score = float(alignment_report.get("score", 0.0))
+					self._ui(self.status.set, f"目录对齐不足（{score:.2f}），自动纠偏重试...")
+					try:
+						retry_prompt = self._ui_get(
+							lambda: self._build_outline_realign_prompt(
+								requirement,
+								[],
+								self.category.get(),
+								outline_text,
+								alignment_report,
+							)
+						)
+						retry_outline = client.chat(
+							[
+								{"role": "system", "content": outline_system_prompt},
+								{"role": "user", "content": retry_prompt},
+							],
+							temperature=max(0.35, temperature_val - 0.25),
+						)
+						retry_report = self._ui_get(
+							lambda: self._evaluate_outline_alignment(
+								requirement,
+								self.category.get(),
+								retry_outline,
+							)
+						)
+						if float(retry_report.get("score", 0.0)) >= score:
+							outline_text = retry_outline
+							alignment_report = retry_report
+					except Exception as e:
+						logger.debug("outline auto realign failed (model-only): %s", e)
 				self.current_outline = outline_text.strip()
 				estimate = self._estimate_chars(self.current_outline)
 				
@@ -589,11 +679,21 @@ class OutlineGeneratorMixin:
 				if hasattr(self, "_update_story_diagnostics_panel"):
 					self._ui(self._update_story_diagnostics_panel)
 				
-				self._ui(self.output.insert, END, f"目录（共{len(self.parsed_sections)}章，预估字数≈{estimate}字）\n\n{self.current_outline}\n\n")
-				self._ui(self.status.set, "目录已生成")
-				# 更新顶部状态栏
-				if hasattr(self, 'update_header_status'):
-					self._ui(self.update_header_status, "目录生成完成", "✅")
+				if alignment_report is not None:
+					final_score = float(alignment_report.get("score", 0.0))
+					final_reason = str(alignment_report.get("reason", "") or "")
+					self._ui(self.status.set, f"目录已生成（对齐评分 {final_score:.2f}）")
+					if final_reason and final_reason != "对齐通过":
+						self._ui(self.output.insert, END, f"对齐检查提示：{final_reason}\n\n")
+					self._ui(self.output.insert, END, f"目录（共{len(self.parsed_sections)}章，预估字数≈{estimate}字）\n\n{self.current_outline}\n\n")
+					if alignment_report is None:
+						self._ui(self.status.set, "目录已生成")
+					# 目录生成后也要持久化到项目，避免重启回到旧内容
+					if hasattr(self, "_auto_save_to_project"):
+						self._ui(self._auto_save_to_project)
+					# 更新顶部状态栏
+					if hasattr(self, 'update_header_status'):
+						self._ui(self.update_header_status, "目录生成完成", "✅")
 			except Exception as e:
 				self._ui(messagebox.showerror, "错误", str(e))
 				self._ui(self.status.set, "生成目录失败")
@@ -1034,17 +1134,17 @@ class OutlineGeneratorMixin:
 		"""解析目录，提取章节信息"""
 		if not outline:
 			return []
-		
-		sections = []
+
+		sections: list[dict[str, str]] = []
 		lines = outline.strip().splitlines()
 		current_section = None
-		current_items = []
-		
+		current_items: list[str] = []
+
 		for line in lines:
 			stripped = line.strip()
 			if not stripped:
 				continue
-			
+
 			# 检测是否为章节标题（数字编号、中文编号、或 -, *, •）
 			is_main_section = False
 			if re.match(r'^\d+[.、]', stripped) or re.match(r'^[一二三四五六七八九十]+[.、]', stripped):
@@ -1052,7 +1152,7 @@ class OutlineGeneratorMixin:
 			elif stripped[:1] in ("-", "•", "*") and not stripped[1:2].isdigit():
 				# 一级标题
 				is_main_section = True
-			
+
 			if is_main_section:
 				# 保存上一个章节
 				if current_section:
@@ -1065,20 +1165,20 @@ class OutlineGeneratorMixin:
 				title = re.sub(r'^\d+[.、]\s*', '', title)
 				title = re.sub(r'^[一二三四五六七八九十]+[.、]\s*', '', title)
 				title = re.sub(r'^[-•*]\s*', '', title)
-				current_section = normalize_chapter_title(title.strip(), min_len=4, max_len=12)
+				current_section = normalize_chapter_title(title.strip())
 				current_items = []
 			else:
 				# 子项
 				if current_section:
 					current_items.append(stripped)
-		
+
 		# 添加最后一个章节
 		if current_section:
 			sections.append({
 				"title": current_section,
 				"items": current_items
 			})
-		
+
 		return sections
 
 

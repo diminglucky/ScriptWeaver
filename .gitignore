@@ -63,6 +63,7 @@ index/
 # 项目生成的图片和数据（可选择性提交）
 projects/*/images/
 projects/*/characters/*.png
+projects/.last_project
 
 # 测试脚本（临时文件）
 测试*.py
