@@ -130,6 +130,8 @@ class ModernApp(tk.Tk, ProjectMixin, StoryMixin, ImageMixin, DirectorMixin, KbMi
             "temperature",
             "model_only",
             "rag_min_score",
+            "story_outline_alignment_strict",
+            "story_outline_alignment_max_attempts",
             "data_dir",
             "index_dir",
         ]
@@ -243,6 +245,12 @@ class ModernApp(tk.Tk, ProjectMixin, StoryMixin, ImageMixin, DirectorMixin, KbMi
                 "TEMPERATURE": f"{temperature:.2f}",
                 "MODEL_ONLY": "1" if model_only else "0",
                 "RAG_MIN_SCORE": f"{rag_min_score:.2f}",
+                "STORY_OUTLINE_ALIGNMENT_STRICT": "1"
+                if bool(self.story_outline_alignment_strict.get())
+                else "0",
+                "STORY_OUTLINE_ALIGNMENT_MAX_ATTEMPTS": str(
+                    max(1, min(4, int(self.story_outline_alignment_max_attempts.get())))
+                ),
                 "STORY_CATEGORY": str(self.category.get() if hasattr(self, "category") else "").strip(),
                 "STORY_STYLE": str(self.style.get() if hasattr(self, "style") else "").strip(),
                 "STORY_REQUIREMENT": self._read_story_requirement(),
@@ -294,102 +302,132 @@ class ModernApp(tk.Tk, ProjectMixin, StoryMixin, ImageMixin, DirectorMixin, KbMi
     
     def _init_variables(self):
         """初始化所有必需的变量"""
-        # 路径配置
-        saved_data_dir = (os.getenv("DATA_DIR", "") or "").strip()
-        saved_index_dir = (os.getenv("INDEX_DIR", "") or "").strip()
+        self._init_path_variables()
+        self._init_story_api_variables()
+        self._init_generation_parameter_variables()
+        self._init_runtime_state_variables()
+        self.api_providers = self._normalize_story_provider_map(
+            self._build_default_story_provider_map()
+        )
+        self.api_presets = self._build_story_api_presets(self.api_providers)
+        self.img_api_providers = self._normalize_image_provider_map(
+            self._build_default_image_provider_map()
+        )
+        self.img_api_presets = self._build_image_api_presets(self.img_api_providers)
+
+    @staticmethod
+    def _read_env_text(name: str, default: str = "") -> str:
+        return (os.getenv(name, default) or default).strip() or default
+
+    @staticmethod
+    def _read_env_int(name: str, default: int, min_value: int, max_value: int) -> int:
+        raw = (os.getenv(name, str(default)) or str(default)).strip()
+        try:
+            value = int(raw)
+        except Exception:
+            value = default
+        return max(min_value, min(max_value, value))
+
+    @staticmethod
+    def _read_env_float(name: str, default: float, min_value: float, max_value: float) -> float:
+        raw = (os.getenv(name, str(default)) or str(default)).strip()
+        try:
+            value = float(raw)
+        except Exception:
+            value = default
+        return max(min_value, min(max_value, value))
+
+    @staticmethod
+    def _read_env_bool(name: str, default: bool = False) -> bool:
+        raw_default = "1" if default else "0"
+        raw = (os.getenv(name, raw_default) or raw_default).strip().lower()
+        return raw in {"1", "true", "yes", "on"}
+
+    def _init_path_variables(self) -> None:
+        """初始化知识库路径变量。"""
+        saved_data_dir = self._read_env_text("DATA_DIR")
+        saved_index_dir = self._read_env_text("INDEX_DIR")
         self.data_dir = tk.StringVar(value=saved_data_dir or str(Path("data").resolve()))
         self.index_dir = tk.StringVar(value=saved_index_dir or str(Path("index").resolve()))
-        
-        # API配置
+
+    def _init_story_api_variables(self) -> None:
+        """初始化主故事 API 相关变量。"""
         self.api_key = tk.StringVar(value=os.getenv("DEEPSEEK_API_KEY", ""))
-        self.base_url = tk.StringVar(value=os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com/v1"))
+        self.base_url = tk.StringVar(
+            value=os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com/v1")
+        )
         self.model = tk.StringVar(value=os.getenv("DEEPSEEK_MODEL", "deepseek-chat"))
-        self.api_preset = tk.StringVar(value="DeepSeek")  # API预设选择
-        
-        # 生成参数
-        top_k_raw = (os.getenv("TOP_K", "6") or "6").strip()
-        try:
-            top_k_value = int(top_k_raw)
-        except Exception:
-            top_k_value = 6
-        top_k_value = max(1, min(20, top_k_value))
-        self.top_k = tk.IntVar(value=top_k_value)
+        self.api_preset = tk.StringVar(value="DeepSeek")
 
-        temperature_raw = (os.getenv("TEMPERATURE", "0.7") or "0.7").strip()
-        try:
-            temperature_value = float(temperature_raw)
-        except Exception:
-            temperature_value = 0.7
-        temperature_value = max(0.0, min(1.5, temperature_value))
-        self.temperature = tk.DoubleVar(value=temperature_value)
-        rag_min_score_raw = (os.getenv("RAG_MIN_SCORE", "0.12") or "0.12").strip()
-        try:
-            rag_min_score_value = float(rag_min_score_raw)
-        except Exception:
-            rag_min_score_value = 0.12
-        rag_min_score_value = max(0.0, min(1.0, rag_min_score_value))
-        self.rag_min_score = tk.DoubleVar(value=rag_min_score_value)
-        self.category = tk.StringVar(value=(os.getenv("STORY_CATEGORY", "职场") or "职场").strip() or "职场")
+    def _init_generation_parameter_variables(self) -> None:
+        """初始化故事生成参数变量。"""
+        self.top_k = tk.IntVar(value=self._read_env_int("TOP_K", 6, 1, 20))
+        self.temperature = tk.DoubleVar(
+            value=self._read_env_float("TEMPERATURE", 0.7, 0.0, 1.5)
+        )
+        self.rag_min_score = tk.DoubleVar(
+            value=self._read_env_float("RAG_MIN_SCORE", 0.12, 0.0, 1.0)
+        )
+        self.category = tk.StringVar(value=self._read_env_text("STORY_CATEGORY", "职场"))
         self.style = tk.StringVar(
-            value=(os.getenv("STORY_STYLE", "情感起伏/反转/细节描写/有画面感/口语化") or "情感起伏/反转/细节描写/有画面感/口语化").strip()
-            or "情感起伏/反转/细节描写/有画面感/口语化"
+            value=self._read_env_text(
+                "STORY_STYLE",
+                "情感起伏/反转/细节描写/有画面感/口语化",
+            )
         )
-        target_chars_raw = (os.getenv("TARGET_CHARS", "1800") or "1800").strip()
-        try:
-            target_chars_value = int(target_chars_raw)
-        except Exception:
-            target_chars_value = 1800
-        target_chars_value = max(500, min(30000, target_chars_value))
-        self.target_chars = tk.IntVar(value=target_chars_value)
-        template_key = (os.getenv("STORY_TEMPLATE_KEY", "") or "").strip() or DEFAULT_STORY_TEMPLATE_KEY
-        self.story_template_key = tk.StringVar(value=template_key)
-        template_strategy_raw = (os.getenv("STORY_TEMPLATE_STRATEGY", "") or "").strip()
+        self.target_chars = tk.IntVar(
+            value=self._read_env_int("TARGET_CHARS", 1800, 500, 30000)
+        )
+        self.story_template_key = tk.StringVar(
+            value=self._read_env_text("STORY_TEMPLATE_KEY", DEFAULT_STORY_TEMPLATE_KEY)
+        )
         self.story_template_strategy = tk.StringVar(
-            value=normalize_story_template_strategy(template_strategy_raw or DEFAULT_STORY_TEMPLATE_STRATEGY)
+            value=normalize_story_template_strategy(
+                self._read_env_text(
+                    "STORY_TEMPLATE_STRATEGY",
+                    DEFAULT_STORY_TEMPLATE_STRATEGY,
+                )
+            )
         )
-        creativity_mode_raw = (os.getenv("STORY_CREATIVITY_MODE", "") or "").strip()
-        creativity_default = "stable"
         self.story_creativity_mode = tk.StringVar(
-            value=normalize_story_creativity_mode(creativity_mode_raw or creativity_default)
+            value=normalize_story_creativity_mode(
+                self._read_env_text(
+                    "STORY_CREATIVITY_MODE",
+                    DEFAULT_STORY_CREATIVITY_MODE,
+                )
+            )
         )
-        quality_review_raw = (os.getenv("STORY_QUALITY_REVIEW", "1") or "1").strip().lower()
         self.story_quality_review_enabled = tk.BooleanVar(
-            value=quality_review_raw in {"1", "true", "yes", "on"}
+            value=self._read_env_bool("STORY_QUALITY_REVIEW", True)
         )
-        quality_min_avg_raw = (os.getenv("STORY_QUALITY_MIN_AVG", "7.4") or "7.4").strip()
-        try:
-            quality_min_avg_val = float(quality_min_avg_raw)
-        except Exception:
-            quality_min_avg_val = 7.4
-        quality_min_avg_val = max(1.0, min(10.0, quality_min_avg_val))
-        self.story_quality_min_avg = tk.DoubleVar(value=quality_min_avg_val)
+        self.story_quality_min_avg = tk.DoubleVar(
+            value=self._read_env_float("STORY_QUALITY_MIN_AVG", 7.4, 1.0, 10.0)
+        )
+        self.story_quality_min_dim = tk.DoubleVar(
+            value=self._read_env_float("STORY_QUALITY_MIN_DIM", 6.8, 1.0, 10.0)
+        )
+        self.story_outline_alignment_strict = tk.BooleanVar(
+            value=self._read_env_bool("STORY_OUTLINE_ALIGNMENT_STRICT", True)
+        )
+        self.story_outline_alignment_max_attempts = tk.IntVar(
+            value=self._read_env_int("STORY_OUTLINE_ALIGNMENT_MAX_ATTEMPTS", 2, 1, 4)
+        )
+        self.model_only = tk.BooleanVar(value=self._read_env_bool("MODEL_ONLY", False))
 
-        quality_min_dim_raw = (os.getenv("STORY_QUALITY_MIN_DIM", "6.8") or "6.8").strip()
-        try:
-            quality_min_dim_val = float(quality_min_dim_raw)
-        except Exception:
-            quality_min_dim_val = 6.8
-        quality_min_dim_val = max(1.0, min(10.0, quality_min_dim_val))
-        self.story_quality_min_dim = tk.DoubleVar(value=quality_min_dim_val)
-        model_only_raw = (os.getenv("MODEL_ONLY", "0") or "0").strip().lower()
-        self.model_only = tk.BooleanVar(value=model_only_raw in {"1", "true", "yes", "on"})
-        
-        # 故事内容
+    def _init_runtime_state_variables(self) -> None:
+        """初始化项目与生成运行态变量。"""
         self.current_outline: str | None = None
-        
-        # 项目管理
         from src.project_manager import ProjectManager
         self.project_manager = ProjectManager()
         self.current_project = None
-        
-        # 章节管理
         self.parsed_sections: list[dict] = []
         self.generated_content: str = ""
         self.story_memory_ledger: list[dict] = []
         self.chapter_quality_reports: list[dict] = []
-        
-        # API预设初始化 - 包含主流AI提供商和多个模型
-        self.api_providers = {
+
+    def _build_default_story_provider_map(self) -> dict:
+        """返回默认故事 API 提供商配置。"""
+        return {
             "OpenAI": {
                 "base_url": "https://api.openai.com/v1",
                 "models": ["gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "gpt-4", "gpt-3.5-turbo", "o1-preview", "o1-mini"],
@@ -468,19 +506,22 @@ class ModernApp(tk.Tk, ProjectMixin, StoryMixin, ImageMixin, DirectorMixin, KbMi
                 "key": ""
             }
         }
-        
-        # 兼容旧代码 - 从 providers 生成 api_presets
-        self.api_providers = self._normalize_story_provider_map(self.api_providers)
-        self.api_presets = {}
-        for name, config in self.api_providers.items():
-            self.api_presets[name] = {
+
+    @staticmethod
+    def _build_story_api_presets(provider_map: dict) -> dict:
+        """从 provider map 生成兼容旧代码的故事 API presets。"""
+        presets = {}
+        for name, config in provider_map.items():
+            presets[name] = {
                 "base_url": config["base_url"],
-                "model": config["models"][0],  # 默认第一个模型
+                "model": config["models"][0],
                 "key": config["key"]
             }
-        
-        # 图片API预设初始化 - 扩展更多选项
-        self.img_api_providers = {
+        return presets
+
+    def _build_default_image_provider_map(self) -> dict:
+        """返回默认图片 API 提供商配置。"""
+        return {
             "OpenAI (DALL-E)": {
                 "base_url": "https://api.openai.com/v1",
                 "models": ["dall-e-3", "dall-e-2"],
@@ -512,17 +553,19 @@ class ModernApp(tk.Tk, ProjectMixin, StoryMixin, ImageMixin, DirectorMixin, KbMi
                 "provider": "openai",
             }
         }
-        
-        # 兼容旧代码
-        self.img_api_providers = self._normalize_image_provider_map(self.img_api_providers)
-        self.img_api_presets = {}
-        for name, config in self.img_api_providers.items():
-            self.img_api_presets[name] = {
+
+    @staticmethod
+    def _build_image_api_presets(provider_map: dict) -> dict:
+        """从 provider map 生成兼容旧代码的图片 API presets。"""
+        presets = {}
+        for name, config in provider_map.items():
+            presets[name] = {
                 "base_url": config["base_url"],
                 "model": config["models"][0],
                 "key": config["key"],
                 "provider": config.get("provider", "openai"),
             }
+        return presets
     
     @staticmethod
     def _normalize_story_provider_map(provider_map: dict) -> dict:
@@ -625,20 +668,30 @@ class ModernApp(tk.Tk, ProjectMixin, StoryMixin, ImageMixin, DirectorMixin, KbMi
         """设置现代化ttk组件样式"""
         self.ttk_style = ttk.Style()
         self.ttk_style.theme_use('clam')
-        
-        # 配置Notebook（主选项卡） - 大小始终保持一致
+
+        self._configure_notebook_styles()
+        self._configure_frame_styles()
+        self._configure_labelframe_styles()
+        self._configure_button_styles()
+        self._configure_entry_styles()
+        self._configure_combobox_styles()
+        self._configure_spinbox_styles()
+        self._configure_combobox_listbox_colors()
+
+    def _configure_notebook_styles(self) -> None:
+        """配置 Notebook 样式。"""
         self.ttk_style.configure(
             "TNotebook",
             background=Theme.BG_PRIMARY,
             borderwidth=0,
             relief="flat",
-            tabmargins=[0, 0, 0, 0]  # 移除额外边距
+            tabmargins=[0, 0, 0, 0]
         )
         self.ttk_style.configure(
             "TNotebook.Tab",
             background=Theme.BG_SECONDARY,
             foreground=Theme.TEXT_SECONDARY,
-            padding=[32, 16],  # 固定padding
+            padding=[32, 16],
             borderwidth=0,
             focuscolor="none",
             lightcolor=Theme.BG_SECONDARY,
@@ -658,22 +711,23 @@ class ModernApp(tk.Tk, ProjectMixin, StoryMixin, ImageMixin, DirectorMixin, KbMi
                 ("active", Theme.TEXT_PRIMARY),
                 ("!active", Theme.TEXT_SECONDARY)
             ],
-            # 确保所有状态的 padding 一致
             padding=[
                 ("selected", [32, 16]),
                 ("active", [32, 16]),
                 ("!active", [32, 16])
             ]
         )
-        
-        # 配置Frame
+
+    def _configure_frame_styles(self) -> None:
+        """配置 Frame 样式。"""
         self.ttk_style.configure(
             "TFrame",
             background=Theme.BG_SECONDARY,
             borderwidth=0
         )
-        
-        # 配置LabelFrame - 卡片式设计
+
+    def _configure_labelframe_styles(self) -> None:
+        """配置 LabelFrame 样式。"""
         self.ttk_style.configure(
             "TLabelframe",
             background=Theme.SURFACE,
@@ -689,16 +743,17 @@ class ModernApp(tk.Tk, ProjectMixin, StoryMixin, ImageMixin, DirectorMixin, KbMi
             font=(Theme.FONT_FAMILY, Theme.FONT_SIZE_MEDIUM, "bold"),
             padding=[8, 4]
         )
-        
-        # 配置Button - 更大更舒适
+
+    def _configure_button_styles(self) -> None:
+        """配置 Button 样式。"""
         self.ttk_style.configure(
             "TButton",
             background=Theme.PRIMARY,
             foreground=Theme.TEXT_PRIMARY,
             borderwidth=0,
             relief="flat",
-            padding=[28, 14],  # 增大按钮padding，防止文字被遮挡
-            font=(Theme.FONT_FAMILY, 12, "normal")  # 字体大小
+            padding=[28, 14],
+            font=(Theme.FONT_FAMILY, 12, "normal")
         )
         self.ttk_style.map(
             "TButton",
@@ -713,8 +768,9 @@ class ModernApp(tk.Tk, ProjectMixin, StoryMixin, ImageMixin, DirectorMixin, KbMi
                 ("disabled", Theme.TEXT_DISABLED)
             ]
         )
-        
-        # 配置Entry
+
+    def _configure_entry_styles(self) -> None:
+        """配置 Entry 样式。"""
         self.ttk_style.configure(
             "TEntry",
             fieldbackground=Theme.BG_TERTIARY,
@@ -727,8 +783,9 @@ class ModernApp(tk.Tk, ProjectMixin, StoryMixin, ImageMixin, DirectorMixin, KbMi
             fieldbackground=[("disabled", Theme.BG_SECONDARY), ("!disabled", Theme.BG_TERTIARY)],
             foreground=[("disabled", Theme.TEXT_DISABLED), ("!disabled", Theme.TEXT_PRIMARY)],
         )
-        
-        # 配置Combobox
+
+    def _configure_combobox_styles(self) -> None:
+        """配置 Combobox 样式。"""
         self.ttk_style.configure(
             "TCombobox",
             fieldbackground=Theme.BG_TERTIARY,
@@ -759,7 +816,8 @@ class ModernApp(tk.Tk, ProjectMixin, StoryMixin, ImageMixin, DirectorMixin, KbMi
             arrowcolor=[("disabled", Theme.TEXT_DISABLED), ("!disabled", Theme.TEXT_SECONDARY)],
         )
 
-        # 配置Spinbox（避免深色主题下白底）
+    def _configure_spinbox_styles(self) -> None:
+        """配置 Spinbox 样式。"""
         self.ttk_style.configure(
             "TSpinbox",
             fieldbackground=Theme.BG_TERTIARY,
@@ -775,7 +833,8 @@ class ModernApp(tk.Tk, ProjectMixin, StoryMixin, ImageMixin, DirectorMixin, KbMi
             arrowcolor=[("disabled", Theme.TEXT_DISABLED), ("!disabled", Theme.TEXT_SECONDARY)],
         )
 
-        # 下拉弹窗列表颜色
+    def _configure_combobox_listbox_colors(self) -> None:
+        """配置 Combobox 下拉列表颜色。"""
         self.option_add("*TCombobox*Listbox*Background", Theme.BG_TERTIARY)
         self.option_add("*TCombobox*Listbox*Foreground", Theme.TEXT_PRIMARY)
         self.option_add("*TCombobox*Listbox*selectBackground", Theme.PRIMARY)
@@ -783,16 +842,28 @@ class ModernApp(tk.Tk, ProjectMixin, StoryMixin, ImageMixin, DirectorMixin, KbMi
     
     def _create_modern_header(self):
         """创建现代化顶部标题栏 - 专业设计"""
-        # 主标题栏容器
         header = tk.Frame(self, bg=Theme.BG_PRIMARY, height=64)
         header.pack(fill="x", side="top")
         header.pack_propagate(False)
-        
-        # 左侧：Logo和标题
+
+        self._build_header_brand_area(header)
+
+        right_frame = tk.Frame(header, bg=Theme.BG_PRIMARY)
+        right_frame.pack(side="right", padx=24, pady=12)
+
+        right_container = tk.Frame(right_frame, bg=Theme.BG_PRIMARY)
+        right_container.pack(side="left")
+
+        self._build_header_tools(right_container)
+        self._build_header_status_card(right_container)
+        self._build_header_user_card(right_container)
+        self._build_header_separator()
+
+    def _build_header_brand_area(self, header: tk.Frame) -> None:
+        """构建顶部栏左侧品牌区。"""
         left_frame = tk.Frame(header, bg=Theme.BG_PRIMARY)
         left_frame.pack(side="left", padx=24, pady=12)
-        
-        # 精致的应用图标
+
         icon_canvas = tk.Canvas(
             left_frame,
             width=40,
@@ -801,66 +872,49 @@ class ModernApp(tk.Tk, ProjectMixin, StoryMixin, ImageMixin, DirectorMixin, KbMi
             highlightthickness=0
         )
         icon_canvas.pack(side="left", padx=(0, 16))
-        
-        # 绘制带渐变效果的图标
         icon_canvas.create_oval(
             0, 0, 40, 40,
             fill=Theme.PRIMARY,
             outline="",
             width=0
         )
-        # 内圈发光效果
         icon_canvas.create_oval(
             4, 4, 36, 36,
             fill="",
             outline=Theme.ACCENT,
             width=2
         )
-        # 图标
         icon_canvas.create_text(
             20, 20,
             text="AS",
             font=(Theme.FONT_FAMILY, 14, "bold"),
             fill=Theme.TEXT_PRIMARY
         )
-        
-        # 标题区域
+
         title_frame = tk.Frame(left_frame, bg=Theme.BG_PRIMARY)
         title_frame.pack(side="left")
-        
-        # 主标题
-        main_title = tk.Label(
+
+        tk.Label(
             title_frame,
             text="AI Story Creator Pro",
             font=(Theme.FONT_FAMILY, 18, "bold"),
             bg=Theme.BG_PRIMARY,
             fg=Theme.TEXT_PRIMARY
-        )
-        main_title.pack(anchor="w")
-        
-        # 副标题
-        subtitle = tk.Label(
+        ).pack(anchor="w")
+
+        tk.Label(
             title_frame,
             text="智能创作平台",
             font=(Theme.FONT_FAMILY, 11),
             bg=Theme.BG_PRIMARY,
             fg=Theme.TEXT_HINT
-        )
-        subtitle.pack(anchor="w")
-        
-        # 右侧：工具按钮、状态提示和用户信息
-        right_frame = tk.Frame(header, bg=Theme.BG_PRIMARY)
-        right_frame.pack(side="right", padx=24, pady=12)
-        
-        # 创建一个容器来放置状态提示和用户信息
-        right_container = tk.Frame(right_frame, bg=Theme.BG_PRIMARY)
-        right_container.pack(side="left")
-        
-        # 工具按钮区域
+        ).pack(anchor="w")
+
+    def _build_header_tools(self, right_container: tk.Frame) -> None:
+        """构建顶部栏右侧工具按钮区。"""
         tools_frame = tk.Frame(right_container, bg=Theme.BG_PRIMARY)
         tools_frame.pack(side="left", padx=(0, 16))
-        
-        # 主题切换按钮
+
         self.theme_btn = tk.Button(
             tools_frame,
             text="🌙" if theme_manager.is_dark else "☀️",
@@ -872,8 +926,7 @@ class ModernApp(tk.Tk, ProjectMixin, StoryMixin, ImageMixin, DirectorMixin, KbMi
             command=self._toggle_theme_ui
         )
         self.theme_btn.pack(side="left", padx=4)
-        
-        # 导入按钮
+
         tk.Button(
             tools_frame,
             text="📥",
@@ -884,8 +937,7 @@ class ModernApp(tk.Tk, ProjectMixin, StoryMixin, ImageMixin, DirectorMixin, KbMi
             cursor="hand2",
             command=lambda: self.import_config() if hasattr(self, 'import_config') else None
         ).pack(side="left", padx=4)
-        
-        # 导出按钮
+
         tk.Button(
             tools_frame,
             text="📤",
@@ -896,8 +948,7 @@ class ModernApp(tk.Tk, ProjectMixin, StoryMixin, ImageMixin, DirectorMixin, KbMi
             cursor="hand2",
             command=lambda: self.export_config() if hasattr(self, 'export_config') else None
         ).pack(side="left", padx=4)
-        
-        # 快捷键帮助按钮
+
         tk.Button(
             tools_frame,
             text="⌨️",
@@ -908,20 +959,19 @@ class ModernApp(tk.Tk, ProjectMixin, StoryMixin, ImageMixin, DirectorMixin, KbMi
             cursor="hand2",
             command=lambda: self._show_shortcuts_help() if hasattr(self, '_show_shortcuts_help') else None
         ).pack(side="left", padx=4)
-        
-        # 状态提示区域（在用户卡片左边）
+
+    def _build_header_status_card(self, right_container: tk.Frame) -> None:
+        """构建顶部栏状态卡片。"""
         status_card = tk.Frame(
             right_container,
             bg=Theme.SURFACE,
             relief="flat"
         )
         status_card.pack(side="left", padx=(0, 12))
-        
-        # 状态内容
+
         status_inner = tk.Frame(status_card, bg=Theme.SURFACE)
         status_inner.pack(padx=16, pady=8)
-        
-        # 状态图标（会根据状态动态更新）
+
         self.header_status_icon = tk.Label(
             status_inner,
             text="✅",
@@ -930,8 +980,7 @@ class ModernApp(tk.Tk, ProjectMixin, StoryMixin, ImageMixin, DirectorMixin, KbMi
             fg=Theme.TEXT_SECONDARY
         )
         self.header_status_icon.pack(side="left", padx=(0, 8))
-        
-        # 状态文本
+
         self.header_status_text = tk.Label(
             status_inner,
             text="就绪",
@@ -940,19 +989,19 @@ class ModernApp(tk.Tk, ProjectMixin, StoryMixin, ImageMixin, DirectorMixin, KbMi
             fg=Theme.TEXT_PRIMARY
         )
         self.header_status_text.pack(side="left")
-        
-        # 用户卡片（带微妙背景）
+
+    def _build_header_user_card(self, right_container: tk.Frame) -> None:
+        """构建顶部栏用户卡片。"""
         user_card = tk.Frame(
             right_container,
             bg=Theme.SURFACE,
             relief="flat"
         )
         user_card.pack(side="left")
-        
-        # 内部内容
+
         user_inner = tk.Frame(user_card, bg=Theme.SURFACE)
         user_inner.pack(padx=16, pady=8)
-        
+
         tk.Label(
             user_inner,
             text="👤",
@@ -968,8 +1017,9 @@ class ModernApp(tk.Tk, ProjectMixin, StoryMixin, ImageMixin, DirectorMixin, KbMi
             bg=Theme.SURFACE,
             fg=Theme.TEXT_PRIMARY
         ).pack(side="left")
-        
-        # 微妙的分隔线（渐变效果）
+
+    def _build_header_separator(self) -> None:
+        """构建顶部栏底部分隔线。"""
         separator = tk.Frame(self, bg=Theme.DIVIDER, height=1)
         separator.pack(fill="x")
     
@@ -993,95 +1043,126 @@ class ModernApp(tk.Tk, ProjectMixin, StoryMixin, ImageMixin, DirectorMixin, KbMi
     def _apply_theme_to_children(self, widget):
         """递归应用主题到所有子组件"""
         try:
-            # 跳过某些特殊组件
             widget_class = widget.winfo_class()
-            
-            # 跳过 Combobox、Spinbox 等复杂的 ttk 组件
-            if widget_class in ["TCombobox", "TSpinbox", "TNotebook", "TButton", "TEntry", "TFrame", "TLabelframe"]:
-                # TTK组件已经通过样式配置，跳过
-                for child in widget.winfo_children():
-                    self._apply_theme_to_children(child)
+            if self._should_skip_theme_widget_class(widget_class):
+                self._apply_theme_to_child_widgets(widget)
                 return
-            
-            # 只处理基本的 tk 组件
-            if widget_class == "Frame":
-                widget.configure(bg=Theme.BG_SECONDARY)
-            elif widget_class == "Label":
-                # 检查是否有特殊样式，避免覆盖
-                current_bg = widget.cget("bg")
-                if current_bg in ["#2b2b2b", "#1e1e1e", "SystemButtonFace", ""]:
-                    widget.configure(bg=Theme.BG_SECONDARY)
-                # 同步文字颜色（仅覆盖默认/高对比色）
-                try:
-                    current_fg = widget.cget("fg")
-                    if current_fg in ["#ffffff", "#FFFFFF", "#d4d4d4", "#D4D4D4", "black", "white", ""]:
-                        widget.configure(fg=Theme.TEXT_PRIMARY)
-                except Exception as e:
-                    logger.debug("label fg sync skipped: %s", e)
-            elif widget_class == "Text":
-                # 统一文本区域风格（仅覆盖旧黑色背景）
-                current_bg = widget.cget("bg")
-                if current_bg in ["#000000", "#1e1e1e", "#2b2b2b"]:
-                    text_bg = Theme.SURFACE_DARK if theme_manager.is_dark else Theme.SURFACE
-                    widget.configure(
-                        bg=text_bg,
-                        fg=Theme.TEXT_PRIMARY,
-                        insertbackground=Theme.TEXT_PRIMARY,
-                        selectbackground=Theme.PRIMARY,
-                        selectforeground=Theme.TEXT_PRIMARY,
-                    )
-            elif widget_class == "Entry":
-                current_bg = widget.cget("bg")
-                if current_bg in ["#000000", "#1e1e1e", "#2b2b2b"]:
-                    entry_bg = Theme.BG_TERTIARY if theme_manager.is_dark else Theme.SURFACE_LIGHT
-                    widget.configure(
-                        bg=entry_bg,
-                        fg=Theme.TEXT_PRIMARY,
-                        insertbackground=Theme.TEXT_PRIMARY,
-                        selectbackground=Theme.PRIMARY,
-                        selectforeground=Theme.TEXT_PRIMARY,
-                    )
-            elif widget_class == "Canvas":
-                current_bg = widget.cget("bg")
-                if current_bg in ["#000000", "#1e1e1e", "#2b2b2b"]:
-                    widget.configure(bg=Theme.BG_SECONDARY)
-            elif widget_class == "Listbox":
-                current_bg = widget.cget("bg")
-                if current_bg in ["#000000", "#1e1e1e", "#2b2b2b"]:
-                    widget.configure(
-                        bg=Theme.SURFACE if not theme_manager.is_dark else Theme.BG_TERTIARY,
-                        fg=Theme.TEXT_PRIMARY,
-                        selectbackground=Theme.PRIMARY,
-                        selectforeground=Theme.TEXT_PRIMARY,
-                    )
-            elif widget_class == "Button":
-                # 对常规按钮做轻量主题化
-                current_bg = widget.cget("bg")
-                current_fg = widget.cget("fg")
-                active_bg = widget.cget("activebackground")
-                active_fg = widget.cget("activeforeground")
-                if current_bg in ["#000000", "#1e1e1e", "#2b2b2b", "SystemButtonFace", ""]:
-                    widget.configure(
-                        bg=Theme.PRIMARY_DARK,
-                        fg=Theme.TEXT_PRIMARY,
-                        activebackground=Theme.PRIMARY,
-                        activeforeground=Theme.TEXT_PRIMARY,
-                        relief="flat",
-                        bd=0,
-                    )
-                else:
-                    # 保留自定义颜色，但修复按下状态变白的问题
-                    if active_bg in ["SystemButtonFace", "", None, "#ffffff", "#FFFFFF", "white"]:
-                        widget.configure(activebackground=current_bg)
-                    if active_fg in ["SystemButtonText", "", None] or (active_bg in ["#ffffff", "#FFFFFF", "white"] and active_fg in ["white", "#ffffff", "#FFFFFF"]):
-                        widget.configure(activeforeground=current_fg or Theme.TEXT_PRIMARY)
-            
-            # 递归处理子组件
-            for child in widget.winfo_children():
-                self._apply_theme_to_children(child)
+            self._apply_theme_to_single_widget(widget, widget_class)
+            self._apply_theme_to_child_widgets(widget)
         except Exception as e:
             # 忽略无法配置的组件，避免崩溃
             logger.debug("apply theme to children failed: %s", e)
+
+    @staticmethod
+    def _should_skip_theme_widget_class(widget_class: str) -> bool:
+        return widget_class in [
+            "TCombobox",
+            "TSpinbox",
+            "TNotebook",
+            "TButton",
+            "TEntry",
+            "TFrame",
+            "TLabelframe",
+        ]
+
+    def _apply_theme_to_child_widgets(self, widget) -> None:
+        for child in widget.winfo_children():
+            self._apply_theme_to_children(child)
+
+    def _apply_theme_to_single_widget(self, widget, widget_class: str) -> None:
+        if widget_class == "Frame":
+            widget.configure(bg=Theme.BG_SECONDARY)
+            return
+        if widget_class == "Label":
+            self._apply_theme_to_label(widget)
+            return
+        if widget_class == "Text":
+            self._apply_theme_to_text(widget)
+            return
+        if widget_class == "Entry":
+            self._apply_theme_to_entry(widget)
+            return
+        if widget_class == "Canvas":
+            self._apply_theme_to_canvas(widget)
+            return
+        if widget_class == "Listbox":
+            self._apply_theme_to_listbox(widget)
+            return
+        if widget_class == "Button":
+            self._apply_theme_to_button(widget)
+
+    def _apply_theme_to_label(self, widget) -> None:
+        current_bg = widget.cget("bg")
+        if current_bg in ["#2b2b2b", "#1e1e1e", "SystemButtonFace", ""]:
+            widget.configure(bg=Theme.BG_SECONDARY)
+        try:
+            current_fg = widget.cget("fg")
+            if current_fg in ["#ffffff", "#FFFFFF", "#d4d4d4", "#D4D4D4", "black", "white", ""]:
+                widget.configure(fg=Theme.TEXT_PRIMARY)
+        except Exception as e:
+            logger.debug("label fg sync skipped: %s", e)
+
+    def _apply_theme_to_text(self, widget) -> None:
+        current_bg = widget.cget("bg")
+        if current_bg in ["#000000", "#1e1e1e", "#2b2b2b"]:
+            text_bg = Theme.SURFACE_DARK if theme_manager.is_dark else Theme.SURFACE
+            widget.configure(
+                bg=text_bg,
+                fg=Theme.TEXT_PRIMARY,
+                insertbackground=Theme.TEXT_PRIMARY,
+                selectbackground=Theme.PRIMARY,
+                selectforeground=Theme.TEXT_PRIMARY,
+            )
+
+    def _apply_theme_to_entry(self, widget) -> None:
+        current_bg = widget.cget("bg")
+        if current_bg in ["#000000", "#1e1e1e", "#2b2b2b"]:
+            entry_bg = Theme.BG_TERTIARY if theme_manager.is_dark else Theme.SURFACE_LIGHT
+            widget.configure(
+                bg=entry_bg,
+                fg=Theme.TEXT_PRIMARY,
+                insertbackground=Theme.TEXT_PRIMARY,
+                selectbackground=Theme.PRIMARY,
+                selectforeground=Theme.TEXT_PRIMARY,
+            )
+
+    def _apply_theme_to_canvas(self, widget) -> None:
+        current_bg = widget.cget("bg")
+        if current_bg in ["#000000", "#1e1e1e", "#2b2b2b"]:
+            widget.configure(bg=Theme.BG_SECONDARY)
+
+    def _apply_theme_to_listbox(self, widget) -> None:
+        current_bg = widget.cget("bg")
+        if current_bg in ["#000000", "#1e1e1e", "#2b2b2b"]:
+            widget.configure(
+                bg=Theme.SURFACE if not theme_manager.is_dark else Theme.BG_TERTIARY,
+                fg=Theme.TEXT_PRIMARY,
+                selectbackground=Theme.PRIMARY,
+                selectforeground=Theme.TEXT_PRIMARY,
+            )
+
+    def _apply_theme_to_button(self, widget) -> None:
+        current_bg = widget.cget("bg")
+        current_fg = widget.cget("fg")
+        active_bg = widget.cget("activebackground")
+        active_fg = widget.cget("activeforeground")
+        if current_bg in ["#000000", "#1e1e1e", "#2b2b2b", "SystemButtonFace", ""]:
+            widget.configure(
+                bg=Theme.PRIMARY_DARK,
+                fg=Theme.TEXT_PRIMARY,
+                activebackground=Theme.PRIMARY,
+                activeforeground=Theme.TEXT_PRIMARY,
+                relief="flat",
+                bd=0,
+            )
+            return
+        if active_bg in ["SystemButtonFace", "", None, "#ffffff", "#FFFFFF", "white"]:
+            widget.configure(activebackground=current_bg)
+        if active_fg in ["SystemButtonText", "", None] or (
+            active_bg in ["#ffffff", "#FFFFFF", "white"]
+            and active_fg in ["white", "#ffffff", "#FFFFFF"]
+        ):
+            widget.configure(activeforeground=current_fg or Theme.TEXT_PRIMARY)
     
     def _create_modern_status_bar(self):
         """创建现代化底部状态栏 - 专业设计"""

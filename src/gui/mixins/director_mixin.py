@@ -20,35 +20,8 @@ class DirectorMixin:
         root.pack(fill=BOTH, expand=True, padx=12, pady=12)
 
         self._build_director_hero(root)
-
-        metrics = tk.Frame(root, bg=Theme.BG_SECONDARY)
-        metrics.pack(fill="x", pady=(0, 10))
-        for col in range(5):
-            metrics.columnconfigure(col, weight=1)
-
-        self.director_stat_shots_var = tk.StringVar(value="0")
-        self.director_stat_chars_var = tk.StringVar(value="0")
-        self.director_stat_duration_var = tk.StringVar(value="0 秒")
-        self.director_stat_quality_var = tk.StringVar(value="0%")
-        self.director_stat_problem_var = tk.StringVar(value="0")
-        self.director_stat_selected_var = tk.StringVar(value="未选择")
-
-        self._create_director_metric_card(metrics, 0, "分镜数量", self.director_stat_shots_var)
-        self._create_director_metric_card(metrics, 1, "人物数量", self.director_stat_chars_var)
-        self._create_director_metric_card(metrics, 2, "总时长", self.director_stat_duration_var)
-        self._create_director_metric_card(metrics, 3, "结构完整度", self.director_stat_quality_var)
-        self._create_director_metric_card(metrics, 4, "问题镜头", self.director_stat_problem_var)
-
-        body = ttk.PanedWindow(root, orient="horizontal")
-        body.pack(fill=BOTH, expand=True)
-
-        left_panel = tk.Frame(body, bg=Theme.BG_SECONDARY)
-        right_panel = tk.Frame(body, bg=Theme.BG_SECONDARY)
-        body.add(left_panel, weight=3)
-        body.add(right_panel, weight=2)
-
-        self._build_director_left_panel(left_panel)
-        self._build_director_right_panel(right_panel)
+        self._build_director_metrics(root)
+        self._build_director_body(root)
 
     def _init_director_state(self) -> None:
         """Initialize director page runtime state."""
@@ -164,11 +137,49 @@ class DirectorMixin:
             fg=Theme.TEXT_PRIMARY,
         ).pack(anchor="w", padx=10, pady=(0, 8))
 
+    def _build_director_metrics(self, root: tk.Frame) -> None:
+        """Build top metric cards."""
+        metrics = tk.Frame(root, bg=Theme.BG_SECONDARY)
+        metrics.pack(fill="x", pady=(0, 10))
+        for col in range(5):
+            metrics.columnconfigure(col, weight=1)
+
+        self.director_stat_shots_var = tk.StringVar(value="0")
+        self.director_stat_chars_var = tk.StringVar(value="0")
+        self.director_stat_duration_var = tk.StringVar(value="0 秒")
+        self.director_stat_quality_var = tk.StringVar(value="0%")
+        self.director_stat_problem_var = tk.StringVar(value="0")
+        self.director_stat_selected_var = tk.StringVar(value="未选择")
+
+        self._create_director_metric_card(metrics, 0, "分镜数量", self.director_stat_shots_var)
+        self._create_director_metric_card(metrics, 1, "人物数量", self.director_stat_chars_var)
+        self._create_director_metric_card(metrics, 2, "总时长", self.director_stat_duration_var)
+        self._create_director_metric_card(metrics, 3, "结构完整度", self.director_stat_quality_var)
+        self._create_director_metric_card(metrics, 4, "问题镜头", self.director_stat_problem_var)
+
+    def _build_director_body(self, root: tk.Frame) -> None:
+        """Build split body panels."""
+        body = ttk.PanedWindow(root, orient="horizontal")
+        body.pack(fill=BOTH, expand=True)
+
+        left_panel = tk.Frame(body, bg=Theme.BG_SECONDARY)
+        right_panel = tk.Frame(body, bg=Theme.BG_SECONDARY)
+        body.add(left_panel, weight=3)
+        body.add(right_panel, weight=2)
+
+        self._build_director_left_panel(left_panel)
+        self._build_director_right_panel(right_panel)
+
     def _build_director_left_panel(self, left_panel: tk.Frame) -> None:
         """Build shot table panel."""
         box = tk.Frame(left_panel, bg=Theme.SURFACE, relief=tk.SOLID, borderwidth=1)
         box.pack(fill=BOTH, expand=True, padx=(0, 8))
+        self._build_director_left_header(box)
+        self._build_director_left_tools(box)
+        self._build_director_shot_table(box)
 
+    def _build_director_left_header(self, box: tk.Frame) -> None:
+        """Build shot table header."""
         header = tk.Frame(box, bg=Theme.SURFACE)
         header.pack(fill="x", padx=10, pady=(8, 6))
         tk.Label(
@@ -178,7 +189,6 @@ class DirectorMixin:
             bg=Theme.SURFACE,
             fg=Theme.TEXT_PRIMARY,
         ).pack(side=LEFT)
-
         self.director_table_hint_var = tk.StringVar(value="0 / 0")
         tk.Label(
             header,
@@ -188,6 +198,8 @@ class DirectorMixin:
             fg=Theme.TEXT_SECONDARY,
         ).pack(side=RIGHT)
 
+    def _build_director_left_tools(self, box: tk.Frame) -> None:
+        """Build filter controls."""
         tools = tk.Frame(box, bg=Theme.SURFACE)
         tools.pack(fill="x", padx=10, pady=(0, 6))
 
@@ -239,6 +251,8 @@ class DirectorMixin:
             font=(Theme.FONT_FAMILY, 9),
         ).pack(side=LEFT)
 
+    def _build_director_shot_table(self, box: tk.Frame) -> None:
+        """Build shot treeview and scrolling."""
         table_wrap = tk.Frame(box, bg=Theme.SURFACE)
         table_wrap.pack(fill=BOTH, expand=True, padx=10, pady=(0, 8))
 
@@ -280,10 +294,13 @@ class DirectorMixin:
         info_box = tk.Frame(right_split, bg=Theme.SURFACE, relief=tk.SOLID, borderwidth=1)
         right_split.add(detail_box, weight=3)
         right_split.add(info_box, weight=2)
+        self._build_director_detail_box(detail_box)
+        self._build_director_info_box(info_box)
 
+    def _build_director_detail_box(self, detail_box: tk.Frame) -> None:
+        """Build selected shot detail panel."""
         detail_header = tk.Frame(detail_box, bg=Theme.SURFACE)
         detail_header.pack(fill="x", padx=10, pady=(8, 4))
-
         tk.Label(
             detail_header,
             text="🔎 当前镜头详情",
@@ -291,7 +308,6 @@ class DirectorMixin:
             bg=Theme.SURFACE,
             fg=Theme.TEXT_PRIMARY,
         ).pack(side=LEFT)
-
         self.director_selected_title_var = tk.StringVar(value="未选择分镜")
         tk.Label(
             detail_header,
@@ -300,7 +316,6 @@ class DirectorMixin:
             bg=Theme.SURFACE,
             fg=Theme.TEXT_SECONDARY,
         ).pack(side=RIGHT)
-
         self.director_shot_detail_text = tk.Text(
             detail_box,
             wrap=tk.WORD,
@@ -315,6 +330,8 @@ class DirectorMixin:
         self.director_shot_detail_text.pack(fill=BOTH, expand=True, padx=10, pady=(0, 10))
         self.director_shot_detail_text.insert("1.0", "选择左侧分镜后显示详细信息")
 
+    def _build_director_info_box(self, info_box: tk.Frame) -> None:
+        """Build character/script/quality tabs."""
         info_header = tk.Frame(info_box, bg=Theme.SURFACE)
         info_header.pack(fill="x", padx=10, pady=(8, 4))
         tk.Label(
@@ -334,39 +351,25 @@ class DirectorMixin:
         tabs.add(tab_char, text="👥 人物")
         tabs.add(tab_script, text="📝 脚本")
         tabs.add(tab_quality, text="✅ 质检")
-
-        self.director_characters_text = tk.Text(
-            tab_char,
-            wrap=tk.WORD,
-            font=(Theme.FONT_FAMILY, 10),
-            bg=Theme.SURFACE,
-            fg=Theme.TEXT_PRIMARY,
-            insertbackground=Theme.TEXT_PRIMARY,
-            relief=tk.FLAT,
-            padx=8,
-            pady=8,
+        self.director_characters_text = self._create_director_info_text(
+            tab_char, font=(Theme.FONT_FAMILY, 10), placeholder="尚未生成人物信息"
         )
         self.director_characters_text.pack(fill=BOTH, expand=True)
-        self.director_characters_text.insert("1.0", "尚未生成人物信息")
-
-        self.director_script_text = tk.Text(
-            tab_script,
-            wrap=tk.WORD,
-            font=(Theme.FONT_FAMILY, 10),
-            bg=Theme.SURFACE,
-            fg=Theme.TEXT_PRIMARY,
-            insertbackground=Theme.TEXT_PRIMARY,
-            relief=tk.FLAT,
-            padx=8,
-            pady=8,
+        self.director_script_text = self._create_director_info_text(
+            tab_script, font=(Theme.FONT_FAMILY, 10), placeholder="尚未生成导演脚本"
         )
         self.director_script_text.pack(fill=BOTH, expand=True)
-        self.director_script_text.insert("1.0", "尚未生成导演脚本")
+        self.director_quality_text = self._create_director_info_text(
+            tab_quality, font=(Theme.FONT_FAMILY_MONO, 10), placeholder="尚未生成质检报告"
+        )
+        self.director_quality_text.pack(fill=BOTH, expand=True)
 
-        self.director_quality_text = tk.Text(
-            tab_quality,
+    def _create_director_info_text(self, parent: tk.Frame, *, font: tuple, placeholder: str) -> tk.Text:
+        """Create a shared text widget used by info tabs."""
+        text_widget = tk.Text(
+            parent,
             wrap=tk.WORD,
-            font=(Theme.FONT_FAMILY_MONO, 10),
+            font=font,
             bg=Theme.SURFACE,
             fg=Theme.TEXT_PRIMARY,
             insertbackground=Theme.TEXT_PRIMARY,
@@ -374,8 +377,8 @@ class DirectorMixin:
             padx=8,
             pady=8,
         )
-        self.director_quality_text.pack(fill=BOTH, expand=True)
-        self.director_quality_text.insert("1.0", "尚未生成质检报告")
+        text_widget.insert("1.0", placeholder)
+        return text_widget
 
     def _update_director_page_with_package(self, package: dict, shot_lines: list[str], markdown_path=None) -> None:
         """Refresh director page from generated package."""
@@ -482,85 +485,129 @@ class DirectorMixin:
         if not isinstance(getattr(self, "_last_director_package", None), dict):
             return
 
-        previous_shot_no = None
-        if preserve_selection:
-            selected_idx = self._get_selected_director_shot_index()
-            selected_shot = self._get_director_shot_by_index(selected_idx) if selected_idx is not None else None
-            if isinstance(selected_shot, dict):
-                previous_shot_no = selected_shot.get("shot_no")
-            if previous_shot_no is None:
-                previous_shot_no = self._director_selected_shot_no
+        previous_shot_no = self._resolve_director_previous_shot_no(preserve_selection)
+        self._clear_director_shot_rows()
+        shots = DirectorScriptBuilder.iter_shots(self._last_director_package)
+        keyword, issue_only = self._get_director_filter_values()
+        visible_count, target_iid = self._populate_director_shot_rows(
+            shots, keyword=keyword, issue_only=issue_only, previous_shot_no=previous_shot_no
+        )
+        self.director_table_hint_var.set(f"{visible_count} / {len(shots)}")
+        if visible_count == 0:
+            self._render_director_empty_filter_state()
+            return
+        self._select_director_target_row(target_iid)
 
+    def _resolve_director_previous_shot_no(self, preserve_selection: bool) -> int | None:
+        """Resolve current selected shot number for selection preservation."""
+        if not preserve_selection:
+            return None
+        selected_idx = self._get_selected_director_shot_index()
+        selected_shot = self._get_director_shot_by_index(selected_idx) if selected_idx is not None else None
+        if isinstance(selected_shot, dict):
+            shot_no = selected_shot.get("shot_no")
+            if shot_no is not None:
+                return shot_no
+        return self._director_selected_shot_no
+
+    def _clear_director_shot_rows(self) -> None:
+        """Clear tree rows and index map."""
         for item in self.director_shot_tree.get_children():
             self.director_shot_tree.delete(item)
-
         self._director_tree_index_map = {}
-        shots = DirectorScriptBuilder.iter_shots(self._last_director_package)
+
+    def _get_director_filter_values(self) -> tuple[str, bool]:
+        """Read keyword and issue-only filters from UI."""
         keyword = self.director_filter_var.get().strip().lower() if hasattr(self, "director_filter_var") else ""
         issue_only = bool(self.director_issue_only_var.get()) if hasattr(self, "director_issue_only_var") else False
+        return keyword, issue_only
 
+    def _populate_director_shot_rows(
+        self,
+        shots: list[dict],
+        *,
+        keyword: str,
+        issue_only: bool,
+        previous_shot_no: int | None,
+    ) -> tuple[int, str | None]:
+        """Insert filtered shot rows and return visible count + target iid."""
         visible_count = 0
         target_iid = None
         for idx, shot in enumerate(shots):
             issues = DirectorScriptBuilder.get_shot_quality_issues(shot)
-            if issue_only and not issues:
+            if not self._director_shot_matches_filters(shot, issues, keyword=keyword, issue_only=issue_only):
                 continue
-
-            scene = f"{shot.get('location', '')} {shot.get('time', '')}".strip() or "-"
-            chars = self._format_shot_character_names(shot)
-            action = str(shot.get("action", "")).strip()
-            issue_summary = "通过" if not issues else issues[0]
-
-            haystack = " ".join(
-                [
-                    scene,
-                    chars,
-                    action,
-                    str(shot.get("veo_prompt", "")),
-                    " ".join(issues),
-                    str(shot.get("shot_type", "")),
-                    str(shot.get("camera_movement", "")),
-                ]
-            ).lower()
-            if keyword and keyword not in haystack:
-                continue
-
-            shot_no = shot.get("shot_no", idx + 1)
-            duration = f"{shot.get('duration_sec', '-')}" + ("秒" if str(shot.get("duration_sec", "")).strip() else "")
-            action_short = action[:34] + "..." if len(action) > 34 else (action or "-")
-            issue_short = issue_summary[:16] + "..." if len(issue_summary) > 16 else issue_summary
-
-            iid = self.director_shot_tree.insert(
-                "",
-                END,
-                values=(shot_no, scene, chars or "-", action_short, duration or "-", issue_short),
-            )
-            self._director_tree_index_map[iid] = idx
+            iid, shot_no = self._insert_director_shot_row(idx, shot, issues)
             visible_count += 1
-
             if previous_shot_no is not None and str(shot_no) == str(previous_shot_no):
                 target_iid = iid
+        return visible_count, target_iid
 
-        self.director_table_hint_var.set(f"{visible_count} / {len(shots)}")
+    def _director_shot_matches_filters(self, shot: dict, issues: list[str], *, keyword: str, issue_only: bool) -> bool:
+        """Check whether one shot should be visible under current filters."""
+        if issue_only and not issues:
+            return False
+        if not keyword:
+            return True
+        haystack = self._build_director_shot_haystack(shot, issues)
+        return keyword in haystack
 
-        if visible_count == 0:
-            self.director_shot_tree.insert("", END, values=("-", "没有匹配的分镜", "-", "-", "-", "-"))
-            self.director_stat_selected_var.set("未选择")
-            self.director_selected_title_var.set("未选择分镜")
-            if hasattr(self, "director_shot_detail_text"):
-                self.director_shot_detail_text.delete("1.0", END)
-                self.director_shot_detail_text.insert("1.0", "当前筛选条件下没有可显示的分镜")
-            return
+    def _build_director_shot_haystack(self, shot: dict, issues: list[str]) -> str:
+        """Build searchable haystack for one shot."""
+        scene = f"{shot.get('location', '')} {shot.get('time', '')}".strip()
+        chars = self._format_shot_character_names(shot)
+        action = str(shot.get("action", "")).strip()
+        return " ".join(
+            [
+                scene,
+                chars,
+                action,
+                str(shot.get("veo_prompt", "")),
+                " ".join(issues),
+                str(shot.get("shot_type", "")),
+                str(shot.get("camera_movement", "")),
+            ]
+        ).lower()
 
+    def _insert_director_shot_row(self, idx: int, shot: dict, issues: list[str]) -> tuple[str, int]:
+        """Insert one shot row and return iid + shot_no."""
+        shot_no = shot.get("shot_no", idx + 1)
+        scene = f"{shot.get('location', '')} {shot.get('time', '')}".strip() or "-"
+        chars = self._format_shot_character_names(shot)
+        action = str(shot.get("action", "")).strip()
+        issue_summary = "通过" if not issues else issues[0]
+        duration = f"{shot.get('duration_sec', '-')}" + ("秒" if str(shot.get("duration_sec", "")).strip() else "")
+        action_short = action[:34] + "..." if len(action) > 34 else (action or "-")
+        issue_short = issue_summary[:16] + "..." if len(issue_summary) > 16 else issue_summary
+
+        iid = self.director_shot_tree.insert(
+            "",
+            END,
+            values=(shot_no, scene, chars or "-", action_short, duration or "-", issue_short),
+        )
+        self._director_tree_index_map[iid] = idx
+        return iid, shot_no
+
+    def _render_director_empty_filter_state(self) -> None:
+        """Render empty state when no shot matches current filters."""
+        self.director_shot_tree.insert("", END, values=("-", "没有匹配的分镜", "-", "-", "-", "-"))
+        self.director_stat_selected_var.set("未选择")
+        self.director_selected_title_var.set("未选择分镜")
+        if hasattr(self, "director_shot_detail_text"):
+            self.director_shot_detail_text.delete("1.0", END)
+            self.director_shot_detail_text.insert("1.0", "当前筛选条件下没有可显示的分镜")
+
+    def _select_director_target_row(self, target_iid: str | None) -> None:
+        """Select target row, fallback to first visible row."""
         if target_iid is None:
             rows = self.director_shot_tree.get_children()
             if rows:
                 target_iid = rows[0]
-
-        if target_iid is not None:
-            self.director_shot_tree.selection_set(target_iid)
-            self.director_shot_tree.focus(target_iid)
-            self._on_director_shot_selected(None)
+        if target_iid is None:
+            return
+        self.director_shot_tree.selection_set(target_iid)
+        self.director_shot_tree.focus(target_iid)
+        self._on_director_shot_selected(None)
 
     @staticmethod
     def _format_shot_character_names(shot: dict) -> str:

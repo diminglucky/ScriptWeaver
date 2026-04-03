@@ -228,41 +228,98 @@ class ZhihuPublisherMixin:
         threading.Thread(target=generate_title_task, daemon=True).start()
 
     def _on_publish_to_zhihu(self) -> None:
-        article_title_min_len, article_title_max_len = get_article_title_limits()
-        title = normalize_article_title(
-            self.zhihu_title_var.get().strip(),
-            min_len=article_title_min_len,
-            max_len=article_title_max_len,
-        )
-        if title != self.zhihu_title_var.get().strip():
-            self.zhihu_title_var.set(title)
+        payload = self._prepare_zhihu_publish_payload()
+        if not payload:
+            return
+        title, content = payload
+        if not self._ensure_playwright_installed():
+            return
+        self._start_zhihu_publish_task(title=title, content=content)
+
+    def _prepare_zhihu_publish_payload(self) -> tuple[str, str] | None:
+        title = self._normalize_current_zhihu_title()
         if not title:
             messagebox.showwarning("提示", "请先输入或生成文章标题")
-            return
+            return None
 
         raw_content = self.output.get("1.0", END).strip()
         if not raw_content:
             messagebox.showwarning("提示", "请先生成故事内容")
-            return
+            return None
         if len(raw_content) < 100:
             messagebox.showwarning("提示", "故事内容太短，建议至少100字以上")
-            return
+            return None
 
+        neutralize_mentions = self._get_zhihu_neutralize_mentions_preference()
+        content = self._sanitize_zhihu_publish_content(raw_content, neutralize_mentions)
+        if not content or len(content) < 100:
+            messagebox.showwarning("提示", "无法提取有效的故事内容")
+            return None
+
+        return self._show_zhihu_publish_preview(
+            title=title,
+            raw_content=raw_content,
+            content=content,
+            neutralize_mentions=neutralize_mentions,
+        )
+
+    def _normalize_current_zhihu_title(self) -> str:
+        article_title_min_len, article_title_max_len = get_article_title_limits()
+        current_title = self.zhihu_title_var.get().strip()
+        title = normalize_article_title(
+            current_title,
+            min_len=article_title_min_len,
+            max_len=article_title_max_len,
+        )
+        if title != current_title:
+            self.zhihu_title_var.set(title)
+        return title
+
+    def _get_zhihu_neutralize_mentions_preference(self) -> bool:
         neutralize_mentions = True
         if hasattr(self, "zhihu_neutralize_mentions_var"):
             try:
                 neutralize_mentions = bool(self.zhihu_neutralize_mentions_var.get())
             except Exception:
                 neutralize_mentions = True
-        content = (
-            StoryExtractor.sanitize_for_zhihu_publish(raw_content)
-            if neutralize_mentions
-            else StoryExtractor.sanitize_for_publish(raw_content)
-        )
-        if not content or len(content) < 100:
-            messagebox.showwarning("提示", "无法提取有效的故事内容")
-            return
+        return neutralize_mentions
 
+    def _sanitize_zhihu_publish_content(self, text: str, neutralize_mentions: bool) -> str:
+        if neutralize_mentions:
+            return StoryExtractor.sanitize_for_zhihu_publish(text)
+        return StoryExtractor.sanitize_for_publish(text)
+
+    def _show_zhihu_publish_preview(
+        self,
+        title: str,
+        raw_content: str,
+        content: str,
+        neutralize_mentions: bool,
+    ) -> tuple[str, str] | None:
+        preview_window, main_canvas, scrollable_main = self._create_zhihu_preview_scaffold()
+        title_var = self._build_zhihu_preview_title_section(
+            scrollable_main=scrollable_main,
+            title=title,
+            raw_content=raw_content,
+            content=content,
+        )
+        content_text = self._build_zhihu_preview_content_section(
+            scrollable_main=scrollable_main,
+            content=content,
+        )
+        return self._collect_zhihu_preview_result(
+            preview_window=preview_window,
+            main_canvas=main_canvas,
+            scrollable_main=scrollable_main,
+            title_var=title_var,
+            content_text=content_text,
+            neutralize_mentions=neutralize_mentions,
+            default_title=title,
+            default_content=content,
+        )
+
+    def _create_zhihu_preview_scaffold(self) -> tuple[tk.Toplevel, tk.Canvas, ttk.Frame]:
+        """创建发布预览窗口骨架并返回核心容器。"""
         preview_window = tk.Toplevel(self)
         preview_window.title("发布预览 - 确认内容")
         screen_width = preview_window.winfo_screenwidth()
@@ -278,7 +335,7 @@ class ZhihuPublisherMixin:
         scrollable_main = ttk.Frame(main_canvas)
         scrollable_main.bind(
             "<Configure>",
-            lambda e: main_canvas.configure(scrollregion=main_canvas.bbox("all")),
+            lambda _e: main_canvas.configure(scrollregion=main_canvas.bbox("all")),
         )
         main_canvas.create_window((0, 0), window=scrollable_main, anchor="nw")
         main_canvas.configure(yscrollcommand=main_scrollbar.set)
@@ -290,7 +347,16 @@ class ZhihuPublisherMixin:
         main_canvas.bind("<Enter>", lambda _event: main_canvas.focus_set())
         main_canvas.pack(side="left", fill="both", expand=True)
         main_scrollbar.pack(side="right", fill="y")
+        return preview_window, main_canvas, scrollable_main
 
+    def _build_zhihu_preview_title_section(
+        self,
+        scrollable_main: ttk.Frame,
+        title: str,
+        raw_content: str,
+        content: str,
+    ) -> tk.StringVar:
+        """构建预览标题区域并返回可编辑标题变量。"""
         title_frame = ttk.Frame(scrollable_main)
         title_frame.pack(fill="x", padx=20, pady=(20, 10))
         title_header = ttk.Frame(title_frame)
@@ -308,7 +374,9 @@ class ZhihuPublisherMixin:
         ).pack(side="right", padx=(10, 0))
 
         title_var = tk.StringVar(value=title)
-        title_entry = ttk.Entry(title_frame, textvariable=title_var, font=("Microsoft YaHei", 13))
+        title_entry = ttk.Entry(
+            title_frame, textvariable=title_var, font=("Microsoft YaHei", 13)
+        )
         title_entry.pack(fill="x", pady=(5, 0))
         ttk.Label(
             title_frame,
@@ -316,7 +384,14 @@ class ZhihuPublisherMixin:
             font=("Microsoft YaHei", 8),
             foreground="gray",
         ).pack(anchor="w", pady=(3, 0))
+        return title_var
 
+    def _build_zhihu_preview_content_section(
+        self,
+        scrollable_main: ttk.Frame,
+        content: str,
+    ) -> scrolledtext.ScrolledText:
+        """构建预览正文区域并返回可编辑正文控件。"""
         content_frame = ttk.LabelFrame(
             scrollable_main,
             text="📄 将要发布的内容（可编辑，删除不需要的部分）",
@@ -338,18 +413,43 @@ class ZhihuPublisherMixin:
             font=("Microsoft YaHei", 8),
             foreground="#0066cc",
         ).pack(anchor="w", pady=(5, 0))
+        return content_text
 
+    def _collect_zhihu_preview_result(
+        self,
+        preview_window: tk.Toplevel,
+        main_canvas: tk.Canvas,
+        scrollable_main: ttk.Frame,
+        title_var: tk.StringVar,
+        content_text: scrolledtext.ScrolledText,
+        neutralize_mentions: bool,
+        default_title: str,
+        default_content: str,
+    ) -> tuple[str, str] | None:
+        """处理预览窗口确认/取消，并返回最终发布内容。"""
         button_frame = ttk.Frame(scrollable_main)
         button_frame.pack(fill="x", padx=20, pady=(10, 20))
-        publish_confirmed = [False]
+        payload = {
+            "confirmed": False,
+            "title": default_title,
+            "content": default_content,
+        }
 
-        def confirm_publish():
+        def _close_preview() -> None:
+            try:
+                main_canvas.unbind("<MouseWheel>")
+            except Exception:
+                pass
+            try:
+                preview_window.destroy()
+            except Exception:
+                pass
+
+        def confirm_publish() -> None:
             edited_title = title_var.get().strip()
             edited_content = content_text.get("1.0", "end-1c").strip()
-            edited_content = (
-                StoryExtractor.sanitize_for_zhihu_publish(edited_content)
-                if neutralize_mentions
-                else StoryExtractor.sanitize_for_publish(edited_content)
+            edited_content = self._sanitize_zhihu_publish_content(
+                edited_content, neutralize_mentions
             )
             if not edited_title:
                 messagebox.showwarning("提示", "标题不能为空")
@@ -357,16 +457,15 @@ class ZhihuPublisherMixin:
             if not edited_content:
                 messagebox.showwarning("提示", "内容不能为空")
                 return
-            self.zhihu_title_var.set(edited_title)
-            self._zhihu_edited_title = edited_title
-            self._zhihu_edited_content = edited_content
-            publish_confirmed[0] = True
-            main_canvas.unbind("<MouseWheel>")
-            preview_window.destroy()
 
-        def cancel_publish():
-            main_canvas.unbind("<MouseWheel>")
-            preview_window.destroy()
+            self.zhihu_title_var.set(edited_title)
+            payload["title"] = edited_title
+            payload["content"] = edited_content
+            payload["confirmed"] = True
+            _close_preview()
+
+        def cancel_publish() -> None:
+            _close_preview()
 
         ttk.Button(
             button_frame,
@@ -379,18 +478,14 @@ class ZhihuPublisherMixin:
         preview_window.transient(self)
         preview_window.grab_set()
         self.wait_window(preview_window)
-        if not publish_confirmed[0]:
-            return
+        if not payload["confirmed"]:
+            return None
+        return payload["title"], payload["content"]
 
-        if hasattr(self, "_zhihu_edited_title"):
-            title = self._zhihu_edited_title
-            delattr(self, "_zhihu_edited_title")
-        if hasattr(self, "_zhihu_edited_content"):
-            content = self._zhihu_edited_content
-            delattr(self, "_zhihu_edited_content")
-
+    def _ensure_playwright_installed(self) -> bool:
         try:
             import playwright  # noqa: F401
+            return True
         except ImportError:
             messagebox.showerror(
                 "缺少依赖",
@@ -398,66 +493,84 @@ class ZhihuPublisherMixin:
                 "1. pip install playwright\n"
                 "2. playwright install chromium",
             )
-            return
+            return False
 
+    def _start_zhihu_publish_task(self, title: str, content: str) -> None:
         self.zhihu_publish_btn.config(state="disabled", text="发布中...")
         self.zhihu_progress_label.config(text="正在初始化...")
+        threading.Thread(
+            target=lambda: self._run_zhihu_publish_task(title=title, content=content),
+            daemon=True,
+        ).start()
 
-        def publish_task():
-            try:
-                from src.gui.services.zhihu_publisher import publish_to_zhihu_sync
+    def _resolve_zhihu_publish_headless(self) -> bool:
+        headless = bool(self.zhihu_headless_var.get())
+        if headless:
+            # Zhihu 发布流程通常需要人工最终确认，后台模式无法手动点击发布按钮。
+            headless = False
+            self.after(
+                0,
+                lambda: self.zhihu_progress_label.config(text="⚠ 后台模式已切换为前台"),
+            )
+        return headless
 
-                headless = bool(self.zhihu_headless_var.get())
-                if headless:
-                    # Zhihu 发布流程通常需要人工最终确认，后台模式无法手动点击发布按钮。
-                    headless = False
-                    self.after(
-                        0,
-                        lambda: self.zhihu_progress_label.config(text="⚠ 后台模式已切换为前台"),
-                    )
+    def _run_zhihu_publish_task(self, title: str, content: str) -> None:
+        try:
+            from src.gui.services.zhihu_publisher import publish_to_zhihu_sync
 
-                def progress_callback(message: str):
-                    self.after(0, lambda msg=message: self.zhihu_progress_label.config(text=msg))
+            headless = self._resolve_zhihu_publish_headless()
 
-                success, result = publish_to_zhihu_sync(
-                    title=title,
-                    content=content,
-                    headless=headless,
-                    progress_callback=progress_callback,
-                )
-                if success:
-                    if isinstance(result, str) and result.startswith("http"):
-                        self.after(
-                            0,
-                            lambda: messagebox.showinfo(
-                                "发布成功",
-                                f"文章已成功发布到知乎！\n\n链接: {result}\n\n已复制到剪贴板",
-                            ),
-                        )
-                        self.after(0, self.clipboard_clear)
-                        self.after(0, lambda: self.clipboard_append(result))
-                    else:
-                        self.after(
-                            0,
-                            lambda: messagebox.showinfo(
-                                "内容已填充",
-                                f"{result}\n\n请在浏览器中检查内容并手动点击发布按钮。",
-                            ),
-                        )
-                    self.after(0, lambda: self.zhihu_progress_label.config(text="✅ 完成"))
-                    if hasattr(self, "status"):
-                        self.after(0, lambda: self.status.set("✅ 知乎发布完成"))
-                else:
-                    self.after(0, lambda: messagebox.showerror("发布失败", str(result)))
-                    self.after(0, lambda: self.zhihu_progress_label.config(text="❌ 失败"))
-                    if hasattr(self, "status"):
-                        self.after(0, lambda: self.status.set("❌ 发布失败"))
-            except Exception as e:
-                self.after(0, lambda: messagebox.showerror("错误", f"发布过程出错: {str(e)}"))
-                self.after(0, lambda: self.zhihu_progress_label.config(text="❌ 错误"))
-                if hasattr(self, "status"):
-                    self.after(0, lambda: self.status.set("❌ 发布错误"))
-            finally:
-                self.after(0, lambda: self.zhihu_publish_btn.config(state="normal", text="📤 发布到知乎"))
+            def progress_callback(message: str):
+                self.after(0, lambda msg=message: self.zhihu_progress_label.config(text=msg))
 
-        threading.Thread(target=publish_task, daemon=True).start()
+            success, result = publish_to_zhihu_sync(
+                title=title,
+                content=content,
+                headless=headless,
+                progress_callback=progress_callback,
+            )
+            if success:
+                self._handle_zhihu_publish_success(result)
+            else:
+                self._handle_zhihu_publish_failure(result)
+        except Exception as e:
+            self._handle_zhihu_publish_exception(e)
+        finally:
+            self.after(
+                0, lambda: self.zhihu_publish_btn.config(state="normal", text="📤 发布到知乎")
+            )
+
+    def _handle_zhihu_publish_success(self, result) -> None:
+        if isinstance(result, str) and result.startswith("http"):
+            self.after(
+                0,
+                lambda link=result: messagebox.showinfo(
+                    "发布成功",
+                    f"文章已成功发布到知乎！\n\n链接: {link}\n\n已复制到剪贴板",
+                ),
+            )
+            self.after(0, self.clipboard_clear)
+            self.after(0, lambda link=result: self.clipboard_append(link))
+        else:
+            self.after(
+                0,
+                lambda msg=result: messagebox.showinfo(
+                    "内容已填充",
+                    f"{msg}\n\n请在浏览器中检查内容并手动点击发布按钮。",
+                ),
+            )
+        self.after(0, lambda: self.zhihu_progress_label.config(text="✅ 完成"))
+        if hasattr(self, "status"):
+            self.after(0, lambda: self.status.set("✅ 知乎发布完成"))
+
+    def _handle_zhihu_publish_failure(self, result) -> None:
+        self.after(0, lambda err=str(result): messagebox.showerror("发布失败", err))
+        self.after(0, lambda: self.zhihu_progress_label.config(text="❌ 失败"))
+        if hasattr(self, "status"):
+            self.after(0, lambda: self.status.set("❌ 发布失败"))
+
+    def _handle_zhihu_publish_exception(self, exc: Exception) -> None:
+        self.after(0, lambda: messagebox.showerror("错误", f"发布过程出错: {str(exc)}"))
+        self.after(0, lambda: self.zhihu_progress_label.config(text="❌ 错误"))
+        if hasattr(self, "status"):
+            self.after(0, lambda: self.status.set("❌ 发布错误"))

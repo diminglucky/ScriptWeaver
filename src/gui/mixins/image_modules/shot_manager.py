@@ -4,21 +4,15 @@
 
 from __future__ import annotations
 
-from tkinter import BOTH, LEFT, RIGHT, DISABLED, NORMAL, END, VERTICAL, Y, messagebox, filedialog
-import tkinter as tk
-from tkinter import ttk
+from tkinter import DISABLED, NORMAL, END, messagebox
 import logging
-import os
 from datetime import datetime
 from pathlib import Path
-from PIL import Image, ImageTk
 
 from src.clients.deepseek_client import DeepSeekClient
-from src.clients.image_client import OpenAIImageClient
 from src.utils.text import sanitize as _sanitize
-from ...helpers.image_styles import IMAGE_TYPES, HUNYUAN_STYLE_MAP
-from ...helpers.image_helpers import ImagePromptHelper, DescriptionPromptBuilder
 from ...helpers.director_script_builder import DirectorScriptBuilder
+from .character_auto_select_mixin import ShotCharacterAutoSelectMixin
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +21,7 @@ def print(*args, **kwargs):  # type: ignore[override]
 	logger.info(" ".join(str(a) for a in args))
 
 
-class ShotManagerMixin:
+class ShotManagerMixin(ShotCharacterAutoSelectMixin):
 	"""负责分镜头提取和管理"""
 
 	@staticmethod
@@ -1227,147 +1221,4 @@ class ShotManagerMixin:
 		import threading
 		threading.Thread(target=task, daemon=True).start()
 
-	
-	def _auto_select_characters_from_shot(self, shot_text: str, description: str = "") -> None:
-		"""智能识别分镜中的人物并自动选中（支持名字、别名、特征匹配）"""
-		try:
-			print(f"\n{'='*60}")
-			print(f"🤖 开始智能识别人物")
-			print(f"{'='*60}")
-			
-			# 清空当前选择
-			self.ref_character_listbox.selection_clear(0, END)
-			
-			# 获取所有可用的人物及其描述
-			if not self.character_list:
-				print(f"⚠️ 人物列表为空")
-				return
-			
-			available_characters = []
-			for char in self.character_list:
-				try:
-					from ...models.character import Character
-				except Exception as e:
-					logger.debug("import Character model failed, fallback to dict mode: %s", e)
-					Character = None
-				if Character and isinstance(char, Character):
-					photo_path = char.primary_photo
-					name = char.name
-					description = char.description or ""
-				else:
-					photo_path = char.get("photo_path") if isinstance(char, dict) else ""
-					name = char.get("name", "") if isinstance(char, dict) else ""
-					description = char.get("description", "") if isinstance(char, dict) else ""
-				if photo_path:
-					available_characters.append({
-						"name": name,
-						"description": description
-					})
-			
-			print(f"📋 可用人物数量：{len(available_characters)}")
-			for char in available_characters:
-				desc_preview = char["description"][:50] + "..." if len(char["description"]) > 50 else char["description"]
-				print(f"   - {char['name']}: {desc_preview}")
-			
-			if not available_characters:
-				print(f"⚠️ 没有已生成照片的人物")
-				return
-			
-			# 合并分镜和描述文本
-			search_text = f"{shot_text} {description}"
-			print(f"\n📝 搜索文本长度：{len(search_text)} 字")
-			print(f"📝 搜索文本前300字：{search_text[:300]}...")
-			
-			# 识别文本中提到的人物
-			mentioned_characters = []
-			
-			for char in available_characters:
-				char_name = char["name"]
-				char_desc = char["description"]
-				matched_reasons = []
-				
-				# 方法1: 直接匹配人物名字
-				if char_name in search_text:
-					matched_reasons.append(f"名字匹配")
-				
-				# 方法2: 从人物描述中提取关键特征词并匹配
-				# 提取职业、身份、角色
-				identity_keywords = []
-				for keyword in ["主角", "我", "实习生", "护士", "医生", "老人", "阿姨", "大妈", 
-				               "女孩", "男孩", "年轻人", "中年", "老年", "小孩", "孩子",
-				               "病人", "患者", "家属", "访客", "保安", "清洁工",
-				               "教师", "学生", "司机", "服务员", "经理", "老板"]:
-					if keyword in char_desc:
-						identity_keywords.append(keyword)
-				
-				# 检查这些关键词是否在搜索文本中
-				for keyword in identity_keywords:
-					if keyword in search_text:
-						matched_reasons.append(f"身份特征'{keyword}'匹配")
-						break
-				
-				# 方法3: 提取年龄特征
-				import re
-				age_pattern = re.search(r'(\d{1,2})\s*岁', char_desc)
-				if age_pattern:
-					age = age_pattern.group(1)
-					if f"{age}岁" in search_text or f"{age}岁" in search_text:
-						matched_reasons.append(f"年龄'{age}岁'匹配")
-				
-				# 方法4: 提取外貌特征（发型、发色）
-				appearance_keywords = []
-				for keyword in ["短发", "长发", "齐肩", "卷发", "直发", "马尾", "辫子",
-				               "黑发", "白发", "金发", "棕发", "红发",
-				               "眼镜", "胡须", "瘦", "胖", "高", "矮"]:
-					if keyword in char_desc and keyword in search_text:
-						appearance_keywords.append(keyword)
-				
-				if appearance_keywords:
-					matched_reasons.append(f"外貌特征{appearance_keywords}匹配")
-				
-				# 方法5: 提取服装特征
-				clothing_keywords = []
-				for keyword in ["白大褂", "护士服", "制服", "西装", "衬衫", "T恤", "裙子", "裤子"]:
-					if keyword in char_desc and keyword in search_text:
-						clothing_keywords.append(keyword)
-				
-				if clothing_keywords:
-					matched_reasons.append(f"服装特征{clothing_keywords}匹配")
-				
-				# 如果有任何匹配，添加到识别列表
-				if matched_reasons:
-					mentioned_characters.append(char_name)
-					print(f"✅ 识别到人物【{char_name}】：{' | '.join(matched_reasons)}")
-			
-			# 如果没有识别到人物，不做任何选择
-			if not mentioned_characters:
-				print(f"💡 未在分镜中识别到已生成照片的人物")
-				print(f"   提示：可能是人物描述与分镜描述差异较大")
-				print(f"{'='*60}\n")
-				return
-			
-			# 在列表框中选中这些人物
-			selected_count = 0
-			for idx in range(self.ref_character_listbox.size()):
-				item_text = self.ref_character_listbox.get(idx)
-				if item_text.startswith(("✅ ", "🧬 ")):
-					char_name = item_text[2:].strip()
-					if char_name in mentioned_characters:
-						self.ref_character_listbox.selection_set(idx)
-						selected_count += 1
-						print(f"🎯 在列表第{idx}行选中：{char_name}")
-			
-			# 显示提示信息
-			if mentioned_characters:
-				char_names = "、".join(mentioned_characters)
-				self._ui(self.status.set, f"✅ 已自动选择参考人物：{char_names}")
-				print(f"🎭 智能识别并选中 {selected_count} 个人物：{char_names}")
-			
-			print(f"{'='*60}\n")
-			
-		except Exception as e:
-			print(f"⚠️ 自动选择参考人物时出错：{str(e)}")
-			import traceback
-			traceback.print_exc()
-	
 	

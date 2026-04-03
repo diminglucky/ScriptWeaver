@@ -92,6 +92,8 @@ class StoryTemplateHeadlessTests(unittest.TestCase):
         obj.story_quality_review_enabled = _Var(True)
         obj.story_quality_min_avg = _Var(7.4)
         obj.story_quality_min_dim = _Var(6.8)
+        obj.story_outline_alignment_strict = _Var(True)
+        obj.story_outline_alignment_max_attempts = _Var(2)
         obj.quick_story_api = _Var("DeepSeek")
         obj.quick_image_api = _Var("OpenAI (DALL-E)")
         obj.api_providers = {"DeepSeek": {}}
@@ -127,6 +129,8 @@ class StoryTemplateHeadlessTests(unittest.TestCase):
         old_quality_review = os.environ.get("STORY_QUALITY_REVIEW")
         old_quality_min_avg = os.environ.get("STORY_QUALITY_MIN_AVG")
         old_quality_min_dim = os.environ.get("STORY_QUALITY_MIN_DIM")
+        old_outline_align_strict = os.environ.get("STORY_OUTLINE_ALIGNMENT_STRICT")
+        old_outline_align_attempts = os.environ.get("STORY_OUTLINE_ALIGNMENT_MAX_ATTEMPTS")
         try:
             os.environ["STORY_OUTLINE_GEN_API"] = "DeepSeek"
             os.environ["IMAGE_GEN_API"] = "OpenAI (DALL-E)"
@@ -138,6 +142,8 @@ class StoryTemplateHeadlessTests(unittest.TestCase):
             os.environ["STORY_QUALITY_REVIEW"] = "0"
             os.environ["STORY_QUALITY_MIN_AVG"] = "8.2"
             os.environ["STORY_QUALITY_MIN_DIM"] = "7.1"
+            os.environ["STORY_OUTLINE_ALIGNMENT_STRICT"] = "0"
+            os.environ["STORY_OUTLINE_ALIGNMENT_MAX_ATTEMPTS"] = "3"
             obj._load_quick_api_switch()
             self.assertEqual(obj.story_template_key.get(), "xianxia_fantasy")
             self.assertEqual(obj.story_template_select_var.get(), "仙侠玄幻")
@@ -149,6 +155,8 @@ class StoryTemplateHeadlessTests(unittest.TestCase):
             self.assertEqual(obj.story_quality_review_enabled.get(), False)
             self.assertEqual(obj.story_quality_min_avg.get(), 8.2)
             self.assertEqual(obj.story_quality_min_dim.get(), 7.1)
+            self.assertEqual(obj.story_outline_alignment_strict.get(), False)
+            self.assertEqual(obj.story_outline_alignment_max_attempts.get(), 3)
         finally:
             if old_story is None:
                 os.environ.pop("STORY_OUTLINE_GEN_API", None)
@@ -190,6 +198,14 @@ class StoryTemplateHeadlessTests(unittest.TestCase):
                 os.environ.pop("STORY_QUALITY_MIN_DIM", None)
             else:
                 os.environ["STORY_QUALITY_MIN_DIM"] = old_quality_min_dim
+            if old_outline_align_strict is None:
+                os.environ.pop("STORY_OUTLINE_ALIGNMENT_STRICT", None)
+            else:
+                os.environ["STORY_OUTLINE_ALIGNMENT_STRICT"] = old_outline_align_strict
+            if old_outline_align_attempts is None:
+                os.environ.pop("STORY_OUTLINE_ALIGNMENT_MAX_ATTEMPTS", None)
+            else:
+                os.environ["STORY_OUTLINE_ALIGNMENT_MAX_ATTEMPTS"] = old_outline_align_attempts
 
     @patch("src.gui.mixins.settings_mixin.messagebox.showinfo", return_value=None)
     def test_quick_switch_save_persists_model_only_flag(self, _mock_info):
@@ -201,6 +217,8 @@ class StoryTemplateHeadlessTests(unittest.TestCase):
         obj.story_quality_review_enabled.set(False)
         obj.story_quality_min_avg.set(8.1)
         obj.story_quality_min_dim.set(7.2)
+        obj.story_outline_alignment_strict.set(True)
+        obj.story_outline_alignment_max_attempts.set(3)
         old_cwd = os.getcwd()
         with tempfile.TemporaryDirectory() as td:
             os.chdir(td)
@@ -214,6 +232,8 @@ class StoryTemplateHeadlessTests(unittest.TestCase):
                 self.assertEqual(str(values.get("STORY_QUALITY_REVIEW")), "0")
                 self.assertEqual(str(values.get("STORY_QUALITY_MIN_AVG")), "8.1")
                 self.assertEqual(str(values.get("STORY_QUALITY_MIN_DIM")), "7.2")
+                self.assertEqual(str(values.get("STORY_OUTLINE_ALIGNMENT_STRICT")), "1")
+                self.assertEqual(str(values.get("STORY_OUTLINE_ALIGNMENT_MAX_ATTEMPTS")), "3")
             finally:
                 os.chdir(old_cwd)
 
@@ -268,6 +288,51 @@ class StoryTemplateHeadlessTests(unittest.TestCase):
         requirement = "写一个职场人误入校园社团的故事"
         outline_prompt = obj._build_outline_prompt(requirement, [], "职场")
         self.assertIn("种类（最终）：职场", outline_prompt)
+
+    def test_outline_alignment_retry_only_for_critical_or_low_score(self):
+        obj = _DummyPromptBuilder()
+        obj.target_chars = _Var(3000)
+        obj.style = _Var("写实")
+        obj.story_template_key = _Var("zhihu_realistic")
+
+        requirement = "校园 混混 情感"
+        outline = "1. 校园午时已到\n2. 天台上的交易\n3. 胜利者的孤独"
+        report = obj._evaluate_outline_alignment(requirement, "校园", outline)
+
+        self.assertFalse(report["passed"])
+        self.assertFalse(report["should_retry"])
+
+    def test_outline_alignment_local_repair_injects_must_tokens(self):
+        obj = _DummyPromptBuilder()
+        obj.target_chars = _Var(3000)
+        obj.style = _Var("写实")
+        obj.story_template_key = _Var("zhihu_realistic")
+
+        requirement = "校园 混混 情感"
+        bad_outline = "1. 午时已到\n2. 天台上的交易\n3. 胜利者的孤独"
+        bad_report = obj._evaluate_outline_alignment(requirement, "校园", bad_outline)
+        repaired_outline = obj._repair_outline_for_alignment(requirement, "校园", bad_outline, bad_report)
+        repaired_report = obj._evaluate_outline_alignment(requirement, "校园", repaired_outline)
+
+        self.assertTrue(bad_report["should_retry"])
+        self.assertNotEqual(repaired_outline, bad_outline)
+        self.assertIn("校园", repaired_outline)
+        self.assertGreaterEqual(float(repaired_report["score"]), float(bad_report["score"]))
+        self.assertIn("校园", repaired_report["anchor_hits"])
+
+    def test_outline_alignment_uses_must_tokens_for_short_hits(self):
+        obj = _DummyPromptBuilder()
+        obj.target_chars = _Var(3000)
+        obj.style = _Var("写实")
+        obj.story_template_key = _Var("zhihu_realistic")
+
+        requirement = "写一个校园混混的故事，要情感真实"
+        outline = "1. 校园午时已到\n2. 校园天台上的交易\n3. 胜利者的孤独"
+        report = obj._evaluate_outline_alignment(requirement, "校园", outline)
+
+        self.assertIn("校园", report["must_tokens"])
+        self.assertIn("校园", report["must_hits"])
+        self.assertGreaterEqual(float(report["score"]), 0.55)
 
 
 if __name__ == "__main__":

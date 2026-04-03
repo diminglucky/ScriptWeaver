@@ -126,167 +126,210 @@ class ZhihuPublisher:
         if not self.page:
             return False, "浏览器未初始化"
         try:
+            if not await self._ensure_logged_in(progress_callback):
+                return False, "登录超时或失败"
+            await self._open_creator_center(progress_callback)
+            await self._open_article_editor_page(progress_callback)
+            await self._wait_editor_ready(progress_callback)
+            await self._input_article_title(title, progress_callback)
+            await self._input_article_content(content, progress_callback)
+            return await self._wait_for_manual_publish()
+        except Exception as e:
+            msg = f"发布过程出错: {str(e)}"
             if progress_callback:
-                progress_callback("检查登录状态...")
-            if not await self.check_login_status():
-                if progress_callback:
-                    progress_callback("需要登录，请在浏览器中完成登录")
-                if not await self.wait_for_manual_login():
-                    return False, "登录超时或失败"
+                progress_callback(f"错误: {msg}")
+            return False, msg
 
-            if progress_callback:
-                progress_callback("打开创作中心...")
-            await self.page.goto("https://www.zhihu.com", wait_until="domcontentloaded", timeout=30000)
-            await asyncio.sleep(2)
+    @staticmethod
+    def _report_progress(
+        progress_callback: Optional[Callable[[str], None]], message: str
+    ) -> None:
+        if progress_callback:
+            progress_callback(message)
 
-            creator_btn = await self.page.query_selector('a[href*="creator"], button:has-text("创作中心")')
-            if creator_btn:
-                await creator_btn.click()
-                await asyncio.sleep(3)
-            else:
-                await self.page.goto("https://www.zhihu.com/creator", wait_until="domcontentloaded", timeout=30000)
-                await asyncio.sleep(3)
+    async def _ensure_logged_in(
+        self,
+        progress_callback: Optional[Callable[[str], None]],
+    ) -> bool:
+        self._report_progress(progress_callback, "检查登录状态...")
+        if await self.check_login_status():
+            return True
+        self._report_progress(progress_callback, "需要登录，请在浏览器中完成登录")
+        return await self.wait_for_manual_login()
 
-            if progress_callback:
-                progress_callback("点击发布文章...")
-            try:
-                content_create_btn = await self.page.query_selector(
-                    'button:has-text("内容创作"), div:has-text("内容创作")'
-                )
-                if content_create_btn:
-                    await content_create_btn.click()
-                    await asyncio.sleep(1.5)
-            except Exception:
-                pass
+    async def _open_creator_center(
+        self,
+        progress_callback: Optional[Callable[[str], None]],
+    ) -> None:
+        self._report_progress(progress_callback, "打开创作中心...")
+        await self.page.goto(
+            "https://www.zhihu.com",
+            wait_until="domcontentloaded",
+            timeout=30000,
+        )
+        await asyncio.sleep(2)
+        creator_btn = await self.page.query_selector(
+            'a[href*="creator"], button:has-text("创作中心")'
+        )
+        if creator_btn:
+            await creator_btn.click()
+            await asyncio.sleep(3)
+        else:
+            await self.page.goto(
+                "https://www.zhihu.com/creator",
+                wait_until="domcontentloaded",
+                timeout=30000,
+            )
+            await asyncio.sleep(3)
 
-            publish_article_btn = None
-            selectors = [
+    async def _open_article_editor_page(
+        self,
+        progress_callback: Optional[Callable[[str], None]],
+    ) -> None:
+        self._report_progress(progress_callback, "点击发布文章...")
+        try:
+            content_create_btn = await self.page.query_selector(
+                'button:has-text("内容创作"), div:has-text("内容创作")'
+            )
+            if content_create_btn:
+                await content_create_btn.click()
+                await asyncio.sleep(1.5)
+        except Exception:
+            pass
+
+        publish_article_btn = await self._wait_first_selector(
+            [
                 'button:has-text("发布文章")',
                 'a:has-text("发布文章")',
                 'div:has-text("发布文章")',
-            ]
-            for selector in selectors:
-                try:
-                    publish_article_btn = await self.page.wait_for_selector(selector, timeout=4000)
-                    if publish_article_btn:
-                        break
-                except Exception:
-                    continue
+            ],
+            timeout=4000,
+        )
+        if publish_article_btn:
+            await publish_article_btn.click()
+            await asyncio.sleep(3)
+            return
+        await self.page.goto(
+            "https://zhuanlan.zhihu.com/write",
+            wait_until="domcontentloaded",
+            timeout=30000,
+        )
+        await asyncio.sleep(3)
 
-            if publish_article_btn:
-                await publish_article_btn.click()
-                await asyncio.sleep(3)
-            else:
-                await self.page.goto("https://zhuanlan.zhihu.com/write", wait_until="domcontentloaded", timeout=30000)
-                await asyncio.sleep(3)
+    async def _wait_editor_ready(
+        self,
+        progress_callback: Optional[Callable[[str], None]],
+    ) -> None:
+        self._report_progress(progress_callback, "等待编辑器加载...")
+        editor_loaded = False
+        for selector in [
+            ".public-DraftEditor-content",
+            ".DraftEditor-root",
+            '[contenteditable="true"]',
+            ".RichText-editor",
+        ]:
+            try:
+                await self.page.wait_for_selector(selector, timeout=5000)
+                editor_loaded = True
+                break
+            except Exception:
+                continue
+        if not editor_loaded:
+            print("[WARN] 未检测到编辑器，继续尝试输入")
+        await asyncio.sleep(1.5)
 
-            if progress_callback:
-                progress_callback("等待编辑器加载...")
-            editor_loaded = False
-            for selector in [
-                '.public-DraftEditor-content',
-                '.DraftEditor-root',
-                '[contenteditable="true"]',
-                ".RichText-editor",
-            ]:
-                try:
-                    await self.page.wait_for_selector(selector, timeout=5000)
-                    editor_loaded = True
-                    break
-                except Exception:
-                    continue
-            if not editor_loaded:
-                print("[WARN] 未检测到编辑器，继续尝试输入")
-            await asyncio.sleep(1.5)
+    async def _wait_first_selector(self, selectors: list[str], timeout: int):
+        for selector in selectors:
+            try:
+                element = await self.page.wait_for_selector(selector, timeout=timeout)
+                if element:
+                    return element
+            except Exception:
+                continue
+        return None
 
-            if progress_callback:
-                progress_callback("输入标题...")
-            title_input = None
-            for selector in [
+    async def _find_first_selector(self, selectors: list[str]):
+        for selector in selectors:
+            element = await self.page.query_selector(selector)
+            if element:
+                return element
+        return None
+
+    async def _input_article_title(
+        self,
+        title: str,
+        progress_callback: Optional[Callable[[str], None]],
+    ) -> None:
+        self._report_progress(progress_callback, "输入标题...")
+        title_input = await self._find_first_selector(
+            [
                 'div[placeholder*="请输入标题"]',
                 'div[data-text*="请输入标题"]',
                 '[contenteditable="true"][placeholder*="标题"]',
                 'input[placeholder*="标题"]',
                 'textarea[placeholder*="标题"]',
-            ]:
-                title_input = await self.page.query_selector(selector)
-                if title_input:
-                    break
+            ]
+        )
+        if title_input:
+            await title_input.click()
+            await asyncio.sleep(0.4)
+            await self.page.keyboard.press("Control+A")
+            await asyncio.sleep(0.2)
+        await self._insert_text_with_fallback(title, type_delay=25)
+        await self.page.keyboard.press("Tab")
+        await asyncio.sleep(0.4)
 
-            if title_input:
-                await title_input.click()
-                await asyncio.sleep(0.4)
-                await self.page.keyboard.press("Control+A")
-                await asyncio.sleep(0.2)
-                try:
-                    await self.page.keyboard.insert_text(title)
-                except Exception:
-                    await self.page.keyboard.type(title, delay=25)
-                await self.page.keyboard.press("Tab")
-                await asyncio.sleep(0.4)
-            else:
-                try:
-                    await self.page.keyboard.insert_text(title)
-                except Exception:
-                    await self.page.keyboard.type(title, delay=25)
-                await self.page.keyboard.press("Tab")
-                await asyncio.sleep(0.4)
-
-            if progress_callback:
-                progress_callback("输入内容...")
-            editor = None
-            for selector in [
+    async def _input_article_content(
+        self,
+        content: str,
+        progress_callback: Optional[Callable[[str], None]],
+    ) -> None:
+        self._report_progress(progress_callback, "输入内容...")
+        editor = await self._find_first_selector(
+            [
                 'div[placeholder*="请输入正文"]',
                 'div[data-text*="请输入正文"]',
                 '[contenteditable="true"]',
                 ".public-DraftEditor-content",
                 ".DraftEditor-root",
                 ".RichText-editor",
-            ]:
-                editor = await self.page.query_selector(selector)
-                if editor:
-                    break
+            ]
+        )
+        if editor:
+            await editor.click()
+        else:
+            await self.page.mouse.click(500, 500)
+        await asyncio.sleep(0.6)
 
-            if editor:
-                await editor.click()
-            else:
-                await self.page.mouse.click(500, 500)
-            await asyncio.sleep(0.6)
+        paragraphs = content.split("\n")
+        valid_paragraphs = [x for x in paragraphs if x.strip()]
+        total_paragraphs = len(valid_paragraphs) if valid_paragraphs else 1
+        current = 0
+        for paragraph in paragraphs:
+            if not paragraph.strip():
+                continue
+            current += 1
+            await self._insert_text_with_fallback(paragraph.strip(), type_delay=8)
+            await self.page.keyboard.press("Enter")
+            if current % 5 == 0 and progress_callback:
+                progress = int((current / total_paragraphs) * 100)
+                progress_callback(f"正在输入内容... {progress}%")
+            if current % 10 == 0:
+                await asyncio.sleep(0.4)
+        self._report_progress(progress_callback, "内容已填充完成，请在浏览器中检查并点击发布")
 
-            paragraphs = content.split("\n")
-            valid_paragraphs = [x for x in paragraphs if x.strip()]
-            total_paragraphs = len(valid_paragraphs) if valid_paragraphs else 1
-            current = 0
-            for paragraph in paragraphs:
-                if not paragraph.strip():
-                    continue
-                current += 1
-                text = paragraph.strip()
-                try:
-                    await self.page.keyboard.insert_text(text)
-                except Exception:
-                    await self.page.keyboard.type(text, delay=8)
-                await self.page.keyboard.press("Enter")
-                if current % 5 == 0 and progress_callback:
-                    progress = int((current / total_paragraphs) * 100)
-                    progress_callback(f"正在输入内容... {progress}%")
-                if current % 10 == 0:
-                    await asyncio.sleep(0.4)
+    async def _insert_text_with_fallback(self, text: str, type_delay: int) -> None:
+        try:
+            await self.page.keyboard.insert_text(text)
+        except Exception:
+            await self.page.keyboard.type(text, delay=type_delay)
 
-            if progress_callback:
-                progress_callback("内容已填充完成，请在浏览器中检查并点击发布")
-
-            # Wait user publish manually; detect redirect to article URL.
-            try:
-                await self.page.wait_for_url("**/p/**", timeout=180000)
-                return True, self.page.url
-            except Exception:
-                return True, "文章内容已填充，等待手动发布"
-        except Exception as e:
-            msg = f"发布过程出错: {str(e)}"
-            if progress_callback:
-                progress_callback(f"错误: {msg}")
-            return False, msg
+    async def _wait_for_manual_publish(self) -> tuple[bool, str]:
+        try:
+            await self.page.wait_for_url("**/p/**", timeout=180000)
+            return True, self.page.url
+        except Exception:
+            return True, "文章内容已填充，等待手动发布"
 
     async def close(self):
         try:
