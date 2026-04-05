@@ -6,6 +6,8 @@ from .api_test_mixin import SettingsApiTestMixin
 from .model_fetch import SettingsModelFetchMixin
 from .model_routing_ui import SettingsModelRoutingUIMixin
 from .model_utils import SettingsModelUtilsMixin
+from .page_actions_mixin import SettingsPageActionsMixin
+from .page_layout_mixin import SettingsPageLayoutMixin
 from .provider_ui import SettingsProviderUIMixin
 from .quick_switch_mixin import SettingsQuickSwitchMixin
 from .routing_provider_mixin import SettingsRoutingProviderMixin
@@ -18,6 +20,8 @@ __all__ = [
     "EntryColorMixin",
     "SettingsApiConfigPersistenceMixin",
     "SettingsApiTestMixin",
+    "SettingsPageActionsMixin",
+    "SettingsPageLayoutMixin",
     "SettingsActionsMixin",
     "SettingsModelUtilsMixin",
     "SettingsModelFetchMixin",

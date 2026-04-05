@@ -9,6 +9,7 @@ from src.gui.helpers.story_pipeline_profile import (
     build_memory_ledger_prompt,
     build_polish_prompt,
     build_quality_review_prompt,
+    build_section_transition_guidelines,
     get_polish_fallback_fix,
     reload_story_pipeline_profile,
 )
@@ -31,7 +32,11 @@ class StoryPipelineProfileTests(unittest.TestCase):
         )
         self.assertIn("仅返回 JSON", review_prompt)
         self.assertIn("realism", review_prompt)
+        self.assertIn("continuity", review_prompt)
         self.assertIn("章节标题：被迫站队", review_prompt)
+
+        transition_rules = build_section_transition_guidelines()
+        self.assertIn("承接", transition_rules)
 
         memory_prompt = build_memory_ledger_prompt(
             section_title="反转时刻",
@@ -39,6 +44,20 @@ class StoryPipelineProfileTests(unittest.TestCase):
         )
         self.assertIn("记忆账本", memory_prompt)
         self.assertIn("summary", memory_prompt)
+
+        polish_prompt = build_polish_prompt(
+            section_title="反转时刻",
+            section_content="他站在雨里，手心全是冷汗。",
+            fix_goal="修复衔接生硬",
+            target_low=600,
+            target_high=900,
+            current_chars=420,
+            previous_tail="他推门离开时，没有回头。",
+            continuity_context="【记忆账本】\n- 第1章《旧账》摘要：他拿到关键证据。",
+        )
+        self.assertIn("连贯性资料", polish_prompt)
+        self.assertIn("上章收束句", polish_prompt)
+        self.assertIn("记忆账本", polish_prompt)
 
     def test_custom_profile_file_overrides_prompt_sections(self):
         custom = {
@@ -89,4 +108,3 @@ class StoryPipelineProfileTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

@@ -42,9 +42,9 @@ class KbMixin:
 				ui_call(self.output.insert, END, f"索引已生成: {self.index_dir.get()}\n")
 				ui_call(self.status.set, "索引已生成")
 			except Exception as e:
-				import traceback
-				ui_call(self.output.insert, END, "构建索引出错:\n" + traceback.format_exc() + "\n")
-				ui_call(messagebox.showerror, "错误", str(e))
+				brief = str(e).strip() or e.__class__.__name__
+				ui_call(self.output.insert, END, f"❌ 构建索引失败：{brief}\n")
+				ui_call(messagebox.showerror, "错误", brief)
 				ui_call(self.status.set, "构建索引失败")
 			finally:
 				ui_call(self.set_busy, False)

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import re
+from difflib import SequenceMatcher
 from typing import Any
 
 
@@ -11,6 +12,7 @@ QUALITY_DIM_KEYS = (
     "realism",
     "detail",
     "coherence",
+    "continuity",
     "naturalness",
 )
 
@@ -70,9 +72,10 @@ def parse_quality_review(raw: str) -> dict[str, Any]:
         "realism": _clip_score(scores_raw.get("realism", payload.get("realism", 7.0))),
         "detail": _clip_score(scores_raw.get("detail", payload.get("detail", 7.0))),
         "coherence": _clip_score(scores_raw.get("coherence", payload.get("coherence", 7.0))),
+        "continuity": _clip_score(scores_raw.get("continuity", payload.get("continuity", 7.0))),
         "naturalness": _clip_score(scores_raw.get("naturalness", payload.get("naturalness", 7.0))),
     }
-    avg_score = round(sum(scores.values()) / 4.0, 2)
+    avg_score = round(sum(scores.values()) / float(len(scores)), 2)
 
     strengths = _ensure_str_list(payload.get("strengths"), max_items=3)
     issues = _ensure_str_list(payload.get("issues"), max_items=3)
@@ -199,3 +202,61 @@ def strip_duplicate_lines(text: str) -> str:
     result = re.sub(r"\n{3,}", "\n\n", result)
     return result
 
+
+def normalize_sentence_signature(text: str) -> str:
+    """Normalize sentence for fuzzy duplicate checks."""
+    value = str(text or "").strip().lower()
+    if not value:
+        return ""
+    value = re.sub(r"[“”\"'`‘’]", "", value)
+    value = re.sub(r"[，。！？!?；;：:、\-—…（）()\[\]{}<>《》【】\s]+", "", value)
+    return value
+
+
+def extract_last_sentence(text: str, *, max_chars: int = 220) -> str:
+    """Extract last complete sentence from text tail."""
+    raw = str(text or "").strip()
+    if not raw:
+        return ""
+    tail = raw[-max(80, int(max_chars)) :]
+    parts = re.findall(r"[^。！？!?…\n]+[。！？!?…]?", tail)
+    parts = [p.strip() for p in parts if p and p.strip()]
+    if not parts:
+        return tail.strip()
+    for item in reversed(parts):
+        cleaned = item.strip()
+        if len(cleaned) >= 8:
+            return cleaned
+    return parts[-1]
+
+
+def extract_first_sentence(text: str, *, max_chars: int = 220) -> str:
+    """Extract first complete sentence from text head."""
+    raw = str(text or "").strip()
+    if not raw:
+        return ""
+    head = raw[: max(80, int(max_chars))]
+    parts = re.findall(r"[^。！？!?…\n]+[。！？!?…]?", head)
+    parts = [p.strip() for p in parts if p and p.strip()]
+    if not parts:
+        return head.strip()
+    for item in parts:
+        cleaned = item.strip()
+        if len(cleaned) >= 8:
+            return cleaned
+    return parts[0]
+
+
+def is_redundant_transition_head(previous_tail: str, current_head: str, *, min_shared: int = 12) -> bool:
+    """Detect whether current opening is too similar to previous chapter tail."""
+    prev_sig = normalize_sentence_signature(previous_tail)
+    head_sig = normalize_sentence_signature(current_head)
+    if not prev_sig or not head_sig:
+        return False
+
+    shared = min(len(prev_sig), len(head_sig))
+    if shared >= min_shared and (prev_sig in head_sig or head_sig in prev_sig):
+        return True
+
+    ratio = SequenceMatcher(None, prev_sig[:220], head_sig[:220]).ratio()
+    return ratio >= 0.84

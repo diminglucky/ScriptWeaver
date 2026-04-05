@@ -160,21 +160,12 @@ class CharacterPromptBuilder:
         Returns:
             完整的提示词
         """
-        # 应用一致性优化
-        if consistency_level != "none":
-            description = ConsistencyOptimizer.build_consistency_prompt(
-                description=description,
-                language=language,
-                emphasis_level=consistency_level
-            )
-            
-            # 如果是批量生成，添加批量优化
-            if batch_type != "none":
-                description = ConsistencyOptimizer.optimize_for_batch_generation(
-                    description=description,
-                    batch_type=batch_type,
-                    language=language
-                )
+        description = CharacterPromptBuilder._apply_consistency_optimization(
+            description=description,
+            language=language,
+            consistency_level=consistency_level,
+            batch_type=batch_type,
+        )
         
         prompt_parts = []
         
@@ -198,19 +189,16 @@ class CharacterPromptBuilder:
         prompt_parts.extend(expr_dict.get(language, expr_dict["zh"])[:2])  # 取前2个表情描述
         
         # 4. 国籍/种族特征（如果需要）
-        if default_nationality == "chinese" and language == "zh":
-            if not any(keyword in description for keyword in ["外国", "欧美", "美国", "英国", "法国", "德国", "日本", "韩国", "俄罗斯", "非洲", "印度", "阿拉伯", "American", "European", "Western", "Japanese", "Korean"]):
-                prompt_parts.extend(["中国人", "东亚面孔"])
-        elif default_nationality == "chinese" and language == "en":
-            if not any(keyword in description for keyword in ["American", "European", "Western", "Japanese", "Korean", "Russian", "African", "Indian", "Arab"]):
-                prompt_parts.extend(["Chinese person", "East Asian features"])
+        CharacterPromptBuilder._append_nationality_traits(
+            prompt_parts=prompt_parts,
+            description=description,
+            language=language,
+            default_nationality=default_nationality,
+        )
         
         # 5. 人物描述（核心）
         desc_limit = 150 if language == "zh" else 200
-        if len(description) > desc_limit:
-            prompt_parts.append(description[:desc_limit])
-        else:
-            prompt_parts.append(description)
+        CharacterPromptBuilder._append_limited_text(prompt_parts, description, desc_limit)
         
         # 6. 服装/造型变体
         if variant_mode == "preset" and variant:
@@ -222,19 +210,11 @@ class CharacterPromptBuilder:
         elif variant_mode == "custom" and variant:
             # 使用自定义变体描述
             if not variant.startswith("例如"):
-                variant_limit = 60
-                if len(variant) > variant_limit:
-                    prompt_parts.append(variant[:variant_limit])
-                else:
-                    prompt_parts.append(variant)
+                CharacterPromptBuilder._append_limited_text(prompt_parts, variant, 60)
         
         # 7. 额外细节
         if extra_details:
-            extra_limit = 80
-            if len(extra_details) > extra_limit:
-                prompt_parts.append(extra_details[:extra_limit])
-            else:
-                prompt_parts.append(extra_details)
+            CharacterPromptBuilder._append_limited_text(prompt_parts, extra_details, 80)
         
         # 8. 背景要求
         prompt_parts.extend(comp_data["background"])
@@ -248,6 +228,68 @@ class CharacterPromptBuilder:
         # 组合提示词
         separator = "，" if language == "zh" else ", "
         return separator.join(prompt_parts)
+
+    @staticmethod
+    def _apply_consistency_optimization(
+        *,
+        description: str,
+        language: str,
+        consistency_level: str,
+        batch_type: str,
+    ) -> str:
+        """按一致性开关对人物描述做预处理。"""
+        if consistency_level == "none":
+            return description
+        optimized = ConsistencyOptimizer.build_consistency_prompt(
+            description=description,
+            language=language,
+            emphasis_level=consistency_level,
+        )
+        if batch_type != "none":
+            optimized = ConsistencyOptimizer.optimize_for_batch_generation(
+                description=optimized,
+                batch_type=batch_type,
+                language=language,
+            )
+        return optimized
+
+    @staticmethod
+    def _append_nationality_traits(*, prompt_parts: list, description: str, language: str, default_nationality: str) -> None:
+        """按默认国籍补充种族特征提示，避免误生成为非预期人种。"""
+        if default_nationality != "chinese":
+            return
+        if language == "zh":
+            foreign_keywords = [
+                "外国",
+                "欧美",
+                "美国",
+                "英国",
+                "法国",
+                "德国",
+                "日本",
+                "韩国",
+                "俄罗斯",
+                "非洲",
+                "印度",
+                "阿拉伯",
+                "American",
+                "European",
+                "Western",
+                "Japanese",
+                "Korean",
+            ]
+            if not any(keyword in description for keyword in foreign_keywords):
+                prompt_parts.extend(["中国人", "东亚面孔"])
+            return
+        if language == "en":
+            foreign_keywords = ["American", "European", "Western", "Japanese", "Korean", "Russian", "African", "Indian", "Arab"]
+            if not any(keyword in description for keyword in foreign_keywords):
+                prompt_parts.extend(["Chinese person", "East Asian features"])
+
+    @staticmethod
+    def _append_limited_text(prompt_parts: list, text: str, limit: int) -> None:
+        """追加受长度限制的文本片段。"""
+        prompt_parts.append(text[:limit] if len(text) > limit else text)
     
     @staticmethod
     def build_character_sheet_prompt(
@@ -452,4 +494,3 @@ class CharacterPromptBuilder:
             if len(prompt) > max_len:
                 return prompt[:max_len]
             return prompt
-

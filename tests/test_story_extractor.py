@@ -103,6 +103,37 @@ class StoryExtractorTests(unittest.TestCase):
         pure = StoryExtractor.extract_pure_story(text)
         self.assertIn("1. 证据清单。", pure)
 
+    def test_sanitize_for_publish_filters_candidate_and_error_markers(self):
+        text = (
+            "==================================================\n"
+            "【第 2/7 章：宿舍夜话与匿名信】\n\n"
+            "这是正文候选段。\n\n"
+            "==================================================\n"
+            "🧪 第 2 章候选版本（本章字数：1800 字，原章未替换）\n"
+            "❌ 生成出错（第 2 章）：network timeout\n"
+            "这是最终正文段。"
+        )
+        cleaned = StoryExtractor.sanitize_for_publish(text)
+        self.assertIn("这是最终正文段。", cleaned)
+        self.assertNotIn("这是正文候选段。", cleaned)
+        self.assertNotIn("🧪 第 2 章候选版本", cleaned)
+        self.assertNotIn("❌ 生成出错", cleaned)
+
+    def test_extract_pure_story_strips_traceback_stack_block(self):
+        text = (
+            "这是正文第一段。\n"
+            "Traceback (most recent call last):\n"
+            '  File "/tmp/demo.py", line 1, in <module>\n'
+            "    raise RuntimeError('x')\n"
+            "RuntimeError: x\n"
+            "这是正文第二段。"
+        )
+        pure = StoryExtractor.extract_pure_story(text)
+        self.assertIn("这是正文第一段。", pure)
+        self.assertIn("这是正文第二段。", pure)
+        self.assertNotIn("Traceback", pure)
+        self.assertNotIn("RuntimeError: x", pure)
+
 
 if __name__ == "__main__":
     unittest.main()

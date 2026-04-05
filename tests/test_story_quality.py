@@ -1,8 +1,12 @@
 import unittest
 
 from src.gui.helpers.story_quality import (
+    extract_first_sentence,
+    extract_last_sentence,
     format_memory_context,
+    is_redundant_transition_head,
     normalize_memory_entry,
+    normalize_sentence_signature,
     parse_memory_entry,
     parse_quality_review,
     should_polish,
@@ -46,7 +50,20 @@ class StoryQualityTests(unittest.TestCase):
         cleaned = strip_duplicate_lines(text)
         self.assertEqual(cleaned.count("第二句。"), 1)
 
+    def test_transition_sentence_extract_and_redundancy(self):
+        prev = "他抬手关了灯，走出厕所，冷风一下子扑到脸上。"
+        curr = "走出厕所，冷风一下子扑到脸上。他抬眼看见走廊尽头有人影。"
+        tail = extract_last_sentence(prev)
+        head = extract_first_sentence(curr)
+        self.assertTrue(tail)
+        self.assertTrue(head)
+        self.assertTrue(is_redundant_transition_head(tail, head))
+
+    def test_normalize_sentence_signature(self):
+        a = "“走出厕所，冷风一下子扑到脸上。”"
+        b = "走出厕所 冷风一下子扑到脸上"
+        self.assertEqual(normalize_sentence_signature(a), normalize_sentence_signature(b))
+
 
 if __name__ == "__main__":
     unittest.main()
-

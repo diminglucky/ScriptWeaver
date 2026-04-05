@@ -11,11 +11,34 @@ from typing import Optional
 class StoryExtractor:
     """Extract pure story body from mixed runtime output logs."""
 
+    _CANDIDATE_CHAPTER_BLOCK = re.compile(
+        r"\n?={20,}\n【第\s*\d+\s*/\s*\d+\s*章：[^\n】]+】\n\n.*?\n\n={20,}\n🧪\s*第\s*\d+\s*章候选版本[^\n]*\n?",
+        re.S,
+    )
     _RAG_SCORE_LINE = re.compile(
         r"^\s*\d+[\.、]\s*.+[（(]\s*score\s*=\s*\d+(?:\.\d+)?\s*[）)]\s*$",
         re.IGNORECASE,
     )
     _EMAIL_PATTERN = re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b")
+
+    @staticmethod
+    def _strip_non_publish_blocks(text: str) -> str:
+        cleaned = StoryExtractor._CANDIDATE_CHAPTER_BLOCK.sub("\n", text or "")
+        return cleaned
+
+    @staticmethod
+    def _is_traceback_stack_line(raw_line: str, stripped: str) -> bool:
+        if not stripped:
+            return True
+        if raw_line.startswith((" ", "\t")):
+            return True
+        if stripped.startswith(("File \"", "^")):
+            return True
+        if re.match(r"^[A-Za-z_][A-Za-z0-9_]*(Error|Exception)\s*:", stripped):
+            return True
+        if stripped.startswith(("During handling of the above exception", "The above exception")):
+            return True
+        return False
 
     @staticmethod
     def _is_runtime_marker_line(stripped: str) -> bool:
@@ -29,6 +52,11 @@ class StoryExtractor:
             "📊 RAG检索：",
             "🧭 题材纠偏：",
             "对齐检查提示：",
+            "❌ 生成出错",
+            "❌ 自动生成出错",
+            "❌ 生成故事失败",
+            "❌ 生成目录失败",
+            "❌ 自动生成失败",
         )
         if stripped.startswith(fixed_prefixes):
             return True
@@ -47,6 +75,8 @@ class StoryExtractor:
             r"^未找到索引.*$",
             r"^目录对齐不足.*$",
             r"^[🎭🔎📊🧭📝⏳✅❌]+\s*.*(策略|命中|score=|阈值).*$",
+            r"^🧪\s*第\s*\d+\s*章候选版本.*$",
+            r"^❌\s*(生成|自动生成).*(出错|失败).*$",
         )
         for pattern in patterns:
             if re.match(pattern, stripped, re.IGNORECASE):
@@ -61,13 +91,23 @@ class StoryExtractor:
         if not full_text or not full_text.strip():
             return ""
 
+        full_text = StoryExtractor._strip_non_publish_blocks(full_text)
         lines = full_text.split("\n")
         story_lines: list[str] = []
         skip_toc = False
         in_story = False
+        skipping_traceback = False
 
         for line in lines:
             stripped = line.strip()
+
+            if stripped.startswith("Traceback (most recent call last):"):
+                skipping_traceback = True
+                continue
+            if skipping_traceback:
+                if StoryExtractor._is_traceback_stack_line(line, stripped):
+                    continue
+                skipping_traceback = False
 
             if not stripped:
                 if in_story:
@@ -103,6 +143,8 @@ class StoryExtractor:
             if re.match(r"^[📄📝✍️⏳]*\s*准备.*[\.。…]*$", stripped):
                 continue
             if re.match(r"^[✓✔☑️✅]*\s*第\s*\d+\s*章完成[！!]\s*本章字数[：:]\s*\d+\s*字", stripped):
+                continue
+            if re.match(r"^🧪\s*第\s*\d+\s*章候选版本", stripped):
                 continue
             if re.match(r"^[🎉]*\s*全部章节生成完成[！!]\s*共\s*\d+\s*章.*总字数[：:]\s*\d+\s*字", stripped):
                 continue

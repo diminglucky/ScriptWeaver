@@ -259,6 +259,7 @@ class StoryTemplateHeadlessTests(unittest.TestCase):
         self.assertIn("**模版**：都市逆袭爽文", full_prompt)
         self.assertIn("【模版规则】", section_prompt)
         self.assertIn("都市逆袭爽文", section_prompt)
+        self.assertIn("【跨章衔接一致性】", section_prompt)
         self.assertIn("【创新引擎（blend）】", full_prompt)
         self.assertIn("跨模版融合", full_prompt)
 

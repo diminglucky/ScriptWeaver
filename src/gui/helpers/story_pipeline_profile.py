@@ -27,10 +27,11 @@ DEFAULT_STORY_PIPELINE_PROFILE: dict[str, Any] = {
             {"key": "realism", "label": "真实感"},
             {"key": "detail", "label": "细节密度"},
             {"key": "coherence", "label": "逻辑连贯"},
+            {"key": "continuity", "label": "跨章衔接"},
             {"key": "naturalness", "label": "语言自然度"},
         ],
         "json_schema": (
-            "{\"scores\":{\"realism\":0,\"detail\":0,\"coherence\":0,\"naturalness\":0},"
+            "{\"scores\":{\"realism\":0,\"detail\":0,\"coherence\":0,\"continuity\":0,\"naturalness\":0},"
             "\"strengths\":[\"\"],\"issues\":[\"\"],\"key_fix\":\"\"}"
         ),
         "rules": [
@@ -44,10 +45,19 @@ DEFAULT_STORY_PIPELINE_PROFILE: dict[str, Any] = {
         "rules": [
             "保留原剧情顺序与关键事件，不新增大剧情；",
             "优先修复：{fix_goal}；",
+            "检查并修复跨章衔接：本章开头应承接上章尾句后的动作/情绪，避免重复叙述；",
+            "若提供“连贯性资料”，优先修复与历史设定冲突的称谓/地点/关系，不得自相矛盾；",
             "增加可感知细节（动作/环境/心理），减少空泛评价句；",
             "语言自然克制，禁止模板腔（如：首先/其次/最后/总的来说）；",
             "字数控制在 {target_low}-{target_high} 字附近（当前约{current_chars}字）；",
             "只输出最终章节正文，不要解释。",
+        ],
+    },
+    "transition": {
+        "section_lines": [
+            "中间章节开头必须承接上一章末尾动作或情绪，不得复制上一章原句；",
+            "首段最多1句背景回顾，核心篇幅用于推进新事件；",
+            "人物立场、关系变化、已揭示事实必须与记忆账本一致，禁止反向改设定。",
         ],
     },
     "memory_ledger": {
@@ -107,6 +117,28 @@ def _normalize_dimensions(value: Any) -> list[dict[str, str]]:
     return rows
 
 
+def _ensure_quality_dimensions(rows: list[dict[str, str]]) -> list[dict[str, str]]:
+    """Ensure core quality dimensions are always present, even with custom profile overrides."""
+    merged: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for row in rows:
+        key = str(row.get("key", "") or "").strip()
+        label = str(row.get("label", "") or "").strip()
+        if not key or not label or key in seen:
+            continue
+        merged.append({"key": key, "label": label})
+        seen.add(key)
+
+    default_dims = _normalize_dimensions(DEFAULT_STORY_PIPELINE_PROFILE["quality_review"]["dimensions"])
+    for row in default_dims:
+        key = row["key"]
+        if key in seen:
+            continue
+        merged.append({"key": key, "label": row["label"]})
+        seen.add(key)
+    return merged
+
+
 def _merge_section_list(cfg: dict[str, Any], payload: dict[str, Any], section: str, key: str) -> None:
     section_payload = payload.get(section, {})
     if not isinstance(section_payload, dict):
@@ -130,6 +162,7 @@ def _load_profile() -> dict[str, Any]:
 
     _merge_section_list(cfg, payload, "emotion_arc", "story_lines")
     _merge_section_list(cfg, payload, "emotion_arc", "section_lines")
+    _merge_section_list(cfg, payload, "transition", "section_lines")
     _merge_section_list(cfg, payload, "quality_review", "rules")
     _merge_section_list(cfg, payload, "polish", "rules")
     _merge_section_list(cfg, payload, "memory_ledger", "rules")
@@ -211,6 +244,17 @@ def build_emotion_arc_guidelines(stage: str = "story") -> str:
     return _format_lines(lines, numbered=False)
 
 
+def build_section_transition_guidelines() -> str:
+    cfg = get_story_pipeline_profile()
+    transition_cfg = cfg.get("transition", {})
+    if not isinstance(transition_cfg, dict):
+        transition_cfg = {}
+    lines = _normalize_text_list(transition_cfg.get("section_lines"))
+    if not lines:
+        lines = _normalize_text_list(DEFAULT_STORY_PIPELINE_PROFILE["transition"]["section_lines"])
+    return _format_lines(lines, numbered=False)
+
+
 def build_quality_review_prompt(*, requirement: str, category: str, section_title: str, preview: str) -> str:
     cfg = get_story_pipeline_profile()
     quality_cfg = cfg.get("quality_review", {})
@@ -220,6 +264,7 @@ def build_quality_review_prompt(*, requirement: str, category: str, section_titl
     dimensions = _normalize_dimensions(quality_cfg.get("dimensions"))
     if not dimensions:
         dimensions = _normalize_dimensions(DEFAULT_STORY_PIPELINE_PROFILE["quality_review"]["dimensions"])
+    dimensions = _ensure_quality_dimensions(dimensions)
     dims_text = ", ".join(f"{row['key']}({row['label']})" for row in dimensions)
 
     schema = str(quality_cfg.get("json_schema", "") or "").strip()
@@ -253,6 +298,8 @@ def build_polish_prompt(
     target_low: int,
     target_high: int,
     current_chars: int,
+    previous_tail: str = "",
+    continuity_context: str = "",
 ) -> str:
     cfg = get_story_pipeline_profile()
     polish_cfg = cfg.get("polish", {})
@@ -271,11 +318,27 @@ def build_polish_prompt(
         lines.append(text)
     rules_text = _format_lines(lines, numbered=True)
 
+    continuity_lines: list[str] = []
+    tail = str(previous_tail or "").strip()
+    if tail:
+        continuity_lines.append(f"- 上章收束句：{tail}")
+    continuity = str(continuity_context or "").strip()
+    if continuity:
+        continuity_lines.append(continuity)
+    continuity_block = ""
+    if continuity_lines:
+        continuity_block = (
+            "【连贯性资料（必须遵守）】\n"
+            + "\n".join(continuity_lines)
+            + "\n\n"
+        )
+
     return (
         "你是中文小说精修编辑。请在不改变剧情事实和人物设定的前提下，"
         "对下面章节做一次“真实细腻化”重写。\n"
         "硬性要求：\n"
         f"{rules_text}\n\n"
+        f"{continuity_block}"
         f"章节标题：{section_title}\n"
         f"原文：\n{section_content}\n"
     )
@@ -314,4 +377,3 @@ def build_memory_ledger_prompt(*, section_title: str, preview: str) -> str:
         f"章节标题：{section_title}\n"
         f"章节文本：\n{preview}\n"
     )
-

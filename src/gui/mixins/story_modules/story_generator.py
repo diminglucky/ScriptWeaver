@@ -241,9 +241,10 @@ class StoryGeneratorMixin:
 				# 自动保存到当前项目
 				self._ui(self._auto_save_to_project)
 			except Exception as e:
-				import traceback
-				self._ui(self.output.insert, END, "生成出错:\n" + traceback.format_exc() + "\n")
-				self._ui(messagebox.showerror, "错误", str(e))
+				logger.exception("story generation with rag failed")
+				brief = _sanitize(str(e)) or e.__class__.__name__
+				self._ui(self.output.insert, END, f"❌ 生成故事失败：{brief}\n")
+				self._ui(messagebox.showerror, "错误", brief)
 				self._ui(self.status.set, "生成失败")
 				# 更新顶部状态栏
 				if hasattr(self, 'update_header_status'):
@@ -344,9 +345,10 @@ class StoryGeneratorMixin:
 					# 修复：调用 _auto_generate_all_sections 而非未定义的方法
 					self._auto_generate_all_sections(query, contexts, start_index)
 				except Exception as e:
-					import traceback
-					self._ui(self.output.insert, END, "\n自动生成出错:\n" + traceback.format_exc() + "\n")
-					self._ui(messagebox.showerror, "错误", str(e))
+					logger.exception("auto generate all with rag failed")
+					brief = _sanitize(str(e)) or e.__class__.__name__
+					self._ui(self.output.insert, END, f"\n❌ 自动生成失败：{brief}\n")
+					self._ui(messagebox.showerror, "错误", brief)
 				finally:
 					self._ui(self.set_busy, False)
 			threading.Thread(target=task, daemon=True).start()
@@ -426,9 +428,10 @@ class StoryGeneratorMixin:
 				# 自动保存到当前项目
 				self._ui(self._auto_save_to_project)
 			except Exception as e:
-				import traceback
-				self._ui(self.output.insert, END, "\n\n生成出错:\n" + traceback.format_exc() + "\n")
-				self._ui(messagebox.showerror, "错误", str(e))
+				logger.exception("story generation model-only failed")
+				brief = _sanitize(str(e)) or e.__class__.__name__
+				self._ui(self.output.insert, END, f"\n❌ 生成故事失败：{brief}\n")
+				self._ui(messagebox.showerror, "错误", brief)
 				self._ui(self.status.set, "生成失败")
 				# 更新顶部状态栏
 				if hasattr(self, 'update_header_status'):

@@ -134,76 +134,86 @@ class HunyuanImageClient:
         Returns:
             HunyuanImageResult瀵硅薄
         """
-        # 鏋勫缓璇锋眰鍙傛暟
+        params = self._build_generate_params(
+            prompt=prompt,
+            resolution=resolution,
+            logo_add=logo_add,
+            rsp_img_type=rsp_img_type,
+            negative_prompt=negative_prompt,
+            style=style,
+        )
+        timestamp = int(time.time())
+        headers = self._build_generate_headers(params=params, timestamp=timestamp)
+        response = self._request_generate(params=params, headers=headers)
+        result_image = self._parse_generate_response(response)
+        image = self._decode_result_image(result_image=result_image, rsp_img_type=rsp_img_type)
+        return HunyuanImageResult(image=image, provider="hunyuan", model="hunyuan-turbo")
+
+    def _build_generate_params(
+        self,
+        *,
+        prompt: str,
+        resolution: str,
+        logo_add: int,
+        rsp_img_type: str,
+        negative_prompt: Optional[str],
+        style: Optional[str],
+    ) -> dict:
+        """鏋勫缓 TextToImage 璇锋眰鍙傛暟銆?"""
         params = {
             "Prompt": prompt,
             "Resolution": resolution,
             "LogoAdd": logo_add,
-            "RspImgType": rsp_img_type
+            "RspImgType": rsp_img_type,
         }
-        
         if negative_prompt:
             params["NegativePrompt"] = negative_prompt
-        
         if style:
             params["Style"] = style
-        
-        # 鏃堕棿鎴?
-        timestamp = int(time.time())
-        
-        # 鐢熸垚绛惧悕
+        return params
+
+    def _build_generate_headers(self, *, params: dict, timestamp: int) -> dict:
+        """鏋勫缓鑵捐浜慉PI璇锋眰澶淬?"""
         authorization = self._sign(params, timestamp)
-        
-        # 鏋勫缓璇锋眰澶?
-        headers = {
+        return {
             "Authorization": authorization,
             "Content-Type": "application/json",
             "Host": self.endpoint,
             "X-TC-Action": "TextToImageLite",
             "X-TC-Version": self.version,
             "X-TC-Timestamp": str(timestamp),
-            "X-TC-Region": self.region
+            "X-TC-Region": self.region,
         }
-        
-        # 鍙戦€佽姹?
+
+    def _request_generate(self, *, params: dict, headers: dict):
+        """鍙戦€佺敓鍥炬帴鍙ｈ姹傘?"""
         url = f"https://{self.endpoint}"
-        response = requests.post(
+        return requests.post(
             url,
             headers=headers,
             json=params,
-            timeout=self.timeout
+            timeout=self.timeout,
         )
-        
-        # 瑙ｆ瀽鍝嶅簲
+
+    def _parse_generate_response(self, response) -> str:
+        """鏍￠獙鍝嶅簲骞惰繑鍥炵敓鎴愮粨鏋滃浘鐗囧瓧娈点?"""
         if response.status_code != 200:
             raise RuntimeError(f"API璇锋眰澶辫触: {response.status_code} - {response.text}")
-        
         result = response.json()
-        
         if "Response" not in result:
             raise RuntimeError(f"API杩斿洖鏍煎紡閿欒: {result}")
-        
         if "Error" in result["Response"]:
             error = result["Response"]["Error"]
             raise RuntimeError(f"API閿欒: {error.get('Code', 'Unknown')} - {error.get('Message', 'Unknown')}")
-        
-        # 鑾峰彇鐢熸垚鐨勫浘鐗?
-        result_image = result["Response"].get("ResultImage", "")
-        
+        return result["Response"].get("ResultImage", "")
+
+    def _decode_result_image(self, *, result_image: str, rsp_img_type: str) -> Image.Image:
+        """灏嗚繑鍥炲浘鍍忓瓧娈佃浆鎹负 PIL Image銆?"""
         if rsp_img_type == "base64":
-            # Base64瑙ｇ爜
             img_bytes = base64.b64decode(result_image)
-            img = Image.open(BytesIO(img_bytes)).convert("RGB")
-        else:
-            # URL鏂瑰紡锛岄渶瑕佷笅杞藉浘鐗?
-            img_response = requests.get(result_image, timeout=30)
-            img = Image.open(BytesIO(img_response.content)).convert("RGB")
-        
-        return HunyuanImageResult(
-            image=img,
-            provider="hunyuan",
-            model="hunyuan-turbo"
-        )
+            return Image.open(BytesIO(img_bytes)).convert("RGB")
+        img_response = requests.get(result_image, timeout=30)
+        return Image.open(BytesIO(img_response.content)).convert("RGB")
 
 
 if __name__ == "__main__":
@@ -231,4 +241,3 @@ if __name__ == "__main__":
         result.image.save("test_hunyuan.png")
     else:
         print("Set HUNYUAN_SECRET_ID and HUNYUAN_SECRET_KEY first.")
-
