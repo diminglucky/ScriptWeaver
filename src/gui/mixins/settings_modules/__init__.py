@@ -1,6 +1,5 @@
 """Submodules extracted from settings mixin."""
 
-from .entry_colors import EntryColorMixin
 from .api_config_persistence_mixin import SettingsApiConfigPersistenceMixin
 from .api_test_mixin import SettingsApiTestMixin
 from .model_fetch import SettingsModelFetchMixin
@@ -17,7 +16,6 @@ from .story_env_mixin import SettingsStoryEnvMixin
 from .story_template_mixin import SettingsStoryTemplateMixin
 
 __all__ = [
-    "EntryColorMixin",
     "SettingsApiConfigPersistenceMixin",
     "SettingsApiTestMixin",
     "SettingsPageActionsMixin",

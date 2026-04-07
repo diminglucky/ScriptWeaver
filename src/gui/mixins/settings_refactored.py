@@ -6,7 +6,6 @@ Behavior remains compatible while moving focused pieces out of
 
 from .settings_mixin import SettingsMixin as LegacySettingsMixin
 from .settings_modules import (
-    EntryColorMixin,
     SettingsActionsMixin,
     SettingsModelFetchMixin,
     SettingsModelRoutingUIMixin,
@@ -17,7 +16,6 @@ from .settings_modules import (
 
 
 class SettingsMixin(
-    EntryColorMixin,
     SettingsActionsMixin,
     SettingsModelUtilsMixin,
     SettingsModelFetchMixin,
