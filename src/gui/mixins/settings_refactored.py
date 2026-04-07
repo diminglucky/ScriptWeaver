@@ -1,27 +1,8 @@
-"""Refactored SettingsMixin entrypoint.
+"""Backward-compatible re-export.
 
-Behavior remains compatible while moving focused pieces out of
-`settings_mixin.py` incrementally.
+All settings mixins are now unified in settings_mixin.py.
+This file only exists so existing ``from .settings_refactored import SettingsMixin``
+imports continue to work.
 """
 
-from .settings_mixin import SettingsMixin as LegacySettingsMixin
-from .settings_modules import (
-    SettingsActionsMixin,
-    SettingsModelFetchMixin,
-    SettingsModelRoutingUIMixin,
-    SettingsModelUtilsMixin,
-    SettingsProviderUIMixin,
-    SettingsRuntimeSyncMixin,
-)
-
-
-class SettingsMixin(
-    SettingsActionsMixin,
-    SettingsModelUtilsMixin,
-    SettingsModelFetchMixin,
-    SettingsModelRoutingUIMixin,
-    SettingsProviderUIMixin,
-    SettingsRuntimeSyncMixin,
-    LegacySettingsMixin,
-):
-    """Compatibility wrapper for progressively refactored settings mixin."""
+from .settings_mixin import SettingsMixin  # noqa: F401

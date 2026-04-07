@@ -4,17 +4,31 @@ from __future__ import annotations
 
 from tkinter import messagebox  # Backward compatibility for existing patches/tests.
 
-from .settings_modules.api_config_persistence_mixin import SettingsApiConfigPersistenceMixin
-from .settings_modules.api_test_mixin import SettingsApiTestMixin
-from .settings_modules.page_actions_mixin import SettingsPageActionsMixin
-from .settings_modules.page_layout_mixin import SettingsPageLayoutMixin
-from .settings_modules.quick_switch_mixin import SettingsQuickSwitchMixin
-from .settings_modules.routing_provider_mixin import SettingsRoutingProviderMixin
-from .settings_modules.story_env_mixin import SettingsStoryEnvMixin
-from .settings_modules.story_template_mixin import SettingsStoryTemplateMixin
+from .settings_modules import (
+    SettingsActionsMixin,
+    SettingsApiConfigPersistenceMixin,
+    SettingsApiTestMixin,
+    SettingsModelFetchMixin,
+    SettingsModelRoutingUIMixin,
+    SettingsModelUtilsMixin,
+    SettingsPageActionsMixin,
+    SettingsPageLayoutMixin,
+    SettingsProviderUIMixin,
+    SettingsQuickSwitchMixin,
+    SettingsRoutingProviderMixin,
+    SettingsRuntimeSyncMixin,
+    SettingsStoryEnvMixin,
+    SettingsStoryTemplateMixin,
+)
 
 
 class SettingsMixin(
+    SettingsActionsMixin,
+    SettingsModelUtilsMixin,
+    SettingsModelFetchMixin,
+    SettingsModelRoutingUIMixin,
+    SettingsProviderUIMixin,
+    SettingsRuntimeSyncMixin,
     SettingsPageLayoutMixin,
     SettingsPageActionsMixin,
     SettingsStoryTemplateMixin,
