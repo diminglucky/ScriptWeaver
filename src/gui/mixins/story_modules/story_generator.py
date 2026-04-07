@@ -158,19 +158,8 @@ class StoryGeneratorMixin:
 			self._ui(self.output.insert, END, text)
 		self._ui(self.output.see, END)
 	
-	def on_generate(self) -> None:
-		query = self._get_prompt_content()
-		if not query:
-			messagebox.showwarning("提示", "请先输入创作需求/主题")
-			return
-		try:
-			import time
-			self._story_creativity_nonce = str(time.time_ns())
-		except Exception:
-			self._story_creativity_nonce = ""
-		self._persist_target_chars_preference()
-		
-		# 故事生成：根据模型路由选择 API
+	def _resolve_story_api_config(self) -> dict:
+		"""Resolve API config for story generation from model routing and fallbacks."""
 		fallback_provider = None
 		if hasattr(self, 'story_gen_api'):
 			fallback_provider = self.story_gen_api.get()
@@ -183,18 +172,111 @@ class StoryGeneratorMixin:
 			fallback_model = self.story_model_var.get()
 		elif hasattr(self, 'model'):
 			fallback_model = self.model.get()
-		
-		api_config = self._resolve_task_api("story_generate", fallback_provider=fallback_provider, fallback_model=fallback_model)
+		return self._resolve_task_api("story_generate", fallback_provider=fallback_provider, fallback_model=fallback_model)
+
+	def _run_story_generation(
+		self,
+		*,
+		query: str,
+		contexts: list,
+		rag_rows: list,
+		api_config: dict,
+		target_chars_val: int,
+		category_val: str,
+		current_outline_val,
+		log_label: str = "story generation",
+	) -> None:
+		"""Core generation logic shared by RAG and model-only paths."""
+		selected_api = api_config.get("provider", "")
+		api_key = _sanitize(api_config.get("key", ""))
+		selected_model = api_config.get("model", "")
+
+		self._ui(self.status.set, f"使用 {selected_api} 准备生成...")
+		self._header_status("AI创作故事中...", "📝")
+		print(f"🤖 使用模型: {selected_model}")
+
+		client = DeepSeekClient(
+			api_key=api_key,
+			base_url=_sanitize(api_config.get("base_url", "")),
+			model=selected_model,
+		)
+		if hasattr(self, "_ensure_story_global_overview_before_generation"):
+			overview_action, _overview_text = self._ensure_story_global_overview_before_generation(
+				client=client,
+				requirement=query,
+				category=category_val,
+				contexts=contexts,
+				outline_text=(current_outline_val or ""),
+				force_review=False,
+			)
+			if overview_action == "discard":
+				self._ui(self.status.set, "已取消（全书总览未采用）")
+				self._header_status("生成已取消", "↩️")
+				return
+		self._ui(self.output.delete, "1.0", END)
+		banner_text = ""
+		if hasattr(self, "_build_story_run_banner"):
+			banner = self._build_story_run_banner(query, category_val, rag_rows)
+			if banner:
+				banner_text = str(banner).strip()
+				self._ui(self.output.insert, END, banner + "\n\n")
+
+		sections = self._parse_outline_sections(current_outline_val) if current_outline_val else []
+
+		if target_chars_val > 8000 and sections:
+			completed = self._generate_in_sections(client, query, contexts, sections, target_chars_val)
+			if not completed:
+				self._ui(self.status.set, "已停止（预览取消）")
+				self._header_status("生成已停止", "⏹️")
+				self._ui(self._auto_save_to_project)
+				return
+		else:
+			self._ui(self.output.insert, END, "生成中...\n\n")
+			prompt = self._build_prompt(query, contexts, category_val, current_outline_val)
+			generated_story = self._stream_story_with_retry(
+				client,
+				prompt,
+				target_chars_val,
+				requirement=query,
+				category=category_val,
+			)
+			preview_action, final_story = self._preview_story_text_before_finalize(
+				client=client,
+				query=query,
+				category=category_val,
+				story_text=generated_story,
+			)
+			if preview_action == "discard":
+				self._ui(self.status.set, "已取消（预览未采用）")
+				self._header_status("生成已取消", "↩️")
+				return
+			self._render_story_output(banner_text, final_story)
+
+		self._ui(self.status.set, "生成完成")
+		self._header_status("故事生成完成", "✅")
+		self._ui(self._auto_save_to_project)
+
+	def on_generate(self) -> None:
+		query = self._get_prompt_content()
+		if not query:
+			messagebox.showwarning("提示", "请先输入创作需求/主题")
+			return
+		try:
+			import time
+			self._story_creativity_nonce = str(time.time_ns())
+		except Exception:
+			self._story_creativity_nonce = ""
+		self._persist_target_chars_preference()
+
+		api_config = self._resolve_story_api_config()
 		selected_api = api_config.get("provider", "")
 		api_key = _sanitize(api_config.get("key", ""))
 		if not api_key:
 			messagebox.showwarning("提示", f"API Key 为空，请在'基础 API 配置'中为 {selected_api} 填写后保存")
 			return
-		
-		# 获取用户选择的模型
-		selected_model = api_config.get("model", "")
-		print(f"🤖 使用模型: {selected_model}")
-		
+
+		print(f"🤖 使用模型: {api_config.get('model', '')}")
+
 		if self.model_only.get():
 			self._generate_model_only(query)
 			return
@@ -216,114 +298,41 @@ class StoryGeneratorMixin:
 			try:
 				self._ui(self.set_busy, True)
 				self._ui(self.status.set, f"使用 {selected_api} 检索素材并生成正文中...")
-				# 更新顶部状态栏
-				if hasattr(self, 'update_header_status'):
-					self._ui(self.update_header_status, "准备生成故事...", "📝")
-				
+				self._header_status("准备生成故事...", "📝")
+
 				load_dotenv()
 				contexts = []
 				rag_rows = []
 				if need_build:
-					if hasattr(self, 'update_header_status'):
-						self._ui(self.update_header_status, "正在构建索引...", "⏳")
+					self._header_status("正在构建索引...", "⏳")
 					from src.kb.ingest import IngestConfig, KnowledgeBaseIngestor
 					cfg = IngestConfig(data_root=Path(data_dir_val), index_dir=Path(index_dir_val))
 					KnowledgeBaseIngestor(cfg).build()
-				
-				if hasattr(self, 'update_header_status'):
-					self._ui(self.update_header_status, "检索资料中...", "🔍")
+
+				self._header_status("检索资料中...", "🔍")
 				from src.kb.search import KnowledgeBaseSearcher, SearchConfig
 				searcher = KnowledgeBaseSearcher(SearchConfig(index_dir=Path(index_dir_val), top_k=top_k_val))
 				results = searcher.search(query, top_k_val)
 				rag_rows = self._postprocess_rag_results(results) if hasattr(self, "_postprocess_rag_results") else results
 				contexts = [c for c, _s, _m in rag_rows]
-				
-				# 使用选中的API配置
-				if hasattr(self, 'update_header_status'):
-					self._ui(self.update_header_status, "AI创作故事中...", "📝")
-				
-				# 获取用户选择的模型
-				selected_model = api_config.get("model", "")
-				print(f"🤖 使用模型: {selected_model}")
-				
-				client = DeepSeekClient(
-					api_key=api_key,
-					base_url=_sanitize(api_config.get("base_url", "")),
-					model=selected_model,
+
+				self._run_story_generation(
+					query=query,
+					contexts=contexts,
+					rag_rows=rag_rows,
+					api_config=api_config,
+					target_chars_val=target_chars_val,
+					category_val=category_val,
+					current_outline_val=current_outline_val,
+					log_label="story generation with rag",
 				)
-				if hasattr(self, "_ensure_story_global_overview_before_generation"):
-					overview_action, _overview_text = self._ensure_story_global_overview_before_generation(
-						client=client,
-						requirement=query,
-						category=category_val,
-						contexts=contexts,
-						outline_text=(current_outline_val or ""),
-						force_review=False,
-					)
-					if overview_action == "discard":
-						self._ui(self.status.set, "已取消（全书总览未采用）")
-						if hasattr(self, 'update_header_status'):
-							self._ui(self.update_header_status, "生成已取消", "↩️")
-						return
-				self._ui(self.output.delete, "1.0", END)
-				banner_text = ""
-				if hasattr(self, "_build_story_run_banner"):
-					banner = self._build_story_run_banner(query, category_val, rag_rows)
-					if banner:
-						banner_text = str(banner).strip()
-						self._ui(self.output.insert, END, banner + "\n\n")
-				
-				# 检查是否需要分段生成
-				sections = self._parse_outline_sections(current_outline_val) if current_outline_val else []
-				
-				# 如果字数 > 8000 且有目录，则分段生成
-				if target_chars_val > 8000 and sections:
-					completed = self._generate_in_sections(client, query, contexts, sections, target_chars_val)
-					if not completed:
-						self._ui(self.status.set, "已停止（预览取消）")
-						if hasattr(self, 'update_header_status'):
-							self._ui(self.update_header_status, "生成已停止", "⏹️")
-						self._ui(self._auto_save_to_project)
-						return
-				else:
-					# 一次性生成（原逻辑）
-					self._ui(self.output.insert, END, "生成中...\n\n")
-					prompt = self._build_prompt(query, contexts, category_val, current_outline_val)
-					generated_story = self._stream_story_with_retry(
-						client,
-						prompt,
-						target_chars_val,
-						requirement=query,
-						category=category_val,
-					)
-					preview_action, final_story = self._preview_story_text_before_finalize(
-						client=client,
-						query=query,
-						category=category_val,
-						story_text=generated_story,
-					)
-					if preview_action == "discard":
-						self._ui(self.status.set, "已取消（预览未采用）")
-						if hasattr(self, 'update_header_status'):
-							self._ui(self.update_header_status, "生成已取消", "↩️")
-						return
-					self._render_story_output(banner_text, final_story)
-				
-				self._ui(self.status.set, "生成完成")
-				# 更新顶部状态栏
-				if hasattr(self, 'update_header_status'):
-					self._ui(self.update_header_status, "故事生成完成", "✅")
-				# 自动保存到当前项目
-				self._ui(self._auto_save_to_project)
 			except Exception as e:
 				logger.exception("story generation with rag failed")
 				brief = _sanitize(str(e)) or e.__class__.__name__
 				self._ui(self.output.insert, END, f"❌ 生成故事失败：{brief}\n")
 				self._ui(messagebox.showerror, "错误", brief)
 				self._ui(self.status.set, "生成失败")
-				# 更新顶部状态栏
-				if hasattr(self, 'update_header_status'):
-					self._ui(self.update_header_status, "生成故事失败", "❌")
+				self._header_status("生成故事失败", "❌")
 			finally:
 				self._ui(self.set_busy, False)
 		threading.Thread(target=task, daemon=True).start()
@@ -347,30 +356,13 @@ class StoryGeneratorMixin:
 		except Exception:
 			self._story_creativity_nonce = ""
 		
-		# 故事生成：根据模型路由选择 API
-		fallback_provider = None
-		if hasattr(self, 'story_gen_api'):
-			fallback_provider = self.story_gen_api.get()
-		if not fallback_provider and hasattr(self, 'quick_story_api'):
-			fallback_provider = self.quick_story_api.get()
-		if not fallback_provider and hasattr(self, 'api_preset'):
-			fallback_provider = self.api_preset.get()
-		fallback_model = None
-		if hasattr(self, 'story_model_var'):
-			fallback_model = self.story_model_var.get()
-		elif hasattr(self, 'model'):
-			fallback_model = self.model.get()
-		
-		api_config = self._resolve_task_api("story_generate", fallback_provider=fallback_provider, fallback_model=fallback_model)
+		api_config = self._resolve_story_api_config()
 		selected_api = api_config.get("provider", "")
 		api_key = _sanitize(api_config.get("key", ""))
 		if not api_key:
 			messagebox.showwarning("提示", f"API Key 为空，请在'基础 API 配置'中为 {selected_api} 填写后保存")
 			return
-		
-		# 获取用户选择的模型
-		selected_model = api_config.get("model", "")
-		print(f"🤖 使用模型: {selected_model}")
+		print(f"🤖 使用模型: {api_config.get('model', '')}")
 		
 		# 确认开始
 		total_chapters = len(self.parsed_sections)
@@ -433,120 +425,29 @@ class StoryGeneratorMixin:
 		target_chars_val = self.target_chars.get()
 		category_val = self.category.get()
 		current_outline_val = self.current_outline
-
-		# 预先获取所有的GUI组件值
-		fallback_provider = None
-		if hasattr(self, 'story_gen_api'):
-			fallback_provider = self.story_gen_api.get()
-		if not fallback_provider and hasattr(self, 'quick_story_api'):
-			fallback_provider = self.quick_story_api.get()
-		if not fallback_provider and hasattr(self, 'api_preset'):
-			fallback_provider = self.api_preset.get()
-		fallback_model = None
-		if hasattr(self, 'story_model_var'):
-			fallback_model = self.story_model_var.get()
-		elif hasattr(self, 'model'):
-			fallback_model = self.model.get()
-		
-		# _resolve_task_api可能会访问GUI或修改，我们在主线程调用比较好
-		# 但原作者在task里调用可能需要阻塞，这也没问题
-		api_config = self._resolve_task_api("story_generate", fallback_provider=fallback_provider, fallback_model=fallback_model)
-		selected_api = api_config.get("provider", "")
-		api_key = _sanitize(api_config.get("key", ""))
-		selected_model = api_config.get("model", "")
+		api_config = self._resolve_story_api_config()
 
 		def task():
 			try:
 				self._ui(self.set_busy, True)
-				
-				self._ui(self.status.set, f"使用 {selected_api} 准备生成...")
-				# 更新顶部状态栏
-				if hasattr(self, 'update_header_status'):
-					self._ui(self.update_header_status, "AI创作故事中...", "📝")
-				
-				# 获取用户选择的模型
-				print(f"🤖 使用模型: {selected_model}")
-				
-				client = DeepSeekClient(
-					api_key=api_key,
-					base_url=_sanitize(api_config.get("base_url", "")),
-					model=selected_model,
+				self._run_story_generation(
+					query=query,
+					contexts=[],
+					rag_rows=[],
+					api_config=api_config,
+					target_chars_val=target_chars_val,
+					category_val=category_val,
+					current_outline_val=current_outline_val,
+					log_label="story generation model-only",
 				)
-				if hasattr(self, "_ensure_story_global_overview_before_generation"):
-					overview_action, _overview_text = self._ensure_story_global_overview_before_generation(
-						client=client,
-						requirement=query,
-						category=category_val,
-						contexts=[],
-						outline_text=(current_outline_val or ""),
-						force_review=False,
-					)
-					if overview_action == "discard":
-						self._ui(self.status.set, "已取消（全书总览未采用）")
-						if hasattr(self, 'update_header_status'):
-							self._ui(self.update_header_status, "生成已取消", "↩️")
-						return
-				self._ui(self.output.delete, "1.0", END)
-				banner_text = ""
-				if hasattr(self, "_build_story_run_banner"):
-					banner = self._build_story_run_banner(query, category_val, [])
-					if banner:
-						banner_text = str(banner).strip()
-						self._ui(self.output.insert, END, banner + "\n\n")
-				
-				# 检查是否需要分段生成
-				sections = self._parse_outline_sections(current_outline_val) if current_outline_val else []
-				
-				# 如果字数 > 8000 且有目录，则分段生成
-				if target_chars_val > 8000 and sections:
-					completed = self._generate_in_sections(client, query, [], sections, target_chars_val)
-					if not completed:
-						self._ui(self.status.set, "已停止（预览取消）")
-						if hasattr(self, 'update_header_status'):
-							self._ui(self.update_header_status, "生成已停止", "⏹️")
-						self._ui(self._auto_save_to_project)
-						return
-				else:
-					# 一次性生成（原逻辑）
-					self._ui(self.output.insert, END, "生成中...\n\n")
-					prompt = self._build_prompt(query, [], category_val, current_outline_val)
-					generated_story = self._stream_story_with_retry(
-						client,
-						prompt,
-						target_chars_val,
-						requirement=query,
-						category=category_val,
-					)
-					preview_action, final_story = self._preview_story_text_before_finalize(
-						client=client,
-						query=query,
-						category=category_val,
-						story_text=generated_story,
-					)
-					if preview_action == "discard":
-						self._ui(self.status.set, "已取消（预览未采用）")
-						if hasattr(self, 'update_header_status'):
-							self._ui(self.update_header_status, "生成已取消", "↩️")
-						return
-					self._render_story_output(banner_text, final_story)
-				
-				self._ui(self.status.set, "生成完成")
-				# 更新顶部状态栏
-				if hasattr(self, 'update_header_status'):
-					self._ui(self.update_header_status, "故事生成完成", "✅")
-				# 自动保存到当前项目
-				self._ui(self._auto_save_to_project)
 			except Exception as e:
 				logger.exception("story generation model-only failed")
 				brief = _sanitize(str(e)) or e.__class__.__name__
 				self._ui(self.output.insert, END, f"\n❌ 生成故事失败：{brief}\n")
 				self._ui(messagebox.showerror, "错误", brief)
 				self._ui(self.status.set, "生成失败")
-				# 更新顶部状态栏
-				if hasattr(self, 'update_header_status'):
-					self._ui(self.update_header_status, "生成故事失败", "❌")
+				self._header_status("生成故事失败", "❌")
 			finally:
 				self._ui(self.set_busy, False)
 		threading.Thread(target=task, daemon=True).start()
-	
-	
+

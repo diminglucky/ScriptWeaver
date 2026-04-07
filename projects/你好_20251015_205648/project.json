@@ -1,43 +1,45 @@
 {
   "name": "你好",
   "created_at": "2025-10-15T20:56:48.591540",
-  "updated_at": "2026-04-06T09:43:46.811026",
+  "updated_at": "2026-04-07T17:16:09.591938",
   "category": "校园",
-  "requirement": "写一个男主叫做 孤独，女主叫做暮雪的爱恨情仇故事，要求真实",
+  "requirement": "写一个校园爱恨情仇的故事",
   "style": "情感起伏/反转/细节描写/有画面感/口语化",
   "target_chars": 10000,
-  "outline": "1. 校园摸底考后的战书\n2. 孤独篮球赛上的意外\n3. 孤独的过去与代价\n4. 校园保送名额前的背叛\n5. 孤独虚假的和解晚餐\n6. 要求真实·暮雪父亲的秘密\n7. 校园雨夜教室的最终对话",
+  "outline": "1. 校园教室里的公开指控\n2. 学生宿舍夜谈与结盟\n3. 班级匿名信与旧照片\n4. 校园旧日伤痕的浮现\n5. 学生礼堂对峙与伪证\n6. 班级尘埃落定的假象\n7. 校园日记本里的终极真相",
   "parsed_sections": [
     {
-      "title": "校园摸底考后的战书",
+      "title": "校园教室里的公开指控",
       "items": []
     },
     {
-      "title": "孤独篮球赛上的意外",
+      "title": "学生宿舍夜谈与结盟",
       "items": []
     },
     {
-      "title": "孤独的过去与代价",
+      "title": "班级匿名信与旧照片",
       "items": []
     },
     {
-      "title": "校园保送名额前的背叛",
+      "title": "校园旧日伤痕的浮现",
       "items": []
     },
     {
-      "title": "孤独虚假的和解晚餐",
+      "title": "学生礼堂对峙与伪证",
       "items": []
     },
     {
-      "title": "要求真实·暮雪父亲的秘密",
+      "title": "班级尘埃落定的假象",
       "items": []
     },
     {
-      "title": "校园雨夜教室的最终对话",
+      "title": "校园日记本里的终极真相",
       "items": []
     }
   ],
   "section_index": 0,
   "story_memory_ledger": [],
-  "chapter_quality_reports": []
+  "chapter_quality_reports": [],
+  "story_global_overview": "",
+  "story_global_overview_signature": ""
 }

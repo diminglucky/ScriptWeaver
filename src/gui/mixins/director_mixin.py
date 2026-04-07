@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import logging
 import tkinter as tk
 from tkinter import BOTH, END, LEFT, RIGHT, VERTICAL, Y, messagebox, ttk
 
 from ..helpers.director_script_builder import DirectorScriptBuilder
 from ..theme import Theme
+
+logger = logging.getLogger(__name__)
 
 
 class DirectorMixin:
@@ -418,8 +421,8 @@ class DirectorMixin:
                 self.status.set(
                     f"✅ 导演页已更新：{report['total_shots']} 个分镜，完整度 {report['completeness_percent']}%"
                 )
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("director status update failed: %s", e)
 
     def _build_director_character_text(self, package: dict) -> str:
         """Render character cards into rich text."""
@@ -461,7 +464,7 @@ class DirectorMixin:
             try:
                 self.after_cancel(self._director_filter_job)
             except Exception:
-                pass
+                pass  # timer may already be cancelled
         self._director_filter_job = self.after(180, lambda: self._render_director_shot_table(preserve_selection=True))
 
     def _on_director_filter_changed(self, *_args) -> None:
@@ -676,8 +679,8 @@ class DirectorMixin:
             self.shots_listbox.selection_set(idx)
             self.shots_listbox.activate(idx)
             self._on_shot_listbox_selected(None)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("director shot selection sync failed: %s", e)
         finally:
             self._director_selection_sync_lock = False
 
@@ -700,8 +703,8 @@ class DirectorMixin:
         try:
             if hasattr(self, "status"):
                 self.status.set("✅ 已复制当前镜头详情")
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("director copy status update failed: %s", e)
 
     def _on_copy_director_veo_prompt(self) -> None:
         """Copy current shot veo prompt to clipboard."""
@@ -721,8 +724,8 @@ class DirectorMixin:
         try:
             if hasattr(self, "status"):
                 self.status.set("✅ 已复制当前镜头 Veo 提示词")
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("director copy veo status update failed: %s", e)
 
     def _open_director_page(self) -> None:
         """Quick jump helper."""

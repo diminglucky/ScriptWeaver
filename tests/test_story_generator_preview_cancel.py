@@ -85,6 +85,9 @@ class _DummyStoryGenerator(StoryGeneratorMixin):
         _ = color
         self.header_updates.append((text, icon))
 
+    def _header_status(self, text: str, icon: str = "🔄", color: str | None = None):
+        self.update_header_status(text, icon, color)
+
     def _auto_save_to_project(self):
         self._saved = True
 
@@ -129,6 +132,9 @@ class _DummyStoryGeneratorSingleShot(StoryGeneratorMixin):
     def update_header_status(self, text: str, icon: str = "🔄", color=None):
         _ = color
         self.header_updates.append((text, icon))
+
+    def _header_status(self, text: str, icon: str = "🔄", color: str | None = None):
+        self.update_header_status(text, icon, color)
 
     def _auto_save_to_project(self):
         self._saved = True

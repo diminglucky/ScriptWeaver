@@ -10,6 +10,10 @@ from src.clients.image_client import OpenAIImageClient
 
 from ...helpers.character_prompt_builder import CharacterPromptBuilder
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 class _CharacterPhotoAbortError(RuntimeError):
     """Abort current generation flow without generic duplicate error popup."""
@@ -236,8 +240,8 @@ class CharacterPhotoGenerationMixin:
             if hasattr(self, "char_draw_api_var"):
                 selected_provider = (self.char_draw_api_var.get() or "").strip()
             self._sync_img_runtime_from_config(selected_provider or None)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("sync img runtime before generation failed: %s", e)
 
     def _resolve_img_runtime(self):
         """解析当前生图使用的 key/base_url/model，避免空模型发请求。"""
@@ -261,8 +265,8 @@ class CharacterPhotoGenerationMixin:
         if not model and hasattr(self, "_get_current_img_model"):
             try:
                 model = (self._get_current_img_model() or "").strip()
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("_get_current_img_model failed: %s", e)
 
         if not model:
             model = os.getenv("OPENAI_IMAGE_MODEL", "dall-e-3").strip() or "dall-e-3"
@@ -270,8 +274,8 @@ class CharacterPhotoGenerationMixin:
         if hasattr(self, "img_model"):
             try:
                 self.img_model.set(model)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("set img_model failed: %s", e)
 
         return key, base_url, model
 

@@ -227,20 +227,20 @@ class ProjectMixin:
 
 			try:
 				self.section_selector.current(section_index)
-			except Exception:
-				pass
+			except Exception as e:
+				logger.debug("section_selector.current failed: %s", e)
 			if hasattr(self, "current_section_index") and hasattr(self.current_section_index, "set"):
 				try:
 					self.current_section_index.set(section_index)
-				except Exception:
-					pass
+				except Exception as e:
+					logger.debug("current_section_index.set failed: %s", e)
 
 		self.generated_content = self._extract_generated_content(story_content)
 		if hasattr(self, "_update_story_diagnostics_panel"):
 			try:
 				self._update_story_diagnostics_panel()
-			except Exception:
-				pass
+			except Exception as e:
+				logger.debug("_update_story_diagnostics_panel failed: %s", e)
 	
 	def _refresh_project_list(self) -> None:
 		"""刷新项目列表"""
@@ -319,8 +319,8 @@ class ProjectMixin:
 				self.project_tree.selection_set(item)
 				self.project_tree.focus(item)
 				self.project_tree.see(item)
-			except Exception:
-				pass
+			except Exception as e:
+				logger.debug("project tree selection failed: %s", e)
 			break
 
 	def _load_project_by_path(
@@ -554,8 +554,8 @@ class ProjectMixin:
 				try:
 					if str(Path(last_project).resolve()) == deleting_path:
 						self._clear_last_project_path()
-				except Exception:
-					pass
+				except Exception as e:
+					logger.debug("clear last project path on delete failed: %s", e)
 			self._refresh_project_list()
 			if hasattr(self, 'status'):
 				self.status.set(f"已删除项目: {project_name}")

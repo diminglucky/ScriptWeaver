@@ -7,6 +7,7 @@ import os
 import re
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor, Future
 import tkinter as tk
 from pathlib import Path
 
@@ -159,6 +160,89 @@ class OutlineSectionGenerateMixin:
                     titles.append(t)
         return titles[:12]
 
+    @staticmethod
+    def _extract_story_role_names(requirement: str) -> tuple[str, str]:
+        text = str(requirement or "").strip()
+        if not text:
+            return "主角", "关键关系人"
+
+        male_patterns = (
+            r"(?:男主|男主角|男生|男方)[^。；，,\n]{0,12}(?:叫|名叫|是)\s*([A-Za-z\u4e00-\u9fff]{2,6})",
+            r"男主叫\s*([A-Za-z\u4e00-\u9fff]{2,6})",
+        )
+        female_patterns = (
+            r"(?:女主|女主角|女生|女方)[^。；，,\n]{0,12}(?:叫|名叫|是)\s*([A-Za-z\u4e00-\u9fff]{2,6})",
+            r"女主叫\s*([A-Za-z\u4e00-\u9fff]{2,6})",
+        )
+
+        male = ""
+        female = ""
+        for pattern in male_patterns:
+            m = re.search(pattern, text)
+            if m:
+                male = str(m.group(1) or "").strip()
+                if male:
+                    break
+        for pattern in female_patterns:
+            m = re.search(pattern, text)
+            if m:
+                female = str(m.group(1) or "").strip()
+                if female:
+                    break
+
+        if male and female:
+            return male, female
+        if male and not female:
+            return male, "对方"
+        if female and not male:
+            return "对方", female
+        return "主角", "关键关系人"
+
+    @staticmethod
+    def _scene_hints_for_category(category: str) -> list[str]:
+        key = str(category or "").strip()
+        mapping: dict[str, list[str]] = {
+            "校园": ["教室", "操场看台", "宿舍走廊", "图书馆", "食堂角落", "实验楼天台", "校门口", "旧礼堂"],
+            "职场": ["会议室", "工位区", "电梯间", "茶水间", "客户现场", "地下车库", "公司楼顶", "深夜办公室"],
+            "悬疑": ["案发现场", "审讯室", "旧仓库", "雨夜街口", "档案室", "天台边缘", "废弃站台"],
+        }
+        if key in mapping:
+            return mapping[key]
+        return ["冲突现场", "公共空间", "私密角落", "高压场景", "对峙地点"]
+
+    @staticmethod
+    def _is_story_global_overview_too_generic(text: str) -> bool:
+        raw = str(text or "").strip()
+        if not raw:
+            return True
+
+        generic_phrases = (
+            "主角在本章做出关键行动并付出代价",
+            "关系/立场出现变化",
+            "结尾抛出",
+            "明确本章目标与冲突代价",
+            "关系变化都由具体事件触发",
+        )
+        phrase_hits = sum(raw.count(p) for p in generic_phrases)
+        if phrase_hits >= 2:
+            return True
+
+        numbered = [ln.strip() for ln in raw.splitlines() if re.match(r"^\s*\d+[.、]", ln)]
+        if len(numbered) >= 5:
+            template_like = 0
+            normalized: list[str] = []
+            for line in numbered:
+                if ("本章" in line and ("结尾" in line or "章末" in line) and ("钩子" in line or "悬念" in line)):
+                    template_like += 1
+                norm = re.sub(r"《[^》]+》", "《章节》", line)
+                norm = re.sub(r"\d+", "N", norm)
+                normalized.append(norm)
+            if template_like >= max(3, int(len(numbered) * 0.6)):
+                return True
+            if len(set(normalized)) <= max(2, int(len(normalized) * 0.4)):
+                return True
+        return False
+
     def _build_local_story_global_overview_fallback(
         self,
         *,
@@ -177,17 +261,30 @@ class OutlineSectionGenerateMixin:
                 "抉择对峙",
                 "余波收束",
             ]
+        lead_name, other_name = self._extract_story_role_names(requirement)
+        scene_hints = self._scene_hints_for_category(category)
         chapter_lines: list[str] = []
+        rel_from = ["陌生/对立", "戒备", "试探", "误判", "裂痕", "摊牌", "重建/决裂", "新秩序"]
+        rel_to = ["戒备", "试探", "误判", "裂痕", "摊牌", "重建/决裂", "新秩序", "余波"]
+        action_verbs = ["被迫出手", "主动试探", "被误导后反击", "顶着代价追查", "当众摊牌", "在压力下抉择", "承担后果收束"]
         for idx, title in enumerate(titles, start=1):
             next_title = titles[idx] if idx < len(titles) else "终局收束"
+            scene = scene_hints[(idx - 1) % len(scene_hints)]
+            verb = action_verbs[min(idx - 1, len(action_verbs) - 1)]
+            r_from = rel_from[min(idx - 1, len(rel_from) - 1)]
+            r_to = rel_to[min(idx - 1, len(rel_to) - 1)]
             chapter_lines.append(
-                f"{idx}. {title}：明确本章目标与冲突代价，结尾留下“{next_title}”的推进钩子。"
+                f"{idx}. 《{title}》：在{scene}，{lead_name}因“{title}”事件{verb}，{other_name}给出反制，关系由{r_from}转向{r_to}；章末抛出“{next_title}”导火索。"
             )
 
-        scene_lines = [
-            f"{i+1}. 《{title}》至少落地一个可见场景锚点（地点/时间/动作细节），避免空叙。"
-            for i, title in enumerate(titles[:8])
-        ]
+        act_lines: list[str] = []
+        if titles:
+            act_lines.append(f"1. 第一幕（开端）：由《{titles[0]}》触发主冲突，确立主角目标与阻力。")
+        if len(titles) >= 3:
+            act_lines.append(f"2. 第二幕（升级）：从《{titles[1]}》到《{titles[-2]}》持续加压，关系误读与代价同步放大。")
+        if len(titles) >= 2:
+            act_lines.append(f"3. 第三幕（终局）：在《{titles[-1]}》完成真相揭示与最终抉择，给出情感与命运落点。")
+
         foreshadow_lines = []
         for idx, title in enumerate(titles[:6], start=1):
             target_idx = min(len(titles), idx + 2)
@@ -197,36 +294,30 @@ class OutlineSectionGenerateMixin:
             )
 
         return (
-            "【一句话主线】\n"
-            f"围绕“{requirement or '核心需求'}”展开，在“{category or '既定题材'}”语境下通过连续冲突与选择完成人物关系与自我认知转变。\n\n"
-            "【人物关系与弧线】\n"
-            "1. 主角的外在目标与内在恐惧并行推进，每章至少做一次高成本选择。\n"
-            "2. 关键对手/关键关系人不做工具人，必须拥有独立动机与反制手段。\n"
-            "3. 情感推进遵循“试探-误读-碰撞-对峙-和解/决裂”，避免跳步。\n"
-            "4. 每次关系变化都由具体事件触发，不使用抽象口号替代行为。\n"
-            "5. 角色反转必须有前置征兆，避免突兀洗白或突兀黑化。\n"
-            "6. 结局阶段给出关系新秩序，体现代价与成长并存。\n\n"
-            "【章节推进总览】\n"
+            "【全书故事总览（从开篇到结局）】\n"
+            f"围绕“{requirement or '核心需求'}”，故事在“{category or '既定题材'}”场景中展开。{lead_name}在开篇因一次公开冲突被迫卷入，与{other_name}从相互防备进入高压博弈；中段不断出现误判与代价，双方关系反复拉扯并牵出旧账；终局在关键对峙里揭开核心真相，{lead_name}必须做出不可逆选择，最终以真实代价换来成长或和解。\n\n"
+            "【三幕推进】\n"
+            f"{chr(10).join(act_lines)}\n\n"
+            "【逐章剧情总览】\n"
             f"{chr(10).join(chapter_lines)}\n\n"
-            "【关键场景锚点】\n"
-            f"{chr(10).join(scene_lines)}\n\n"
-            "【伏笔与回收计划】\n"
+            "【人物弧线与关系变化】\n"
+            "1. 主角从“防御/逃避”转向“直面/承担”，每章都要体现行为层面的变化。\n"
+            "2. 关键关系从试探到对抗再到重建，必须由事件推动，不靠旁白声明。\n"
+            "3. 对手角色拥有独立诉求与反制动作，确保冲突真实可感。\n"
+            "4. 中段至少发生一次误判导致的关系断裂，终局再完成修复或决裂。\n"
+            "5. 结尾关系状态与开篇形成可对照变化，体现代价与成长并存。\n\n"
+            "【高潮与结局设计】\n"
+            "1. 高潮必须是人物主动选择，不是外力替角色解决问题。\n"
+            "2. 结局明确回答“主角最终得到什么、失去什么”。\n"
+            "3. 情感落点要回扣开篇命题，避免突然说教式收束。\n\n"
+            "【伏笔与回收映射】\n"
             f"{chr(10).join(foreshadow_lines)}\n\n"
-            "【一致性约束】\n"
-            "1. 角色年龄、身份、能力边界全程一致，不随剧情需要临时改设定。\n"
-            "2. 所有关键决策必须有动机、阻力、代价三个要素。\n"
-            "3. 场景转换要有因果衔接，不得凭空跳场。\n"
-            "4. 每章至少新增一条有效信息，不重复前章表达。\n"
-            "5. 对话服务冲突推进，减少解释型对白。\n"
-            "6. 情绪曲线遵循起伏节奏，避免连续高压或连续抒情。\n"
-            "7. 细节描写优先行动、感官与现场证据，避免空泛形容词堆叠。\n"
-            "8. 结尾回扣开篇核心问题，明确“得到什么/失去什么”。\n\n"
-            "【禁偏题提醒】\n"
-            "1. 禁止脱离题材突然引入无铺垫世界观。\n"
-            "2. 禁止以旁白总结替代剧情推进。\n"
-            "3. 禁止“突然想通”式人物转变，必须有触发事件。\n"
-            "4. 禁止章节结尾无钩子或无信息增量。\n"
-            "5. 禁止使用模板化鸡汤句作为高潮收束。"
+            "【写作守则（精简）】\n"
+            "1. 每章必须有事件推进、关系变化、信息增量三者之一。\n"
+            "2. 场景转换写清因果，不用大段概述跳剧情。\n"
+            "3. 情感表达落在动作、对话、细节上，避免口号化抒情。\n"
+            "4. 所有反转都要有前置线索，避免突兀改设定。\n"
+            "5. 结尾必须回扣开篇核心问题，形成完整闭环。"
         )
 
     def _get_story_overview_detail_level(self) -> str:
@@ -254,30 +345,38 @@ class OutlineSectionGenerateMixin:
             min_rows = max(4, chapter_count)
             return (
                 "详细度：简版（强调速度）。\n"
-                f"- 「章节推进总览」至少 {min_rows} 条，尽量按章节对应；\n"
-                "- 每条写明：本章目标 + 冲突焦点 + 结尾钩子；\n"
-                "- 其余小节每节 3-5 条。",
+                "- 「全书故事总览（从开篇到结局）」写 1 段（180-280 字），必须包含开端/升级/反转/结局；\n"
+                "- 「三幕推进」至少 3 条；\n"
+                f"- 「逐章剧情总览」至少 {min_rows} 条，尽量按章节对应；\n"
+                "- 每条写明：本章发生什么 + 人物关系变化 + 章节结尾悬念；\n"
+                "- 「写作守则（精简）」不超过 4 条，避免大段规则清单。",
                 1200,
             )
         if detail_level == "rich":
             min_rows = max(8, chapter_count)
             return (
-                "详细度：深度版（强调可执行与一致性）。\n"
-                f"- 「章节推进总览」至少 {min_rows} 条，尽量与章节一一对应；\n"
-                "- 每条必须包含：场景锚点 / 角色目标 / 核心冲突 / 转折动作 / 情绪落点 / 下一章钩子；\n"
-                "- 「人物关系与弧线」至少 6 条，包含每位核心人物的欲望、恐惧、转变触发点；\n"
-                "- 「伏笔与回收计划」至少 6 条，写明埋点章次与回收章次；\n"
-                "- 「一致性约束」至少 8 条，必须可检查、可执行。",
+                "详细度：深度版（强调完整叙事与执行性）。\n"
+                "- 「全书故事总览（从开篇到结局）」写 2-4 段（360-700 字），像真正故事梗概，必须看到完整结局；\n"
+                "- 「三幕推进」至少 6 条（起势/中段反压/终局决断分开写）；\n"
+                f"- 「逐章剧情总览」至少 {min_rows} 条，尽量与章节一一对应；\n"
+                "- 每条必须包含：场景锚点 / 本章事件 / 关系变化 / 冲突代价 / 结尾钩子；\n"
+                "- 「人物弧线与关系变化」至少 6 条，写清“前态->触发->后态”；\n"
+                "- 「高潮与结局设计」至少 3 条，必须说明最终真相、关键抉择、情感落点；\n"
+                "- 「伏笔与回收映射」至少 6 条，写明埋点章次与回收章次；\n"
+                "- 「写作守则（精简）」最多 6 条，避免输出泛化口号。",
                 2600,
             )
         min_rows = max(6, chapter_count)
         return (
             "详细度：详细版（推荐）。\n"
-            f"- 「章节推进总览」至少 {min_rows} 条，尽量与章节一一对应；\n"
-            "- 每条必须包含：场景锚点 / 本章目标 / 冲突推进 / 结尾钩子；\n"
-            "- 「人物关系与弧线」至少 5 条，写清关系变化方向；\n"
-            "- 「伏笔与回收计划」至少 4 条，避免后文悬空；\n"
-            "- 「一致性约束」至少 6 条，使用明确约束语句。",
+            "- 「全书故事总览（从开篇到结局）」写 2-3 段（260-520 字），完整交代主线走向与结局；\n"
+            "- 「三幕推进」至少 4 条；\n"
+            f"- 「逐章剧情总览」至少 {min_rows} 条，尽量与章节一一对应；\n"
+            "- 每条必须包含：场景锚点 / 本章事件 / 关系变化 / 结尾钩子；\n"
+            "- 「人物弧线与关系变化」至少 5 条，写清关系变化方向；\n"
+            "- 「高潮与结局设计」至少 2 条，避免结尾悬空；\n"
+            "- 「伏笔与回收映射」至少 4 条，避免后文悬空；\n"
+            "- 「写作守则（精简）」最多 5 条，使用明确可执行语句。",
             1900,
         )
 
@@ -302,6 +401,51 @@ class OutlineSectionGenerateMixin:
             "至少给出 1 个可直接落地的动作句或台词句。",
             1400,
         )
+
+    def _rewrite_story_global_overview_if_too_generic(
+        self,
+        *,
+        client,
+        requirement: str,
+        category: str,
+        outline_text: str,
+        current_text: str,
+        max_tokens: int,
+    ) -> str:
+        base = str(current_text or "").strip()
+        if not base:
+            return ""
+        if not self._is_story_global_overview_too_generic(base):
+            return base
+
+        prompt = (
+            "你是中文小说总编。请把下面“空话偏多”的总览重写成可执行版本。\n"
+            "硬性要求：\n"
+            "1) 保留结构：全书故事总览/三幕推进/逐章剧情总览/人物弧线与关系变化/高潮与结局设计/伏笔与回收映射/写作守则（精简）；\n"
+            "2) 逐章剧情必须写具体事件（谁做了什么、对谁造成什么后果）；\n"
+            "3) 禁止套话：\"主角在本章做出关键行动并付出代价\"、\"关系/立场出现变化\"、\"结尾抛出悬念\"；\n"
+            "4) 每章至少出现一个可见场景细节（地点/动作/道具之一）；\n"
+            "5) 语言直接，不要解释你在做什么。\n\n"
+            f"创作需求：{requirement}\n"
+            f"题材：{category}\n"
+            f"目录：\n{str(outline_text or '').strip() or '（无目录）'}\n\n"
+            f"待重写文本：\n{base}\n"
+        )
+        rewritten, error = self._chat_with_retry_and_token_fallback(
+            client=client,
+            prompt=prompt,
+            temperature=0.45,
+            max_tokens=max(700, min(1600, int(max_tokens))),
+            stage_label="全书总览去空话重写",
+        )
+        if error and self._is_connection_like_error(error):
+            return base
+        rewritten = strip_duplicate_lines(str(rewritten or "").strip())
+        if not rewritten:
+            return base
+        if self._is_story_global_overview_too_generic(rewritten):
+            return base
+        return rewritten
 
     def _build_local_section_overview_fallback(
         self,
@@ -427,7 +571,70 @@ class OutlineSectionGenerateMixin:
         # 直接生成
         self.on_generate_section()
     
-    
+    def _parallel_post_stream_repairs(
+        self,
+        *,
+        client,
+        section_content: str,
+        section_title: str,
+        section_index: int,
+        previous_content: str,
+        requirement: str,
+        category: str,
+    ) -> tuple[str, str, dict | None]:
+        """并行执行末尾修复、衔接修复、质量评审，减少串行等待。
+
+        Returns:
+            (tail_patch, transition_result, review)
+            - tail_patch: 需追加到末尾的文本，空字符串表示无需修复
+            - transition_result: 衔接修复后的完整内容，与原文相同表示无需修复
+            - review: 质量评审结果字典，None 表示未启用评审
+        """
+        quality_enabled = self._is_story_quality_review_enabled()
+
+        with ThreadPoolExecutor(max_workers=3) as pool:
+            ft_tail: Future[str] = pool.submit(
+                self._repair_section_tail_if_needed,
+                client, section_title, section_content,
+            )
+            ft_transition: Future[str] = pool.submit(
+                self._repair_section_transition_if_needed,
+                client,
+                section_index=section_index,
+                section_title=section_title,
+                previous_content=previous_content,
+                section_content=section_content,
+            )
+            ft_review: Future[dict] | None = None
+            if quality_enabled:
+                ft_review = pool.submit(
+                    self._review_section_quality,
+                    client, section_title, section_content,
+                    requirement, category,
+                )
+
+            tail_patch = ft_tail.result()
+            transition_result = ft_transition.result()
+            review = ft_review.result() if ft_review is not None else None
+
+        return tail_patch, transition_result, review
+
+    @staticmethod
+    def _merge_post_stream_repairs(
+        section_content: str,
+        tail_patch: str,
+        transition_result: str,
+    ) -> str:
+        """合并并行修复的结果：先应用衔接修复（改开头），再追加末尾修复。"""
+        merged = section_content
+        if transition_result and transition_result != section_content:
+            merged = transition_result
+        if tail_patch:
+            if not merged.endswith("\n"):
+                merged += "\n"
+            merged += tail_patch
+        return merged
+
     def _generate_in_sections(self, client, requirement, contexts, sections, target_chars) -> bool:
         """分段生成长文本。返回 True=正常完成，False=中途取消。"""
         total_sections = len(sections)
@@ -519,33 +726,27 @@ class OutlineSectionGenerateMixin:
                 self._ui(self.output.see, END)
                 section_content += delta
 
-            # 章节末尾补全，避免截断
-            tail_patch = self._repair_section_tail_if_needed(client, section.get("title", ""), section_content)
-            if tail_patch:
-                if not section_content.endswith("\n"):
-                    section_content += "\n"
-                    self._ui(self.output.insert, END, "\n")
-                section_content += tail_patch
-                self._ui(self.output.insert, END, tail_patch)
-                self._ui(self.output.see, END)
-
-            repaired_transition = self._repair_section_transition_if_needed(
-                client,
-                section_index=idx,
-                section_title=section.get("title", ""),
-                previous_content=accumulated_content,
+            # 并行执行：末尾修复 + 衔接修复 + 质量评审
+            original_content = section_content
+            tail_patch, transition_result, review = self._parallel_post_stream_repairs(
+                client=client,
                 section_content=section_content,
+                section_title=section.get("title", ""),
+                section_index=idx,
+                previous_content=accumulated_content,
+                requirement=requirement,
+                category=category,
             )
-            if repaired_transition and repaired_transition != section_content:
-                section_content = repaired_transition
+            section_content = self._merge_post_stream_repairs(
+                section_content, tail_patch, transition_result,
+            )
+            if section_content != original_content:
                 self._ui(self.output.delete, section_start_pos, "end-1c")
                 self._ui(self.output.insert, END, section_content)
                 self._ui(self.output.see, END)
 
-            # 质量评审 + 自动精修
-            review = None
-            if self._is_story_quality_review_enabled():
-                review = self._review_section_quality(client, section.get("title", ""), section_content, requirement, category)
+            # 质量评审结果 → 自动精修
+            if review is not None:
                 self._update_chapter_quality_report(idx, section.get("title", ""), review)
                 min_avg, min_dim = self._get_story_quality_thresholds()
                 needs_polish = should_polish(review, min_avg_score=min_avg, min_dimension_score=min_dim)
@@ -768,39 +969,27 @@ class OutlineSectionGenerateMixin:
                 target_per_section=target_per_section,
             )
 
-            # 如果章节末尾疑似截断，自动补一个收束段，避免上下章衔接断裂
-            tail_patch = self._repair_section_tail_if_needed(client, section.get("title", ""), section_content)
-            if tail_patch:
-                if not section_content.endswith("\n"):
-                    section_content += "\n"
-                    self._ui(self.output.insert, END, "\n")
-                section_content += tail_patch
-                self._ui(self.output.insert, END, tail_patch)
-                self._ui(self.output.see, END)
-
-            repaired_transition = self._repair_section_transition_if_needed(
-                client,
-                section_index=section_index,
-                section_title=section.get("title", ""),
-                previous_content=self.generated_content,
+            # 并行执行：末尾修复 + 衔接修复 + 质量评审
+            original_content = section_content
+            tail_patch, transition_result, review = self._parallel_post_stream_repairs(
+                client=client,
                 section_content=section_content,
+                section_title=section.get("title", ""),
+                section_index=section_index,
+                previous_content=self.generated_content,
+                requirement=query,
+                category=self.category.get(),
             )
-            if repaired_transition and repaired_transition != section_content:
-                section_content = repaired_transition
+            section_content = self._merge_post_stream_repairs(
+                section_content, tail_patch, transition_result,
+            )
+            if section_content != original_content:
                 self._ui(self.output.delete, section_start_pos, "end-1c")
                 self._ui(self.output.insert, END, section_content)
                 self._ui(self.output.see, END)
 
-            # 质量评审 + 自动精修
-            review = None
-            if self._is_story_quality_review_enabled():
-                review = self._review_section_quality(
-                    client,
-                    section.get("title", ""),
-                    section_content,
-                    query,
-                    self.category.get(),
-                )
+            # 质量评审结果 → 自动精修
+            if review is not None:
                 min_avg, min_dim = self._get_story_quality_thresholds()
                 needs_polish = should_polish(review, min_avg_score=min_avg, min_dimension_score=min_dim)
                 if not needs_polish and self._needs_continuity_polish(review, section_index):
@@ -1233,7 +1422,7 @@ class OutlineSectionGenerateMixin:
                 pass
 
         initial_text = current
-        if not initial_text:
+        if not initial_text or (force_review and overview_stale):
             initial_text = self._generate_story_global_overview_draft(
                 client=client,
                 requirement=requirement,
@@ -1308,19 +1497,21 @@ class OutlineSectionGenerateMixin:
         temp = max(0.35, min(0.85, temp - 0.05))
 
         prompt = (
-            "你是中文长篇小说总编，请输出“全书总览蓝图”（用于约束后续章节不跑偏）。\n"
+            "你是中文长篇小说总编，请输出“整篇小说总览”。\n"
             "输出规范：\n"
-            "1) 仅输出蓝图，不写正文；\n"
+            "1) 仅输出总览，不写正文；\n"
             "2) 按以下固定结构输出：\n"
-            "【一句话主线】\n"
-            "【人物关系与弧线】\n"
-            "【章节推进总览】\n"
-            "【关键场景锚点】\n"
-            "【伏笔与回收计划】\n"
-            "【一致性约束】\n"
-            "【禁偏题提醒】\n"
-            "3) 所有条目必须可执行、可写入正文，不要空泛抽象词；\n"
-            "4) 必须与创作需求、题材、目录一致，不能自相矛盾。\n\n"
+            "【全书故事总览（从开篇到结局）】\n"
+            "【三幕推进】\n"
+            "【逐章剧情总览】\n"
+            "【人物弧线与关系变化】\n"
+            "【高潮与结局设计】\n"
+            "【伏笔与回收映射】\n"
+            "【写作守则（精简）】\n"
+            "3) 重点是“整本会发生什么”，不是规则口号；\n"
+            "4) 「逐章剧情总览」必须覆盖到结局章节，每条写清：本章事件+关系变化+章节钩子；\n"
+            "5) 必须与创作需求、题材、目录一致，不能自相矛盾；\n"
+            "6) 避免输出大段“必须/禁止”清单，规则项保持精简。\n\n"
             f"{detail_constraints}\n\n"
             f"创作需求：{requirement}\n"
             f"题材：{category}\n"
@@ -1336,14 +1527,31 @@ class OutlineSectionGenerateMixin:
             stage_label="全书总览",
         )
         if text:
-            return strip_duplicate_lines(text)
+            cleaned = strip_duplicate_lines(text)
+            cleaned = self._rewrite_story_global_overview_if_too_generic(
+                client=client,
+                requirement=requirement,
+                category=category,
+                outline_text=outline_text,
+                current_text=cleaned,
+                max_tokens=max_tokens,
+            )
+            self._story_global_overview_last_source = "ai"
+            return cleaned
         if error and self._is_connection_like_error(error):
             logger.warning("global overview chat failed by connection issue, use local fallback: %s", error)
-            return self._build_local_story_global_overview_fallback(
+            self._story_global_overview_last_source = "fallback"
+            fallback_text = self._build_local_story_global_overview_fallback(
                 requirement=requirement,
                 category=category,
                 outline_text=outline_text,
             )
+            notice = (
+                "【⚠️ 当前是本地应急草案（网络异常触发）】\n"
+                "该版本用于兜底，细节可能偏泛；建议点击“重生成总览”拿到AI版本后再采用。\n\n"
+            )
+            return notice + fallback_text
+        self._story_global_overview_last_source = "unknown"
         return ""
 
     def _regenerate_story_global_overview_with_feedback(
@@ -1374,11 +1582,12 @@ class OutlineSectionGenerateMixin:
         )
 
         prompt = (
-            "你是中文长篇小说总编。请根据“用户反馈”重写全书总览蓝图。\n"
+            "你是中文长篇小说总编。请根据“用户反馈”重写整篇小说总览。\n"
             "要求：\n"
             "1) 保留核心主线，但可调整节奏和表达；\n"
-            "2) 仍按固定结构输出：一句话主线/人物关系与弧线/章节推进总览/关键场景锚点/伏笔与回收计划/一致性约束/禁偏题提醒；\n"
-            "3) 仅输出重写后的蓝图，不要解释。\n\n"
+            "2) 仍按固定结构输出：全书故事总览（从开篇到结局）/三幕推进/逐章剧情总览/人物弧线与关系变化/高潮与结局设计/伏笔与回收映射/写作守则（精简）；\n"
+            "3) 「逐章剧情总览」必须覆盖到结局章节，不可只写原则；\n"
+            "4) 仅输出重写后的总览，不要解释。\n\n"
             f"{detail_constraints}\n\n"
             f"创作需求：{requirement}\n"
             f"题材：{category}\n"
@@ -1404,6 +1613,16 @@ class OutlineSectionGenerateMixin:
         if not rewritten:
             return current
         rewritten = strip_duplicate_lines(rewritten)
+        rewritten = self._rewrite_story_global_overview_if_too_generic(
+            client=client,
+            requirement=requirement,
+            category=category,
+            outline_text=outline_text,
+            current_text=rewritten,
+            max_tokens=regen_max_tokens,
+        )
+        if rewritten:
+            self._story_global_overview_last_source = "ai"
         return rewritten or current
 
     def _show_story_global_overview_dialog(
@@ -1428,7 +1647,7 @@ class OutlineSectionGenerateMixin:
         header.pack(fill="x", padx=12, pady=(12, 8))
         tk.Label(
             header,
-            text="🧭 全书总览（后续章节将按此约束生成）",
+            text="🧭 全书总览（从开篇到结局，后续章节按此推进）",
             bg="#f5f5f5",
             fg="#1f2937",
             font=("", 13, "bold"),
@@ -1436,7 +1655,7 @@ class OutlineSectionGenerateMixin:
         ).pack(fill="x")
         tk.Label(
             header,
-            text="你可以直接修改总览文本，或填写意见后反复重生成，满意后再采用。",
+            text="先确认整本故事会怎么发展、怎么收束；可直接改文案或反馈后重生成。",
             bg="#f5f5f5",
             fg="#4b5563",
             anchor="w",
@@ -1476,7 +1695,11 @@ class OutlineSectionGenerateMixin:
         )
         feedback_box.pack(fill="x")
 
-        status_var = tk.StringVar(value="可多次重生成，直到你认可这个全书总览。")
+        initial_source = str(getattr(self, "_story_global_overview_last_source", "ai") or "ai").strip().lower()
+        default_status = "可多次重生成，直到你认可这个全书总览。"
+        if initial_source == "fallback":
+            default_status = "⚠️ 当前是本地应急草案（网络异常），内容可能偏泛。建议重生成到AI版本后再采用。"
+        status_var = tk.StringVar(value=default_status)
         tk.Label(
             dialog,
             textvariable=status_var,
@@ -1557,7 +1780,11 @@ class OutlineSectionGenerateMixin:
                     regen_round["count"] += 1
                     editor.delete("1.0", "end")
                     editor.insert("1.0", merged)
-                    status_var.set(f"已生成第 {regen_round['count']} 个总览版本，可继续调整或直接采用。")
+                    source = str(getattr(self, "_story_global_overview_last_source", "ai") or "ai").strip().lower()
+                    if source == "fallback":
+                        status_var.set("⚠️ 网络仍不稳定，当前仍是应急草案。建议稍后继续重生成获取AI版本。")
+                    else:
+                        status_var.set(f"已生成第 {regen_round['count']} 个总览版本，可继续调整或直接采用。")
 
                 dialog.after(0, _finish)
 

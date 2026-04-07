@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import logging
 import tkinter as tk
 from tkinter import ttk
 
 from ...theme import Theme
+
+logger = logging.getLogger(__name__)
 
 
 class SettingsPageLayoutBaseMixin:
@@ -27,16 +30,16 @@ class SettingsPageLayoutBaseMixin:
                     disabledforeground=Theme.TEXT_DISABLED,
                     readonlybackground=Theme.BG_TERTIARY
                 )
-            except:
-                pass
+            except Exception:
+                pass  # UI config may fail during widget teardown
 
         def _cancel_guard(_event=None):
             job = getattr(entry_widget, "_dark_guard_job", None)
             try:
                 if job:
                     entry_widget.after_cancel(job)
-            except:
-                pass
+            except Exception:
+                pass  # timer may already be cancelled
             entry_widget._dark_guard_job = None
 
         def _schedule_guard(retries: int = 10):
@@ -56,7 +59,7 @@ class SettingsPageLayoutBaseMixin:
                         entry_widget._dark_guard_job = entry_widget.after(200, lambda: _tick(left - 1))
                     else:
                         entry_widget._dark_guard_job = None
-                except:
+                except Exception:
                     entry_widget._dark_guard_job = None
 
             _tick(retries)

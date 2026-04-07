@@ -419,6 +419,8 @@ class OutlineQualityMixin:
         outline_system_prompt: str,
         base_temperature: float,
         stage_tag: str = "",
+        prefer_low_latency: bool = False,
+        retry_max_tokens: int | None = None,
     ) -> tuple[str, dict | None]:
         alignment_report = self._evaluate_outline_alignment_safe(requirement, category, outline_text)
         if alignment_report is None:
@@ -437,9 +439,10 @@ class OutlineQualityMixin:
             prev_score = float(alignment_report.get("score", 0.0))
             reason = str(alignment_report.get("reason", "") or "目录与需求不够一致")
             can_retry = bool(alignment_report.get("should_retry")) or strict_enabled
+            allow_model_retry = not prefer_low_latency
             improved = False
 
-            if can_retry and hasattr(self, "_build_outline_realign_prompt"):
+            if can_retry and allow_model_retry and hasattr(self, "_build_outline_realign_prompt"):
                 outline_text, alignment_report, retry_improved = self._try_outline_alignment_retry(
                     client=client,
                     requirement=requirement,
@@ -455,6 +458,7 @@ class OutlineQualityMixin:
                     prev_score=prev_score,
                     reason=reason,
                     log_suffix=log_suffix,
+                    retry_max_tokens=retry_max_tokens,
                 )
                 improved = improved or retry_improved
 
@@ -519,6 +523,7 @@ class OutlineQualityMixin:
         prev_score: float,
         reason: str,
         log_suffix: str,
+        retry_max_tokens: int | None = None,
     ) -> tuple[str, dict, bool]:
         """尝试调用模型做一次目录纠偏重试。"""
         try:
@@ -555,6 +560,7 @@ class OutlineQualityMixin:
                     {"role": "user", "content": retry_prompt},
                 ],
                 temperature=max(0.3, base_temperature - 0.25 - (attempt - 1) * 0.05),
+                max_tokens=retry_max_tokens,
             )
             retry_report = self._evaluate_outline_alignment_safe(requirement, category, retry_outline)
             retry_score = float(retry_report.get("score", 0.0)) if isinstance(retry_report, dict) else 0.0

@@ -285,8 +285,9 @@ class SettingsStoryEnvMixin:
             try:
                 env_path = self._resolve_env_path()
                 self._save_story_env_payload(env_path)
-            except Exception:
-                pass
+            except Exception as e:
+                import logging
+                logging.getLogger(__name__).debug("persist story generation mode failed: %s", e)
         return mode_key
 
     def _on_story_generation_mode_changed(self, _event=None) -> None:

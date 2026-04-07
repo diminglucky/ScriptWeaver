@@ -3,6 +3,7 @@
 from tkinter import END, messagebox
 import logging
 import threading
+import time
 from pathlib import Path
 
 try:
@@ -108,6 +109,42 @@ class OutlineGenerateMixin:
         api_key = _sanitize(api_config.get("key", ""))
         return api_config, selected_api, selected_model, api_key
 
+    def _get_story_generation_mode_key(self) -> str:
+        mode = ""
+        var = getattr(self, "story_generation_mode", None)
+        if var is not None and hasattr(var, "get"):
+            try:
+                mode = str(var.get() or "").strip().lower()
+            except Exception:
+                mode = ""
+        if not mode:
+            mode = "balanced"
+        return mode
+
+    @staticmethod
+    def _is_reasoning_outline_model(model_name: str) -> bool:
+        model = str(model_name or "").strip().lower()
+        if not model:
+            return False
+        markers = ("thinking", "reasoner", "r1", "o1", "o3", "deepseek-reasoner")
+        return any(marker in model for marker in markers)
+
+    def _compute_outline_max_tokens(self, model_name: str) -> int:
+        mode = self._get_story_generation_mode_key()
+        if mode == "fast":
+            return 420
+        if mode == "strict":
+            return 900
+        if self._is_reasoning_outline_model(model_name):
+            return 560
+        return 680
+
+    def _should_prefer_low_latency_outline_alignment(self, model_name: str) -> bool:
+        mode = self._get_story_generation_mode_key()
+        if mode == "fast":
+            return True
+        return self._is_reasoning_outline_model(model_name)
+
     def _ensure_outline_index_ready(self) -> bool | None:
         """确保目录生成所需索引已就绪。返回 None 表示用户取消。"""
         index_path = Path(self.index_dir.get()) / "kb.index"
@@ -145,6 +182,49 @@ class OutlineGenerateMixin:
         rag_rows = self._postprocess_rag_results(results) if hasattr(self, "_postprocess_rag_results") else results
         contexts = [c for c, _s, _m in rag_rows]
         return contexts, rag_rows
+
+    _OUTLINE_RETRY_MAX = 3
+    _OUTLINE_RETRY_DELAYS = (1.0, 2.0, 3.0)
+
+    def _chat_with_connection_retry(
+        self,
+        client,
+        messages: list[dict],
+        *,
+        temperature: float,
+        max_tokens: int | None = None,
+        stage_label: str = "目录生成",
+    ) -> str:
+        """Wrap client.chat with automatic retry on transient connection errors."""
+        _CONNECTION_MARKERS = (
+            "connection error", "connection reset", "connection aborted",
+            "network error", "timed out", "timeout", "temporarily unavailable",
+            "remote protocol", "econnreset", "broken pipe",
+        )
+        last_exc: Exception | None = None
+        for attempt in range(self._OUTLINE_RETRY_MAX):
+            try:
+                return client.chat(
+                    messages,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                )
+            except Exception as exc:
+                err_text = str(exc).lower()
+                if not any(m in err_text for m in _CONNECTION_MARKERS):
+                    raise
+                last_exc = exc
+                if attempt < self._OUTLINE_RETRY_MAX - 1:
+                    delay = self._OUTLINE_RETRY_DELAYS[attempt]
+                    try:
+                        self._ui(
+                            self.status.set,
+                            f"{stage_label}网络波动，{delay:.0f}s 后自动重试（{attempt+1}/{self._OUTLINE_RETRY_MAX-1}）...",
+                        )
+                    except Exception:
+                        pass
+                    time.sleep(delay)
+        raise last_exc  # type: ignore[misc]
 
     def _emit_outline_generation_banner(self, requirement: str, rag_rows: list) -> None:
         """输出目录生成前的运行横幅。"""
@@ -186,6 +266,47 @@ class OutlineGenerateMixin:
         if hasattr(self, "update_header_status"):
             self._ui(self.update_header_status, "目录生成完成", "✅")
 
+    def _offer_story_direction_preview(
+        self,
+        *,
+        client,
+        requirement: str,
+        contexts: list[str] | None = None,
+    ) -> None:
+        """目录生成完成后自动触发全书总览预览，让用户在写正文前确认故事走向。"""
+        if not hasattr(self, "_ensure_story_global_overview_before_generation"):
+            return
+        if not hasattr(self, "_is_story_global_overview_enabled"):
+            return
+        if not self._is_story_global_overview_enabled():
+            return
+
+        category = self._ui_get(self.category.get) if hasattr(self, "_ui_get") else self.category.get()
+        outline_text = getattr(self, "current_outline", "") or ""
+
+        if hasattr(self, "update_header_status"):
+            self._ui(self.update_header_status, "正在生成故事走向预览...", "🧭")
+        self._ui(self.status.set, "正在生成全书总览，供你确认故事走向...")
+
+        action, overview_text = self._ensure_story_global_overview_before_generation(
+            client=client,
+            requirement=requirement,
+            category=category,
+            contexts=contexts or [],
+            outline_text=outline_text,
+            force_review=True,
+        )
+        if action == "accept" and overview_text:
+            self._ui(self.output.insert, END, "\n🧭 已确认全书总览（后续故事生成将按此方向展开）\n\n")
+            self._ui(self.status.set, "全书总览已确认，可开始生成正文")
+            if hasattr(self, "update_header_status"):
+                self._ui(self.update_header_status, "总览已确认，可生成正文", "✅")
+        elif action == "discard":
+            self._ui(self.output.insert, END, "\n↩️ 已跳过全书总览确认\n\n")
+            self._ui(self.status.set, "已跳过全书总览，可直接生成正文")
+            if hasattr(self, "update_header_status"):
+                self._ui(self.update_header_status, "目录生成完成（总览已跳过）", "✅")
+
     def _run_outline_rag_generation_task(
         self,
         *,
@@ -213,6 +334,8 @@ class OutlineGenerateMixin:
                 model=selected_model,
             )
             outline_prompt = self._build_outline_prompt(requirement, contexts, self._ui_get(self.category.get))
+            outline_max_tokens = self._compute_outline_max_tokens(selected_model)
+            prefer_low_latency_alignment = self._should_prefer_low_latency_outline_alignment(selected_model)
             template = (
                 self._get_story_template_profile(
                     requirement=requirement,
@@ -227,12 +350,15 @@ class OutlineGenerateMixin:
             )
             self._emit_outline_generation_banner(requirement, rag_rows)
 
-            outline_text = client.chat(
+            outline_text = self._chat_with_connection_retry(
+                client,
                 [
                     {"role": "system", "content": outline_system_prompt},
                     {"role": "user", "content": outline_prompt},
                 ],
                 temperature=max(0.4, self._ui_get(self.temperature.get) - 0.2),
+                max_tokens=outline_max_tokens,
+                stage_label="RAG目录生成",
             )
             try:
                 base_temp = float(self._ui_get(self.temperature.get))
@@ -247,8 +373,15 @@ class OutlineGenerateMixin:
                 outline_system_prompt=outline_system_prompt,
                 base_temperature=base_temp,
                 stage_tag="rag",
+                prefer_low_latency=prefer_low_latency_alignment,
+                retry_max_tokens=outline_max_tokens,
             )
             self._finalize_outline_generation(outline_text, alignment_report)
+            self._offer_story_direction_preview(
+                client=client,
+                requirement=requirement,
+                contexts=contexts,
+            )
         except Exception as exc:
             logger.exception("outline rag generation failed")
             brief = _sanitize(str(exc)) or exc.__class__.__name__
@@ -291,6 +424,8 @@ class OutlineGenerateMixin:
                 model=selected_model,
             )
             prompt = self._ui_get(lambda: self._build_outline_prompt(requirement, [], self.category.get()))
+            outline_max_tokens = self._compute_outline_max_tokens(selected_model)
+            prefer_low_latency_alignment = self._should_prefer_low_latency_outline_alignment(selected_model)
             template = (
                 self._get_story_template_profile(
                     requirement=requirement,
@@ -306,12 +441,15 @@ class OutlineGenerateMixin:
             self._emit_outline_generation_banner(requirement, [])
 
             temperature_val = self._ui_get(self.temperature.get)
-            outline_text = client.chat(
+            outline_text = self._chat_with_connection_retry(
+                client,
                 [
                     {"role": "system", "content": outline_system_prompt},
                     {"role": "user", "content": prompt},
                 ],
                 temperature=max(0.4, temperature_val - 0.2),
+                max_tokens=outline_max_tokens,
+                stage_label="目录生成",
             )
             try:
                 base_temp = float(temperature_val)
@@ -326,8 +464,15 @@ class OutlineGenerateMixin:
                 outline_system_prompt=outline_system_prompt,
                 base_temperature=base_temp,
                 stage_tag="model-only",
+                prefer_low_latency=prefer_low_latency_alignment,
+                retry_max_tokens=outline_max_tokens,
             )
             self._finalize_outline_generation(outline_text, alignment_report)
+            self._offer_story_direction_preview(
+                client=client,
+                requirement=requirement,
+                contexts=[],
+            )
         except Exception as exc:
             self._ui(messagebox.showerror, "错误", str(exc))
             self._ui(self.status.set, "生成目录失败")
