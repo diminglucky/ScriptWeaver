@@ -3,6 +3,8 @@ from __future__ import annotations
 from unittest.mock import patch
 
 from src.gui.mixins.story_modules.outline_section_generate_mixin import OutlineSectionGenerateMixin
+from src.gui.mixins.story_modules.outline_overview_mixin import OutlineOverviewMixin
+from src.gui.mixins.story_modules.outline_preview_mixin import OutlinePreviewMixin
 
 
 class _Var:
@@ -67,7 +69,7 @@ class _DummyApp(OutlineSectionGenerateMixin):
         return fn(*args, **kwargs)
 
 
-class _PreviewDummy(OutlineSectionGenerateMixin):
+class _PreviewDummy(OutlinePreviewMixin, OutlineSectionGenerateMixin):
     def __init__(self):
         self.temperature = _Var(0.7)
 
@@ -80,7 +82,7 @@ class _PreviewDummy(OutlineSectionGenerateMixin):
         return "- 第2章《走廊风声》摘要：他确认周明在隐瞒关键证据。"
 
 
-class _GeneratePreviewDummy(OutlineSectionGenerateMixin):
+class _GeneratePreviewDummy(OutlineOverviewMixin, OutlinePreviewMixin, OutlineSectionGenerateMixin):
     def __init__(self):
         self.output = _Output()
         self.status = _Var("")
@@ -194,7 +196,7 @@ class _SegmentOverviewDummy(OutlineSectionGenerateMixin):
         return None
 
 
-class _GlobalOverviewDummy(OutlineSectionGenerateMixin):
+class _GlobalOverviewDummy(OutlineOverviewMixin, OutlineSectionGenerateMixin):
     def __init__(self):
         self.story_global_overview_enabled = _Var(True)
         self.story_global_overview_text = "旧总览"
