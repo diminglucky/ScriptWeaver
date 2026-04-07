@@ -45,15 +45,12 @@ class SettingsStoryTemplateMixin:
 
     def _persist_story_template_selection(self):
         try:
-            from pathlib import Path
-            from dotenv import find_dotenv, set_key
+            from dotenv import set_key
 
             key = self.story_template_key.get().strip() if hasattr(self, "story_template_key") else DEFAULT_STORY_TEMPLATE_KEY
             if not key:
                 key = DEFAULT_STORY_TEMPLATE_KEY
-            env_path_str = find_dotenv(usecwd=True)
-            env_path = Path(env_path_str) if env_path_str else Path.cwd() / ".env"
-            env_path.touch(exist_ok=True)
+            env_path = self._resolve_env_path()
             set_key(str(env_path), "STORY_TEMPLATE_KEY", key)
         except Exception as e:
             if hasattr(self, "settings_log"):
@@ -90,16 +87,13 @@ class SettingsStoryTemplateMixin:
 
     def _persist_story_template_strategy(self):
         try:
-            from pathlib import Path
-            from dotenv import find_dotenv, set_key
+            from dotenv import set_key
 
             strategy = DEFAULT_STORY_TEMPLATE_STRATEGY
             if hasattr(self, "story_template_strategy"):
                 strategy = normalize_story_template_strategy(self.story_template_strategy.get())
                 self.story_template_strategy.set(strategy)
-            env_path_str = find_dotenv(usecwd=True)
-            env_path = Path(env_path_str) if env_path_str else Path.cwd() / ".env"
-            env_path.touch(exist_ok=True)
+            env_path = self._resolve_env_path()
             set_key(str(env_path), "STORY_TEMPLATE_STRATEGY", strategy)
         except Exception as e:
             if hasattr(self, "settings_log"):
@@ -132,16 +126,13 @@ class SettingsStoryTemplateMixin:
 
     def _persist_story_creativity_mode(self):
         try:
-            from pathlib import Path
-            from dotenv import find_dotenv, set_key
+            from dotenv import set_key
 
             mode = DEFAULT_STORY_CREATIVITY_MODE
             if hasattr(self, "story_creativity_mode"):
                 mode = normalize_story_creativity_mode(self.story_creativity_mode.get())
                 self.story_creativity_mode.set(mode)
-            env_path_str = find_dotenv(usecwd=True)
-            env_path = Path(env_path_str) if env_path_str else Path.cwd() / ".env"
-            env_path.touch(exist_ok=True)
+            env_path = self._resolve_env_path()
             set_key(str(env_path), "STORY_CREATIVITY_MODE", mode)
         except Exception as e:
             if hasattr(self, "settings_log"):

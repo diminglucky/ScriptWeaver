@@ -22,10 +22,7 @@ class SettingsApiConfigPersistenceMixin:
         # 更新provider配置
         if hasattr(self, 'api_providers') and provider_name in self.api_providers:
             self.api_providers[provider_name]["key"] = key
-            # Always persist base_url so third-party endpoints survive restart
             self.api_providers[provider_name]["base_url"] = base_url
-            if provider_name == "自定义":
-                self.api_providers[provider_name]["base_url"] = base_url
         
         # 同步更新api_presets
         if hasattr(self, 'api_presets'):
@@ -101,12 +98,9 @@ class SettingsApiConfigPersistenceMixin:
 
         # Persist current image provider selection for next launch
         try:
-            from pathlib import Path
-            from dotenv import find_dotenv, set_key
+            from dotenv import set_key
 
-            env_path_str = find_dotenv(usecwd=True)
-            env_path = Path(env_path_str) if env_path_str else Path.cwd() / ".env"
-            env_path.touch(exist_ok=True)
+            env_path = self._resolve_env_path()
             set_key(str(env_path), "IMAGE_GEN_API", provider_name)
             set_key(str(env_path), "IMG_API_PRESET", provider_name)
             if hasattr(self, 'quick_image_api'):
@@ -227,69 +221,50 @@ class SettingsApiConfigPersistenceMixin:
         return "openai"
 
     def _apply_story_api_config(self, story_config: dict) -> None:
-        self._apply_story_api_config_to_providers(story_config)
-        self._apply_story_api_config_to_presets(story_config)
-
-    def _apply_story_api_config_to_providers(self, story_config: dict) -> None:
-        if not hasattr(self, "api_providers"):
-            return
         for name, config in story_config.items():
-            if name not in self.api_providers:
-                continue
-            self.api_providers[name]["key"] = config.get("key", "")
-            if "base_url" in config:
-                self.api_providers[name]["base_url"] = config["base_url"]
-            if "models" in config:
-                self.api_providers[name]["models"] = config["models"]
-
-    def _apply_story_api_config_to_presets(self, story_config: dict) -> None:
-        if not hasattr(self, "api_presets"):
-            return
-        for name, config in story_config.items():
-            if name not in self.api_presets:
-                self.api_presets[name] = {}
-            self.api_presets[name]["key"] = config.get("key", "")
-            self.api_presets[name]["base_url"] = config.get("base_url", "")
-            if "model" in config:
-                self.api_presets[name]["model"] = config["model"]
+            key = config.get("key", "")
+            base_url = config.get("base_url", "")
+            model = config.get("model", "")
+            models = config.get("models", [])
+            if hasattr(self, "api_providers") and name in self.api_providers:
+                self.api_providers[name]["key"] = key
+                if base_url:
+                    self.api_providers[name]["base_url"] = base_url
+                if models:
+                    self.api_providers[name]["models"] = models
+            if hasattr(self, "api_presets"):
+                if name not in self.api_presets:
+                    self.api_presets[name] = {}
+                self.api_presets[name]["key"] = key
+                self.api_presets[name]["base_url"] = base_url
+                if model:
+                    self.api_presets[name]["model"] = model
 
     def _apply_image_api_config(self, img_config: dict) -> None:
-        self._apply_image_api_config_to_providers(img_config)
-        self._apply_image_api_config_to_presets(img_config)
-
-    def _apply_image_api_config_to_providers(self, img_config: dict) -> None:
-        if not hasattr(self, "img_api_providers"):
-            return
         for name, config in img_config.items():
-            if name not in self.img_api_providers:
-                continue
-            self.img_api_providers[name]["key"] = config.get("key", "")
-            if "base_url" in config:
-                self.img_api_providers[name]["base_url"] = config["base_url"]
-            if "models" in config:
-                self.img_api_providers[name]["models"] = config["models"]
-            if "provider" in config:
-                self.img_api_providers[name]["provider"] = config["provider"]
-            elif "provider" not in self.img_api_providers[name]:
-                self.img_api_providers[name]["provider"] = self._infer_image_provider(name)
-            if "secret_key" in config:
-                self.img_api_providers[name]["secret_key"] = config.get("secret_key", "")
-
-    def _apply_image_api_config_to_presets(self, img_config: dict) -> None:
-        if not hasattr(self, "img_api_presets"):
-            return
-        for name, config in img_config.items():
-            if name not in self.img_api_presets:
-                self.img_api_presets[name] = {}
-            self.img_api_presets[name]["key"] = config.get("key", "")
-            self.img_api_presets[name]["base_url"] = config.get("base_url", "")
-            if "model" in config:
-                self.img_api_presets[name]["model"] = config["model"]
-            if "provider" in config:
-                self.img_api_presets[name]["provider"] = config["provider"]
-            elif "provider" not in self.img_api_presets[name]:
-                self.img_api_presets[name]["provider"] = self._infer_image_provider(name)
-            if "secret_key" in config:
-                self.img_api_presets[name]["secret_key"] = config.get("secret_key", "")
-
+            key = config.get("key", "")
+            base_url = config.get("base_url", "")
+            model = config.get("model", "")
+            models = config.get("models", [])
+            provider = config.get("provider", "") or self._infer_image_provider(name)
+            secret_key = config.get("secret_key", "")
+            if hasattr(self, "img_api_providers") and name in self.img_api_providers:
+                self.img_api_providers[name]["key"] = key
+                if base_url:
+                    self.img_api_providers[name]["base_url"] = base_url
+                if models:
+                    self.img_api_providers[name]["models"] = models
+                self.img_api_providers[name]["provider"] = provider
+                if secret_key:
+                    self.img_api_providers[name]["secret_key"] = secret_key
+            if hasattr(self, "img_api_presets"):
+                if name not in self.img_api_presets:
+                    self.img_api_presets[name] = {}
+                self.img_api_presets[name]["key"] = key
+                self.img_api_presets[name]["base_url"] = base_url
+                if model:
+                    self.img_api_presets[name]["model"] = model
+                self.img_api_presets[name]["provider"] = provider
+                if secret_key:
+                    self.img_api_presets[name]["secret_key"] = secret_key
     
