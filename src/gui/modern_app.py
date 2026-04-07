@@ -39,6 +39,10 @@ from .helpers.story_creativity import (
     DEFAULT_STORY_CREATIVITY_MODE,
     normalize_story_creativity_mode,
 )
+from .helpers.story_generation_modes import (
+    DEFAULT_STORY_GENERATION_MODE,
+    normalize_story_generation_mode,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -144,6 +148,10 @@ class ModernApp(
             "top_k",
             "temperature",
             "model_only",
+            "story_global_overview_enabled",
+            "story_overview_before_generate",
+            "story_preview_before_apply",
+            "story_generation_mode",
             "rag_min_score",
             "story_outline_alignment_strict",
             "story_outline_alignment_max_attempts",
@@ -259,6 +267,21 @@ class ModernApp(
                 "TOP_K": str(top_k),
                 "TEMPERATURE": f"{temperature:.2f}",
                 "MODEL_ONLY": "1" if model_only else "0",
+                "STORY_GLOBAL_OVERVIEW_ENABLED": "1"
+                if bool(self.story_global_overview_enabled.get())
+                else "0",
+                "STORY_OVERVIEW_BEFORE_GENERATE": "1"
+                if bool(self.story_overview_before_generate.get())
+                else "0",
+                "STORY_PREVIEW_BEFORE_APPLY": "1"
+                if bool(self.story_preview_before_apply.get())
+                else "0",
+                "STORY_GENERATION_MODE": str(
+                    self.story_generation_mode.get()
+                    if hasattr(self, "story_generation_mode")
+                    else DEFAULT_STORY_GENERATION_MODE
+                ).strip()
+                or DEFAULT_STORY_GENERATION_MODE,
                 "RAG_MIN_SCORE": f"{rag_min_score:.2f}",
                 "STORY_OUTLINE_ALIGNMENT_STRICT": "1"
                 if bool(self.story_outline_alignment_strict.get())
@@ -412,6 +435,14 @@ class ModernApp(
                 )
             )
         )
+        self.story_generation_mode = tk.StringVar(
+            value=normalize_story_generation_mode(
+                self._read_env_text(
+                    "STORY_GENERATION_MODE",
+                    DEFAULT_STORY_GENERATION_MODE,
+                )
+            )
+        )
         self.story_quality_review_enabled = tk.BooleanVar(
             value=self._read_env_bool("STORY_QUALITY_REVIEW", True)
         )
@@ -428,6 +459,15 @@ class ModernApp(
             value=self._read_env_int("STORY_OUTLINE_ALIGNMENT_MAX_ATTEMPTS", 2, 1, 4)
         )
         self.model_only = tk.BooleanVar(value=self._read_env_bool("MODEL_ONLY", False))
+        self.story_global_overview_enabled = tk.BooleanVar(
+            value=self._read_env_bool("STORY_GLOBAL_OVERVIEW_ENABLED", True)
+        )
+        self.story_overview_before_generate = tk.BooleanVar(
+            value=self._read_env_bool("STORY_OVERVIEW_BEFORE_GENERATE", True)
+        )
+        self.story_preview_before_apply = tk.BooleanVar(
+            value=self._read_env_bool("STORY_PREVIEW_BEFORE_APPLY", True)
+        )
 
     def _init_runtime_state_variables(self) -> None:
         """初始化项目与生成运行态变量。"""
@@ -437,6 +477,8 @@ class ModernApp(
         self.current_project = None
         self.parsed_sections: list[dict] = []
         self.generated_content: str = ""
+        self.story_global_overview_text: str = ""
+        self.story_global_overview_signature: str = ""
         self.story_memory_ledger: list[dict] = []
         self.chapter_quality_reports: list[dict] = []
 

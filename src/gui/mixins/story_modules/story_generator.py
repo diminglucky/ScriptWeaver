@@ -116,6 +116,47 @@ class StoryGeneratorMixin:
 				)
 
 		return accumulated
+
+	def _preview_story_text_before_finalize(
+		self,
+		*,
+		client,
+		query: str,
+		category: str,
+		story_text: str,
+	) -> tuple[str, str]:
+		"""Preview full-story output and allow iterative re-generation before final apply."""
+		story = str(story_text or "").strip()
+		if not story:
+			return "discard", ""
+		if not hasattr(self, "_preview_generated_section_before_apply"):
+			return "accept", story
+		try:
+			action, content = self._preview_generated_section_before_apply(
+				client=client,
+				section_index=0,
+				total_sections=1,
+				section_title="整篇故事",
+				section_content=story,
+				requirement=query,
+				category=category,
+				previous_content="",
+			)
+			final_story = str(content or "").strip() or story
+			return str(action or "discard"), final_story
+		except Exception as e:
+			logger.debug("full-story preview fallback failed: %s", e)
+			return "accept", story
+
+	def _render_story_output(self, banner_text: str, story_text: str) -> None:
+		"""Render final story text (banner + body) to output area."""
+		self._ui(self.output.delete, "1.0", END)
+		text = str(story_text or "").strip()
+		if banner_text:
+			self._ui(self.output.insert, END, banner_text + "\n\n")
+		if text:
+			self._ui(self.output.insert, END, text)
+		self._ui(self.output.see, END)
 	
 	def on_generate(self) -> None:
 		query = self._get_prompt_content()
@@ -210,10 +251,26 @@ class StoryGeneratorMixin:
 					base_url=_sanitize(api_config.get("base_url", "")),
 					model=selected_model,
 				)
+				if hasattr(self, "_ensure_story_global_overview_before_generation"):
+					overview_action, _overview_text = self._ensure_story_global_overview_before_generation(
+						client=client,
+						requirement=query,
+						category=category_val,
+						contexts=contexts,
+						outline_text=(current_outline_val or ""),
+						force_review=False,
+					)
+					if overview_action == "discard":
+						self._ui(self.status.set, "已取消（全书总览未采用）")
+						if hasattr(self, 'update_header_status'):
+							self._ui(self.update_header_status, "生成已取消", "↩️")
+						return
 				self._ui(self.output.delete, "1.0", END)
+				banner_text = ""
 				if hasattr(self, "_build_story_run_banner"):
 					banner = self._build_story_run_banner(query, category_val, rag_rows)
 					if banner:
+						banner_text = str(banner).strip()
 						self._ui(self.output.insert, END, banner + "\n\n")
 				
 				# 检查是否需要分段生成
@@ -221,18 +278,36 @@ class StoryGeneratorMixin:
 				
 				# 如果字数 > 8000 且有目录，则分段生成
 				if target_chars_val > 8000 and sections:
-					self._generate_in_sections(client, query, contexts, sections, target_chars_val)
+					completed = self._generate_in_sections(client, query, contexts, sections, target_chars_val)
+					if not completed:
+						self._ui(self.status.set, "已停止（预览取消）")
+						if hasattr(self, 'update_header_status'):
+							self._ui(self.update_header_status, "生成已停止", "⏹️")
+						self._ui(self._auto_save_to_project)
+						return
 				else:
 					# 一次性生成（原逻辑）
 					self._ui(self.output.insert, END, "生成中...\n\n")
 					prompt = self._build_prompt(query, contexts, category_val, current_outline_val)
-					self._stream_story_with_retry(
+					generated_story = self._stream_story_with_retry(
 						client,
 						prompt,
 						target_chars_val,
 						requirement=query,
 						category=category_val,
 					)
+					preview_action, final_story = self._preview_story_text_before_finalize(
+						client=client,
+						query=query,
+						category=category_val,
+						story_text=generated_story,
+					)
+					if preview_action == "discard":
+						self._ui(self.status.set, "已取消（预览未采用）")
+						if hasattr(self, 'update_header_status'):
+							self._ui(self.update_header_status, "生成已取消", "↩️")
+						return
+					self._render_story_output(banner_text, final_story)
 				
 				self._ui(self.status.set, "生成完成")
 				# 更新顶部状态栏
@@ -397,10 +472,26 @@ class StoryGeneratorMixin:
 					base_url=_sanitize(api_config.get("base_url", "")),
 					model=selected_model,
 				)
+				if hasattr(self, "_ensure_story_global_overview_before_generation"):
+					overview_action, _overview_text = self._ensure_story_global_overview_before_generation(
+						client=client,
+						requirement=query,
+						category=category_val,
+						contexts=[],
+						outline_text=(current_outline_val or ""),
+						force_review=False,
+					)
+					if overview_action == "discard":
+						self._ui(self.status.set, "已取消（全书总览未采用）")
+						if hasattr(self, 'update_header_status'):
+							self._ui(self.update_header_status, "生成已取消", "↩️")
+						return
 				self._ui(self.output.delete, "1.0", END)
+				banner_text = ""
 				if hasattr(self, "_build_story_run_banner"):
 					banner = self._build_story_run_banner(query, category_val, [])
 					if banner:
+						banner_text = str(banner).strip()
 						self._ui(self.output.insert, END, banner + "\n\n")
 				
 				# 检查是否需要分段生成
@@ -408,18 +499,36 @@ class StoryGeneratorMixin:
 				
 				# 如果字数 > 8000 且有目录，则分段生成
 				if target_chars_val > 8000 and sections:
-					self._generate_in_sections(client, query, [], sections, target_chars_val)
+					completed = self._generate_in_sections(client, query, [], sections, target_chars_val)
+					if not completed:
+						self._ui(self.status.set, "已停止（预览取消）")
+						if hasattr(self, 'update_header_status'):
+							self._ui(self.update_header_status, "生成已停止", "⏹️")
+						self._ui(self._auto_save_to_project)
+						return
 				else:
 					# 一次性生成（原逻辑）
 					self._ui(self.output.insert, END, "生成中...\n\n")
 					prompt = self._build_prompt(query, [], category_val, current_outline_val)
-					self._stream_story_with_retry(
+					generated_story = self._stream_story_with_retry(
 						client,
 						prompt,
 						target_chars_val,
 						requirement=query,
 						category=category_val,
 					)
+					preview_action, final_story = self._preview_story_text_before_finalize(
+						client=client,
+						query=query,
+						category=category_val,
+						story_text=generated_story,
+					)
+					if preview_action == "discard":
+						self._ui(self.status.set, "已取消（预览未采用）")
+						if hasattr(self, 'update_header_status'):
+							self._ui(self.update_header_status, "生成已取消", "↩️")
+						return
+					self._render_story_output(banner_text, final_story)
 				
 				self._ui(self.status.set, "生成完成")
 				# 更新顶部状态栏

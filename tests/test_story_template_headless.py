@@ -7,6 +7,7 @@ from unittest.mock import patch
 from dotenv import dotenv_values
 
 from src.gui.helpers.story_creativity import list_story_creativity_modes
+from src.gui.helpers.story_generation_modes import list_story_generation_modes
 from src.gui.helpers.story_templates import (
     list_story_template_strategies,
     list_story_templates,
@@ -86,6 +87,16 @@ class StoryTemplateHeadlessTests(unittest.TestCase):
         obj.story_creativity_mode = _Var("blend")
         obj.story_creativity_select_var = _Var(obj.story_creativity_key_to_label["blend"])
         obj.story_creativity_desc_label = _Label()
+        generation_mode_items = list_story_generation_modes()
+        obj.story_generation_mode_key_to_label = {
+            item["key"]: item["label"] for item in generation_mode_items
+        }
+        obj.story_generation_mode_label_to_key = {
+            item["label"]: item["key"] for item in generation_mode_items
+        }
+        obj.story_generation_mode = _Var("balanced")
+        obj.story_generation_mode_select_var = _Var(obj.story_generation_mode_key_to_label["balanced"])
+        obj.story_generation_mode_desc_label = _Label()
         obj.settings_log = _Log()
         obj.model_only = _Var(False)
         obj.rag_min_score = _Var(0.12)
@@ -94,6 +105,9 @@ class StoryTemplateHeadlessTests(unittest.TestCase):
         obj.story_quality_min_dim = _Var(6.8)
         obj.story_outline_alignment_strict = _Var(True)
         obj.story_outline_alignment_max_attempts = _Var(2)
+        obj.story_global_overview_enabled = _Var(True)
+        obj.story_overview_before_generate = _Var(True)
+        obj.story_preview_before_apply = _Var(True)
         obj.quick_story_api = _Var("DeepSeek")
         obj.quick_image_api = _Var("OpenAI (DALL-E)")
         obj.api_providers = {"DeepSeek": {}}
@@ -121,6 +135,7 @@ class StoryTemplateHeadlessTests(unittest.TestCase):
         obj = self._build_settings_obj()
         old_story = os.environ.get("STORY_OUTLINE_GEN_API")
         old_image = os.environ.get("IMAGE_GEN_API")
+        old_generation_mode = os.environ.get("STORY_GENERATION_MODE")
         old_template = os.environ.get("STORY_TEMPLATE_KEY")
         old_template_strategy = os.environ.get("STORY_TEMPLATE_STRATEGY")
         old_creativity = os.environ.get("STORY_CREATIVITY_MODE")
@@ -134,6 +149,7 @@ class StoryTemplateHeadlessTests(unittest.TestCase):
         try:
             os.environ["STORY_OUTLINE_GEN_API"] = "DeepSeek"
             os.environ["IMAGE_GEN_API"] = "OpenAI (DALL-E)"
+            os.environ["STORY_GENERATION_MODE"] = "strict"
             os.environ["STORY_TEMPLATE_KEY"] = "xianxia_fantasy"
             os.environ["STORY_TEMPLATE_STRATEGY"] = "shuffle"
             os.environ["STORY_CREATIVITY_MODE"] = "wild"
@@ -150,13 +166,17 @@ class StoryTemplateHeadlessTests(unittest.TestCase):
             self.assertIn("仙侠玄幻", obj.story_template_desc_label.text)
             self.assertEqual(obj.story_template_strategy.get(), "shuffle")
             self.assertEqual(obj.story_creativity_mode.get(), "wild")
+            self.assertEqual(obj.story_generation_mode.get(), "strict")
             self.assertEqual(obj.model_only.get(), True)
             self.assertEqual(obj.rag_min_score.get(), 0.45)
-            self.assertEqual(obj.story_quality_review_enabled.get(), False)
-            self.assertEqual(obj.story_quality_min_avg.get(), 8.2)
-            self.assertEqual(obj.story_quality_min_dim.get(), 7.1)
-            self.assertEqual(obj.story_outline_alignment_strict.get(), False)
-            self.assertEqual(obj.story_outline_alignment_max_attempts.get(), 3)
+            self.assertEqual(obj.story_quality_review_enabled.get(), True)
+            self.assertEqual(obj.story_quality_min_avg.get(), 7.8)
+            self.assertEqual(obj.story_quality_min_dim.get(), 7.2)
+            self.assertEqual(obj.story_outline_alignment_strict.get(), True)
+            self.assertEqual(obj.story_outline_alignment_max_attempts.get(), 4)
+            self.assertEqual(obj.story_global_overview_enabled.get(), True)
+            self.assertEqual(obj.story_overview_before_generate.get(), True)
+            self.assertEqual(obj.story_preview_before_apply.get(), True)
         finally:
             if old_story is None:
                 os.environ.pop("STORY_OUTLINE_GEN_API", None)
@@ -166,6 +186,10 @@ class StoryTemplateHeadlessTests(unittest.TestCase):
                 os.environ.pop("IMAGE_GEN_API", None)
             else:
                 os.environ["IMAGE_GEN_API"] = old_image
+            if old_generation_mode is None:
+                os.environ.pop("STORY_GENERATION_MODE", None)
+            else:
+                os.environ["STORY_GENERATION_MODE"] = old_generation_mode
             if old_template is None:
                 os.environ.pop("STORY_TEMPLATE_KEY", None)
             else:
@@ -234,8 +258,36 @@ class StoryTemplateHeadlessTests(unittest.TestCase):
                 self.assertEqual(str(values.get("STORY_QUALITY_MIN_DIM")), "7.2")
                 self.assertEqual(str(values.get("STORY_OUTLINE_ALIGNMENT_STRICT")), "1")
                 self.assertEqual(str(values.get("STORY_OUTLINE_ALIGNMENT_MAX_ATTEMPTS")), "3")
+                self.assertEqual(str(values.get("STORY_GENERATION_MODE")), "custom")
             finally:
                 os.chdir(old_cwd)
+
+    def test_story_generation_mode_change_applies_fast_preset_and_persists(self):
+        obj = self._build_settings_obj()
+        old_cwd = os.getcwd()
+        with tempfile.TemporaryDirectory() as td:
+            os.chdir(td)
+            try:
+                obj.story_generation_mode_select_var.set(obj.story_generation_mode_key_to_label["fast"])
+                obj._on_story_generation_mode_changed()
+                self.assertEqual(obj.story_generation_mode.get(), "fast")
+                self.assertEqual(obj.story_quality_review_enabled.get(), False)
+                self.assertEqual(obj.story_global_overview_enabled.get(), False)
+                self.assertEqual(obj.story_overview_before_generate.get(), False)
+                self.assertEqual(obj.story_preview_before_apply.get(), False)
+                self.assertEqual(obj.story_outline_alignment_strict.get(), False)
+                self.assertEqual(obj.story_outline_alignment_max_attempts.get(), 1)
+                values = dotenv_values(Path(td) / ".env")
+                self.assertEqual(str(values.get("STORY_GENERATION_MODE")), "fast")
+            finally:
+                os.chdir(old_cwd)
+
+    def test_story_generation_mode_infers_custom_after_manual_toggle(self):
+        obj = self._build_settings_obj()
+        obj.story_generation_mode.set("balanced")
+        obj.story_preview_before_apply.set(False)
+        payload = obj._collect_story_env_payload()
+        self.assertEqual(payload.get("STORY_GENERATION_MODE"), "custom")
 
     def test_prompt_builder_uses_selected_template_rules(self):
         obj = _DummyPromptBuilder()
@@ -262,6 +314,33 @@ class StoryTemplateHeadlessTests(unittest.TestCase):
         self.assertIn("【跨章衔接一致性】", section_prompt)
         self.assertIn("【创新引擎（blend）】", full_prompt)
         self.assertIn("跨模版融合", full_prompt)
+
+    def test_prompt_builder_includes_global_overview_constraints(self):
+        obj = _DummyPromptBuilder()
+        obj.target_chars = _Var(3000)
+        obj.style = _Var("写实")
+        obj.story_template_key = _Var("zhihu_realistic")
+        obj.story_global_overview_text = (
+            "【一句话主线】\n主角在校园与家庭压力下完成自我和解。\n"
+            "【章节推进总览】\n冲突递进，最终在毕业前达成和解。"
+        )
+
+        full_prompt = obj._build_prompt("写一个校园成长故事", [], "校园", "")
+        section_prompt = obj._build_section_prompt(
+            section={"title": "冲突起点", "items": ["课堂冲突", "家庭电话"]},
+            section_index=0,
+            total_sections=4,
+            previous_content="",
+            requirement="写一个校园成长故事",
+            contexts=[],
+            category="校园",
+            style_part="写实",
+            target_chars_per_section=900,
+        )
+
+        self.assertIn("【全书总览蓝图（强约束）】", full_prompt)
+        self.assertIn("【全书总览蓝图（必须对齐）】", section_prompt)
+        self.assertIn("主角在校园与家庭压力下完成自我和解", section_prompt)
 
     def test_prompt_builder_requirement_alignment_overrides_conflicting_category(self):
         obj = _DummyPromptBuilder()

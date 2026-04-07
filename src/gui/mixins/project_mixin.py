@@ -203,6 +203,12 @@ class ProjectMixin:
 
 		self.current_outline = outline or None
 		self.parsed_sections = parsed_sections
+		self.story_global_overview_text = str(
+			meta.get("story_global_overview", meta.get("story_overview", "")) or ""
+		).strip()
+		self.story_global_overview_signature = str(
+			meta.get("story_global_overview_signature", meta.get("story_overview_signature", "")) or ""
+		).strip()
 		self.story_memory_ledger = self._normalize_story_memory_ledger(meta.get("story_memory_ledger"))
 		self.chapter_quality_reports = self._normalize_chapter_quality_reports(meta.get("chapter_quality_reports"))
 
@@ -426,6 +432,8 @@ class ProjectMixin:
 			self.current_project = self.project_manager.create_project(project_name.strip())
 			self.lbl_current_project.config(text=f"当前项目: {project_name}", fg="#4CAF50")
 			self.btn_save_story.config(state=NORMAL)
+			self.story_global_overview_text = ""
+			self.story_global_overview_signature = ""
 			
 			# 创建人物照片文件夹
 			self._ensure_project_characters_dir()
@@ -485,6 +493,8 @@ class ProjectMixin:
 				style=self.style.get(),
 				target_chars=self.target_chars.get(),
 				outline=(self.current_outline or ""),
+				story_global_overview=(getattr(self, "story_global_overview_text", "") or ""),
+				story_global_overview_signature=(getattr(self, "story_global_overview_signature", "") or ""),
 				parsed_sections=(self.parsed_sections or []),
 				story_memory_ledger=(getattr(self, "story_memory_ledger", []) or []),
 				chapter_quality_reports=(getattr(self, "chapter_quality_reports", []) or []),

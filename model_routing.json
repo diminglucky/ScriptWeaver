@@ -1,11 +1,11 @@
 {
   "story_outline": {
     "provider": "Custom",
-    "model": "gemini-3-flash-preview"
+    "model": "deepseek-v3.2-thinking"
   },
   "story_generate": {
     "provider": "Custom",
-    "model": "gemini-3-flash-preview"
+    "model": "deepseek-v3.2-thinking"
   },
   "character_extract": {
     "provider": "Custom",
@@ -38,5 +38,9 @@
   "image_shot_to_desc": {
     "provider": "Custom",
     "model": "gemini-3-flash-preview"
+  },
+  "director_script_generate": {
+    "provider": "DeepSeek",
+    "model": "deepseek-chat"
   }
 }

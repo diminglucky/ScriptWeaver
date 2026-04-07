@@ -9,6 +9,12 @@ from ...helpers.story_creativity import (
     DEFAULT_STORY_CREATIVITY_MODE,
     normalize_story_creativity_mode,
 )
+from ...helpers.story_generation_modes import (
+    DEFAULT_STORY_GENERATION_MODE,
+    get_story_generation_mode_settings,
+    list_story_generation_modes,
+    normalize_story_generation_mode,
+)
 from ...helpers.story_templates import (
     DEFAULT_STORY_TEMPLATE_KEY,
     DEFAULT_STORY_TEMPLATE_STRATEGY,
@@ -18,6 +24,21 @@ from ...helpers.story_templates import (
 
 class SettingsStoryEnvMixin:
     """Persist and apply story-related environment preferences."""
+
+    _BOOL_MODE_KEYS = {
+        "story_quality_review_enabled",
+        "story_global_overview_enabled",
+        "story_overview_before_generate",
+        "story_preview_before_apply",
+        "story_outline_alignment_strict",
+    }
+    _INT_MODE_KEYS = {
+        "story_outline_alignment_max_attempts",
+    }
+    _FLOAT_MODE_KEYS = {
+        "story_quality_min_avg",
+        "story_quality_min_dim",
+    }
 
     def _save_story_quality_settings(self, env_path: Path) -> None:
         """保存故事质量控制参数到 .env。"""
@@ -94,6 +115,8 @@ class SettingsStoryEnvMixin:
     def _collect_story_env_payload(self) -> dict[str, str]:
         """收敛故事创作偏好为 .env 键值。"""
         payload: dict[str, str] = {}
+        current_mode = self._sync_story_generation_mode_marker_from_settings()
+        payload["STORY_GENERATION_MODE"] = current_mode
         if hasattr(self, "story_template_key"):
             template_key = self.story_template_key.get().strip() or DEFAULT_STORY_TEMPLATE_KEY
             payload["STORY_TEMPLATE_KEY"] = template_key
@@ -114,10 +137,193 @@ class SettingsStoryEnvMixin:
             except Exception:
                 model_only_value = False
             payload["MODEL_ONLY"] = "1" if model_only_value else "0"
+        if hasattr(self, "story_global_overview_enabled"):
+            try:
+                global_overview_enabled = bool(self.story_global_overview_enabled.get())
+            except Exception:
+                global_overview_enabled = True
+            payload["STORY_GLOBAL_OVERVIEW_ENABLED"] = "1" if global_overview_enabled else "0"
+        if hasattr(self, "story_overview_before_generate"):
+            try:
+                overview_value = bool(self.story_overview_before_generate.get())
+            except Exception:
+                overview_value = True
+            payload["STORY_OVERVIEW_BEFORE_GENERATE"] = "1" if overview_value else "0"
+        if hasattr(self, "story_preview_before_apply"):
+            try:
+                preview_value = bool(self.story_preview_before_apply.get())
+            except Exception:
+                preview_value = True
+            payload["STORY_PREVIEW_BEFORE_APPLY"] = "1" if preview_value else "0"
         if hasattr(self, "rag_min_score"):
             rag_min_score_value = self._clamp_float(self.rag_min_score.get(), default=0.12, min_value=0.0, max_value=1.0)
             payload["RAG_MIN_SCORE"] = f"{rag_min_score_value:.2f}"
         return payload
+
+    def _read_mode_setting_value(self, key: str):
+        var = getattr(self, key, None)
+        if var is None or not hasattr(var, "get"):
+            return None
+        try:
+            return var.get()
+        except Exception:
+            return None
+
+    def _set_mode_setting_value(self, key: str, value) -> None:
+        var = getattr(self, key, None)
+        if var is None or not hasattr(var, "set"):
+            return
+        try:
+            if key in self._BOOL_MODE_KEYS:
+                var.set(bool(value))
+                return
+            if key in self._INT_MODE_KEYS:
+                var.set(int(value))
+                return
+            if key in self._FLOAT_MODE_KEYS:
+                var.set(float(value))
+                return
+            var.set(value)
+        except Exception:
+            return
+
+    def _infer_story_generation_mode_from_settings(self) -> str:
+        fallback = DEFAULT_STORY_GENERATION_MODE
+        if hasattr(self, "story_generation_mode") and hasattr(self.story_generation_mode, "get"):
+            try:
+                fallback = normalize_story_generation_mode(self.story_generation_mode.get())
+            except Exception:
+                fallback = DEFAULT_STORY_GENERATION_MODE
+
+        any_compared = False
+        for mode_key in ("fast", "balanced", "strict"):
+            expected = get_story_generation_mode_settings(mode_key)
+            if not expected:
+                continue
+            compared = 0
+            matched = True
+            for key, expected_val in expected.items():
+                current_val = self._read_mode_setting_value(key)
+                if current_val is None:
+                    continue
+                compared += 1
+                if key in self._BOOL_MODE_KEYS:
+                    if bool(current_val) != bool(expected_val):
+                        matched = False
+                        break
+                elif key in self._INT_MODE_KEYS:
+                    try:
+                        if int(current_val) != int(expected_val):
+                            matched = False
+                            break
+                    except Exception:
+                        matched = False
+                        break
+                elif key in self._FLOAT_MODE_KEYS:
+                    try:
+                        if abs(float(current_val) - float(expected_val)) > 1e-6:
+                            matched = False
+                            break
+                    except Exception:
+                        matched = False
+                        break
+                elif str(current_val) != str(expected_val):
+                    matched = False
+                    break
+            if compared > 0:
+                any_compared = True
+                if matched:
+                    return mode_key
+        if not any_compared:
+            return fallback
+        return "custom"
+
+    def _sync_story_generation_mode_marker_from_settings(self) -> str:
+        mode_key = self._infer_story_generation_mode_from_settings()
+        if hasattr(self, "story_generation_mode") and hasattr(self.story_generation_mode, "set"):
+            try:
+                self.story_generation_mode.set(mode_key)
+            except Exception:
+                pass
+        if hasattr(self, "story_generation_mode_key_to_label") and hasattr(
+            self, "story_generation_mode_select_var"
+        ):
+            label = self.story_generation_mode_key_to_label.get(mode_key)
+            if label:
+                try:
+                    self.story_generation_mode_select_var.set(label)
+                except Exception:
+                    pass
+        if hasattr(self, "_update_story_generation_mode_desc"):
+            self._update_story_generation_mode_desc()
+        return mode_key
+
+    def _apply_story_generation_mode(self, mode: str | None, *, persist: bool = False) -> str:
+        mode_key = normalize_story_generation_mode(mode)
+        mode_settings = get_story_generation_mode_settings(mode_key)
+        for key, value in mode_settings.items():
+            self._set_mode_setting_value(key, value)
+
+        if hasattr(self, "story_generation_mode") and hasattr(self.story_generation_mode, "set"):
+            try:
+                self.story_generation_mode.set(mode_key)
+            except Exception:
+                pass
+        if hasattr(self, "story_generation_mode_key_to_label") and hasattr(
+            self, "story_generation_mode_select_var"
+        ):
+            label = self.story_generation_mode_key_to_label.get(mode_key)
+            if label:
+                try:
+                    self.story_generation_mode_select_var.set(label)
+                except Exception:
+                    pass
+        if hasattr(self, "_update_story_generation_mode_desc"):
+            self._update_story_generation_mode_desc()
+
+        if persist:
+            try:
+                env_path = self._resolve_env_path()
+                self._save_story_env_payload(env_path)
+            except Exception:
+                pass
+        return mode_key
+
+    def _on_story_generation_mode_changed(self, _event=None) -> None:
+        mode_key = ""
+        if hasattr(self, "story_generation_mode_select_var") and hasattr(
+            self, "story_generation_mode_label_to_key"
+        ):
+            try:
+                label = self.story_generation_mode_select_var.get().strip()
+                mode_key = self.story_generation_mode_label_to_key.get(label, "")
+            except Exception:
+                mode_key = ""
+        if not mode_key and hasattr(self, "story_generation_mode"):
+            try:
+                mode_key = str(self.story_generation_mode.get() or "").strip()
+            except Exception:
+                mode_key = ""
+        mode_key = normalize_story_generation_mode(mode_key)
+        self._apply_story_generation_mode(mode_key, persist=True)
+
+    def _update_story_generation_mode_desc(self) -> None:
+        if not hasattr(self, "story_generation_mode_desc_label"):
+            return
+        current_mode = DEFAULT_STORY_GENERATION_MODE
+        if hasattr(self, "story_generation_mode"):
+            try:
+                current_mode = normalize_story_generation_mode(self.story_generation_mode.get())
+            except Exception:
+                current_mode = DEFAULT_STORY_GENERATION_MODE
+
+        for item in list_story_generation_modes():
+            if item.get("key") == current_mode:
+                label = str(item.get("label", current_mode))
+                desc = str(item.get("description", ""))
+                self.story_generation_mode_desc_label.config(text=f"{label}: {desc}")
+                return
+        self.story_generation_mode_desc_label.config(text=current_mode)
 
     def _save_story_env_payload(self, env_path: Path) -> None:
         """保存统一故事偏好到 .env。"""
@@ -129,6 +335,13 @@ class SettingsStoryEnvMixin:
 
     def _apply_story_env_preferences_from_env(self) -> None:
         """从环境变量加载统一故事偏好并同步到 UI 变量。"""
+        story_mode_raw = (os.getenv("STORY_GENERATION_MODE", "") or "").strip()
+        explicit_story_mode = ""
+        if story_mode_raw:
+            explicit_story_mode = normalize_story_generation_mode(story_mode_raw)
+            if hasattr(self, "story_generation_mode"):
+                self.story_generation_mode.set(explicit_story_mode)
+
         template_key = (os.getenv("STORY_TEMPLATE_KEY", "") or "").strip() or DEFAULT_STORY_TEMPLATE_KEY
         if hasattr(self, "story_template_key"):
             self.story_template_key.set(template_key)
@@ -179,6 +392,18 @@ class SettingsStoryEnvMixin:
             model_only_raw = (os.getenv("MODEL_ONLY", "") or "").strip().lower()
             if model_only_raw:
                 self.model_only.set(self._parse_bool_env(model_only_raw, default=False))
+        if hasattr(self, "story_global_overview_enabled"):
+            global_overview_raw = (os.getenv("STORY_GLOBAL_OVERVIEW_ENABLED", "") or "").strip().lower()
+            if global_overview_raw:
+                self.story_global_overview_enabled.set(self._parse_bool_env(global_overview_raw, default=True))
+        if hasattr(self, "story_overview_before_generate"):
+            overview_raw = (os.getenv("STORY_OVERVIEW_BEFORE_GENERATE", "") or "").strip().lower()
+            if overview_raw:
+                self.story_overview_before_generate.set(self._parse_bool_env(overview_raw, default=True))
+        if hasattr(self, "story_preview_before_apply"):
+            preview_raw = (os.getenv("STORY_PREVIEW_BEFORE_APPLY", "") or "").strip().lower()
+            if preview_raw:
+                self.story_preview_before_apply.set(self._parse_bool_env(preview_raw, default=True))
         if hasattr(self, "rag_min_score"):
             rag_raw = (os.getenv("RAG_MIN_SCORE", "") or "").strip()
             if rag_raw:
@@ -209,4 +434,8 @@ class SettingsStoryEnvMixin:
                 self.story_outline_alignment_max_attempts.set(
                     self._clamp_int(attempts_raw, default=2, min_value=1, max_value=4)
                 )
-    
+
+        if explicit_story_mode in {"fast", "balanced", "strict"}:
+            self._apply_story_generation_mode(explicit_story_mode, persist=False)
+        else:
+            self._sync_story_generation_mode_marker_from_settings()

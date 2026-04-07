@@ -102,6 +102,21 @@ class StoryPromptGenerationMixin:
     def _build_prompt(self, requirement, contexts, category, outline=""):
         ctx = "\n\n".join(f"【资料{i+1}】\n{c}" for i, c in enumerate(contexts))
         outline_part = ("\n\n请严格参照下述目录完成写作：\n" + outline.strip()) if outline else ""
+        global_overview = ""
+        if hasattr(self, "_get_story_global_overview_text"):
+            try:
+                global_overview = str(self._get_story_global_overview_text() or "").strip()
+            except Exception:
+                global_overview = ""
+        else:
+            global_overview = str(getattr(self, "story_global_overview_text", "") or "").strip()
+        global_overview_part = (
+            "【全书总览蓝图（强约束）】\n"
+            f"{global_overview}\n"
+            "- 正文必须遵循该蓝图推进，不得偏离主线或破坏既有设定。\n\n"
+            if global_overview
+            else ""
+        )
         style_part = self.style.get().strip()
         target = self.target_chars.get()
         alignment_block, effective_category, _category_note = self._build_requirement_alignment_block(
@@ -156,6 +171,7 @@ class StoryPromptGenerationMixin:
             f"{writing_guardrails}\n\n"
             "【情感弧线与真人感】\n"
             f"{emotion_guardrails}\n\n"
+            f"{global_overview_part}"
             "【特别提醒】\n"
             f"{story_reminder}\n"
             f"{outline_part}\n\n"
@@ -173,6 +189,7 @@ class StoryPromptGenerationMixin:
         category,
         style_part,
         target_chars_per_section,
+        section_overview_plan="",
     ):
         ctx = "\n\n".join(f"【资料{i+1}】\n{c}" for i, c in enumerate(contexts)) if contexts else ""
         alignment_block, effective_category, _category_note = self._build_requirement_alignment_block(
@@ -226,6 +243,27 @@ class StoryPromptGenerationMixin:
         section_intro = get_section_intro_text(section_no=section_index + 1, total_sections=total_sections)
         section_writing_spec = get_section_writing_spec_text()
         section_reminder = get_section_reminder_text(min_chars=min_chars)
+        global_overview = ""
+        if hasattr(self, "_get_story_global_overview_text"):
+            try:
+                global_overview = str(self._get_story_global_overview_text() or "").strip()
+            except Exception:
+                global_overview = ""
+        else:
+            global_overview = str(getattr(self, "story_global_overview_text", "") or "").strip()
+        global_overview_part = (
+            "【全书总览蓝图（必须对齐）】\n"
+            f"{global_overview}\n"
+            "- 本章必须服务全书主线，不得出现与蓝图冲突的人物动机、事件顺序或结局走向。\n\n"
+            if global_overview
+            else ""
+        )
+        overview_plan_part = ""
+        if section_overview_plan and str(section_overview_plan).strip():
+            overview_plan_part = (
+                "【已确认章节总览（必须遵循）】\n"
+                f"{str(section_overview_plan).strip()}\n\n"
+            )
         return (
             f"{section_intro}\n\n"
             f"【本节要求】\n"
@@ -245,6 +283,8 @@ class StoryPromptGenerationMixin:
             f"【跨章衔接一致性】\n{transition_guardrails}\n\n"
             f"【去模板腔与专业度】\n{writing_guardrails}\n\n"
             f"【情感弧线与真人感】\n{emotion_guardrails}\n\n"
+            f"{global_overview_part}"
+            f"{overview_plan_part}"
             "【特别提醒】\n"
             f"{section_reminder}\n"
             f"主题/需求：{requirement}\n\n"

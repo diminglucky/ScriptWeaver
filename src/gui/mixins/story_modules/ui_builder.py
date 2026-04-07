@@ -343,21 +343,70 @@ class StoryUIBuilderMixin(StoryPromptBuilderMixin):
 		# 修复Entry颜色问题
 		if hasattr(self, '_fix_entry_colors'):
 			self._fix_entry_colors(self.entry_style)
-		self.btn_add_style = tk.Button(
-			row1_left,
-			text="➕",
-			command=self._show_style_menu,
-			font=("", 11, "bold"),
-			bg="#000000",
-			fg="#ffffff",
-			relief=tk.FLAT,
-			padx=10,
-			pady=4,
-			cursor="hand2",
-			activebackground="#000000",
-			activeforeground="#ffffff",
-		)
-		self.btn_add_style.pack(side=LEFT, padx=(0, 8))
+			self.btn_add_style = tk.Button(
+				row1_left,
+				text="➕",
+				command=self._show_style_menu,
+				font=("", 11, "bold"),
+				bg="#000000",
+				fg="#ffffff",
+				relief=tk.FLAT,
+				padx=10,
+				pady=4,
+				cursor="hand2",
+				activebackground="#000000",
+				activeforeground="#ffffff",
+			)
+			self.btn_add_style.pack(side=LEFT, padx=(0, 8))
+			self.chk_story_global_overview_quick = tk.Checkbutton(
+				btn_frame,
+				text="先全书总览",
+				variable=self.story_global_overview_enabled,
+				font=("", 10, "bold"),
+				bg="#1e1e1e",
+				fg="#93c5fd",
+				selectcolor="#111827",
+				activebackground="#1e1e1e",
+				activeforeground="#93c5fd",
+				relief=tk.FLAT,
+				borderwidth=0,
+				padx=6,
+				pady=2,
+				cursor="hand2",
+			)
+			self.chk_story_global_overview_quick.pack(side=LEFT, padx=(0, 6))
+			self.chk_story_overview_quick = tk.Checkbutton(
+				btn_frame,
+				text="先章节总览",
+				variable=self.story_overview_before_generate,
+				font=("", 10, "bold"),
+				bg="#1e1e1e",
+				fg="#93c5fd",
+				selectcolor="#111827",
+				activebackground="#1e1e1e",
+				activeforeground="#93c5fd",
+				relief=tk.FLAT,
+				borderwidth=0,
+				padx=6,
+				pady=2,
+				cursor="hand2",
+			)
+			self.chk_story_overview_quick.pack(side=LEFT, padx=(0, 8))
+			self.btn_story_overview = tk.Button(
+				btn_frame,
+				text="🧭 总览预览",
+				command=self.on_generate_story_overview,
+				font=("", 11, "bold"),
+				bg="#000000",
+				fg="#ffffff",
+				relief=tk.FLAT,
+				padx=10,
+				pady=8,
+				cursor="hand2",
+				activebackground="#000000",
+				activeforeground="#ffffff",
+			)
+			self.btn_story_overview.pack(side=LEFT, padx=(0, 8))
 
 		self.btn_outline = tk.Button(btn_frame, text="📋 生成目录", command=self.on_generate_outline, 
 									  font=("", 13, "bold"), bg="#000000", fg="#ffffff", relief=tk.FLAT, 

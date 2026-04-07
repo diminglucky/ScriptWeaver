@@ -39,6 +39,28 @@ class UiMixin:
         """Read UI state safely from worker threads."""
         return self._ui(func, *args, **kwargs)
 
+    def _ui_modal(self, func, *args, **kwargs):
+        """Run long-lived modal UI call on Tk main thread without 30s timeout."""
+        if threading.current_thread() is threading.main_thread():
+            return func(*args, **kwargs)
+
+        done = threading.Event()
+        state = {"result": None, "error": None}
+
+        def runner():
+            try:
+                state["result"] = func(*args, **kwargs)
+            except Exception as e:  # pragma: no cover - UI callback surface
+                state["error"] = e
+            finally:
+                done.set()
+
+        self.after(0, runner)
+        done.wait()
+        if state["error"] is not None:
+            raise state["error"]
+        return state["result"]
+
     def _header_status(self, text: str, icon: str = "🔄", color: str | None = None):
         """Thread-safe wrapper for top header status updates."""
         if not hasattr(self, "update_header_status"):

@@ -11,6 +11,11 @@ from ...helpers.story_creativity import (
     list_story_creativity_modes,
     normalize_story_creativity_mode,
 )
+from ...helpers.story_generation_modes import (
+    DEFAULT_STORY_GENERATION_MODE,
+    list_story_generation_modes,
+    normalize_story_generation_mode,
+)
 from ...helpers.story_templates import (
     DEFAULT_STORY_TEMPLATE_KEY,
     DEFAULT_STORY_TEMPLATE_STRATEGY,
@@ -82,6 +87,7 @@ class SettingsPageLayoutDataMixin:
 
         self._ensure_story_generation_param_vars()
         self._build_basic_generation_params_row(grp_params)
+        self._build_story_generation_mode_selector(grp_params)
         self._build_story_template_controls(grp_params)
         self._build_story_quality_controls(grp_params)
 
@@ -105,6 +111,14 @@ class SettingsPageLayoutDataMixin:
             self.story_outline_alignment_strict = tk.BooleanVar(value=True)
         if not hasattr(self, "story_outline_alignment_max_attempts"):
             self.story_outline_alignment_max_attempts = tk.IntVar(value=2)
+        if not hasattr(self, "story_global_overview_enabled"):
+            self.story_global_overview_enabled = tk.BooleanVar(value=True)
+        if not hasattr(self, "story_overview_before_generate"):
+            self.story_overview_before_generate = tk.BooleanVar(value=True)
+        if not hasattr(self, "story_preview_before_apply"):
+            self.story_preview_before_apply = tk.BooleanVar(value=True)
+        if not hasattr(self, "story_generation_mode"):
+            self.story_generation_mode = tk.StringVar(value=DEFAULT_STORY_GENERATION_MODE)
 
     def _build_basic_generation_params_row(self, grp_params: ttk.LabelFrame) -> None:
         """构建基础生成参数行。"""
@@ -145,6 +159,56 @@ class SettingsPageLayoutDataMixin:
         self._build_story_template_selector(grp_params)
         self._build_story_template_strategy_selector(grp_params)
         self._build_story_creativity_selector(grp_params)
+
+    def _build_story_generation_mode_selector(self, grp_params: ttk.LabelFrame) -> None:
+        """构建一键生成模式控件（快速/平衡/严格/自定义）。"""
+        mode_items = list_story_generation_modes()
+        self.story_generation_mode_key_to_label = {
+            item["key"]: item["label"] for item in mode_items
+        }
+        self.story_generation_mode_label_to_key = {
+            item["label"]: item["key"] for item in mode_items
+        }
+        current_mode_key = normalize_story_generation_mode(self.story_generation_mode.get())
+        self.story_generation_mode.set(current_mode_key)
+
+        mode_frame = tk.Frame(grp_params, bg=Theme.BG_SECONDARY)
+        mode_frame.pack(fill="x", padx=8, pady=(0, 8))
+        tk.Label(
+            mode_frame,
+            text="生成模式:",
+            bg=Theme.BG_SECONDARY,
+            fg=Theme.TEXT_PRIMARY,
+            font=("", 11, "bold"),
+        ).pack(side="left", padx=(0, 5))
+
+        default_label = self.story_generation_mode_key_to_label.get(
+            current_mode_key, mode_items[0]["label"]
+        )
+        self.story_generation_mode_select_var = tk.StringVar(value=default_label)
+        self.combo_story_generation_mode = ttk.Combobox(
+            mode_frame,
+            textvariable=self.story_generation_mode_select_var,
+            values=list(self.story_generation_mode_label_to_key.keys()),
+            state="readonly",
+            width=22,
+        )
+        self.combo_story_generation_mode.pack(side="left", padx=(0, 10))
+        self.combo_story_generation_mode.bind(
+            "<<ComboboxSelected>>", self._on_story_generation_mode_changed
+        )
+
+        self.story_generation_mode_desc_label = tk.Label(
+            mode_frame,
+            text="",
+            bg=Theme.BG_SECONDARY,
+            fg=Theme.TEXT_SECONDARY,
+            justify="left",
+            anchor="w",
+        )
+        self.story_generation_mode_desc_label.pack(side="left", fill="x", expand=True)
+        if hasattr(self, "_update_story_generation_mode_desc"):
+            self._update_story_generation_mode_desc()
 
     def _build_story_template_selector(self, grp_params: ttk.LabelFrame) -> None:
         """构建故事模版选择控件。"""
@@ -300,6 +364,24 @@ class SettingsPageLayoutDataMixin:
             variable=self.story_quality_review_enabled,
         )
         self.chk_story_quality_review.pack(side="left", padx=(0, 16))
+        self.chk_story_global_overview_enabled = ttk.Checkbutton(
+            quality_frame,
+            text="写作前先确认全书总览",
+            variable=self.story_global_overview_enabled,
+        )
+        self.chk_story_global_overview_enabled.pack(side="left", padx=(0, 16))
+        self.chk_story_overview_before_generate = ttk.Checkbutton(
+            quality_frame,
+            text="章节生成前先出总览并可改写",
+            variable=self.story_overview_before_generate,
+        )
+        self.chk_story_overview_before_generate.pack(side="left", padx=(0, 16))
+        self.chk_story_preview_before_apply = ttk.Checkbutton(
+            quality_frame,
+            text="章节生成后先预览再入稿",
+            variable=self.story_preview_before_apply,
+        )
+        self.chk_story_preview_before_apply.pack(side="left", padx=(0, 16))
 
         tk.Label(
             quality_frame,

@@ -94,6 +94,8 @@ class ProjectMixinRestoreTests(unittest.TestCase):
         )
         meta = {
             "outline": "1. 新标题A\n2. 新标题B",
+            "story_global_overview": "【一句话主线】新人与旧案交织，真相在毕业前揭开。",
+            "story_global_overview_signature": "sig123",
             "parsed_sections": [
                 {"title": "新标题A", "items": []},
                 {"title": "新标题B", "items": ["要点"]},
@@ -125,6 +127,8 @@ class ProjectMixinRestoreTests(unittest.TestCase):
         obj._restore_story_structure_from_project(story, meta)
 
         self.assertEqual(obj.current_outline, "1. 新标题A\n2. 新标题B")
+        self.assertEqual(obj.story_global_overview_text, "【一句话主线】新人与旧案交织，真相在毕业前揭开。")
+        self.assertEqual(obj.story_global_overview_signature, "sig123")
         self.assertEqual(len(obj.parsed_sections), 2)
         self.assertEqual(obj.parsed_sections[1]["title"], "新标题B")
         self.assertEqual(obj.section_selector.current(), 1)

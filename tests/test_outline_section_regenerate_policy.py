@@ -29,8 +29,22 @@ class _Output:
     def get(self, *_args):
         return self.text
 
+    def index(self, *_args):
+        return "1.0"
+
     def see(self, *_args):
         return None
+
+
+class _PreviewClient:
+    def __init__(self, reply: str):
+        self.reply = reply
+        self.last_messages = []
+
+    def chat(self, messages, temperature=0.0, max_tokens=0):
+        _ = (temperature, max_tokens)
+        self.last_messages = messages
+        return self.reply
 
 
 class _DummyApp(OutlineSectionGenerateMixin):
@@ -51,6 +65,151 @@ class _DummyApp(OutlineSectionGenerateMixin):
 
     def _ui_get(self, fn, *args, **kwargs):
         return fn(*args, **kwargs)
+
+
+class _PreviewDummy(OutlineSectionGenerateMixin):
+    def __init__(self):
+        self.temperature = _Var(0.7)
+
+    def _build_section_transition_context(self, section_index: int, previous_content: str) -> str:
+        _ = (section_index, previous_content)
+        return "- 上章收束后主角处于防御姿态。"
+
+    def _build_story_memory_context(self, section_index: int, max_items: int = 3) -> str:
+        _ = (section_index, max_items)
+        return "- 第2章《走廊风声》摘要：他确认周明在隐瞒关键证据。"
+
+
+class _GeneratePreviewDummy(OutlineSectionGenerateMixin):
+    def __init__(self):
+        self.output = _Output()
+        self.status = _Var("")
+        self.category = _Var("校园")
+        self.style = _Var("")
+        self.target_chars = _Var(2000)
+        self.generated_content = "上章结尾。"
+        self.parsed_sections = [{"title": "第一章"}]
+        self.story_preview_before_apply = _Var(True)
+        self.apply_payload = None
+        self.prepare_prompt_kwargs = None
+
+    def _ui(self, fn, *args, **kwargs):
+        return fn(*args, **kwargs)
+
+    def _ui_get(self, fn, *args, **kwargs):
+        return fn(*args, **kwargs)
+
+    def _get_output_text_snapshot(self):
+        return "BASE"
+
+    def _prepare_section_generation_prompt(self, **kwargs):
+        self.prepare_prompt_kwargs = kwargs
+        return 800, "section-prompt", "system-prompt"
+
+    def _start_section_generation_ui(self, **_kwargs):
+        return "1.0"
+
+    def _stream_section_content(self, **_kwargs):
+        return "原始章节正文"
+
+    def _repair_section_tail_if_needed(self, *_args, **_kwargs):
+        return ""
+
+    def _repair_section_transition_if_needed(self, *_args, **_kwargs):
+        return ""
+
+    def _is_story_quality_review_enabled(self):
+        return False
+
+    def _preview_generated_section_before_apply(self, **_kwargs):
+        return "accept", "用户确认后的预览正文"
+
+    def _apply_generated_section_output(self, **kwargs):
+        self.apply_payload = kwargs
+        return "append", "FINAL"
+
+    def _overwrite_output_text(self, text: str):
+        self.output.text = text
+
+    def _rebuild_generated_content_from_output(self, text: str):
+        return "rebuilt:" + str(text)
+
+    def _extract_memory_entry(self, *_args, **_kwargs):
+        return {"summary": "ok", "plot_points": [], "relation_changes": [], "unresolved_hooks": [], "state_shift": ""}
+
+    def _update_story_memory_ledger(self, *_args, **_kwargs):
+        return None
+
+    def _auto_save_to_project(self):
+        return None
+
+
+class _SegmentClient:
+    def stream(self, *_args, **_kwargs):
+        yield "分段正文"
+
+
+class _SegmentOverviewDummy(OutlineSectionGenerateMixin):
+    def __init__(self):
+        self.output = _Output()
+        self.status = _Var("")
+        self.category = _Var("校园")
+        self.style = _Var("")
+        self.temperature = _Var(0.7)
+        self.section_prompt_calls: list[dict] = []
+
+    def _ui(self, fn, *args, **kwargs):
+        return fn(*args, **kwargs)
+
+    def _ui_get(self, fn, *args, **kwargs):
+        return fn(*args, **kwargs)
+
+    def _ensure_story_global_overview_before_generation(self, **_kwargs):
+        return "accept", "全书总览"
+
+    def _prepare_section_overview_before_generation(self, **kwargs):
+        section_index = int(kwargs.get("section_index", 0))
+        return "accept", f"第{section_index + 1}段总览"
+
+    def _build_section_prompt(self, **kwargs):
+        self.section_prompt_calls.append(kwargs)
+        return "SECTION_PROMPT"
+
+    def _repair_section_tail_if_needed(self, *_args, **_kwargs):
+        return ""
+
+    def _repair_section_transition_if_needed(self, *_args, **_kwargs):
+        return ""
+
+    def _is_story_quality_review_enabled(self):
+        return False
+
+    def _preview_generated_section_before_apply(self, **kwargs):
+        return "accept", kwargs.get("section_content", "")
+
+    def _extract_memory_entry(self, *_args, **_kwargs):
+        return {"summary": "ok", "plot_points": [], "relation_changes": [], "unresolved_hooks": [], "state_shift": ""}
+
+    def _update_story_memory_ledger(self, *_args, **_kwargs):
+        return None
+
+
+class _GlobalOverviewDummy(OutlineSectionGenerateMixin):
+    def __init__(self):
+        self.story_global_overview_enabled = _Var(True)
+        self.story_global_overview_text = "旧总览"
+        self.story_global_overview_signature = "oldsig"
+        self.temperature = _Var(0.7)
+        self.status = _Var("")
+        self.dialog_called = 0
+        self.dialog_result = ("accept", "新总览")
+
+    def _ui(self, fn, *args, **kwargs):
+        return fn(*args, **kwargs)
+
+    def _show_story_global_overview_dialog(self, **_kwargs):
+        self.dialog_called += 1
+        return self.dialog_result
 
 
 def _build_base_output(app: _DummyApp) -> str:
@@ -197,3 +356,146 @@ def test_report_error_does_not_dump_traceback_to_output():
     assert "Traceback" not in app.output.text
     assert "❌ 生成出错（第 2 章）" in app.output.text
     assert "network timeout" in app.output.text
+
+
+def test_regenerate_preview_uses_feedback_and_continuity_context():
+    app = _PreviewDummy()
+    client = _PreviewClient(
+        "他把湿掉的校服袖口慢慢卷起，先看了眼走廊监控，再压低声音开口。"
+        "门后的人没立即回应，空气里只有电扇老旧的嗡鸣。"
+        "他没有退，手指敲了两下门框，像在提醒对方也在提醒自己。"
+        "这一次，他决定把话说清楚。"
+    )
+    rewritten = app._regenerate_section_preview_with_feedback(
+        client=client,
+        section_index=2,
+        section_title="宿舍夜话与匿名信",
+        current_content="他站在门口，没有进去。",
+        feedback="情绪更克制，增加走廊和动作细节，不要直接喊口号。",
+        requirement="写一个校园悬疑故事",
+        category="校园",
+        previous_content="他把纸条塞进袖口，转身走向宿舍楼。",
+    )
+
+    prompt = client.last_messages[0]["content"]
+    assert rewritten.startswith("他把湿掉的校服袖口慢慢卷起")
+    assert "用户修改意见" in prompt
+    assert "上章收束句" in prompt
+    assert "记忆账本" in prompt
+
+
+def test_regenerate_preview_without_feedback_still_generates_new_variant():
+    app = _PreviewDummy()
+    client = _PreviewClient(
+        "他在门口停了两秒，先抬眼看了眼走廊灯，再把呼吸压稳。"
+        "门后传来翻页声，他没有立刻敲门，只把掌心的冷汗擦在衣摆上。"
+        "这一次，他打算换个方式开口。"
+    )
+    rewritten = app._regenerate_section_preview_with_feedback(
+        client=client,
+        section_index=2,
+        section_title="宿舍夜话与匿名信",
+        current_content="他站在门口，没有进去。",
+        feedback="",
+        requirement="写一个校园悬疑故事",
+        category="校园",
+        previous_content="他把纸条塞进袖口，转身走向宿舍楼。",
+    )
+
+    prompt = client.last_messages[0]["content"]
+    assert rewritten.startswith("他在门口停了两秒")
+    assert "未填写意见" in prompt
+
+
+def test_do_generate_section_uses_accepted_preview_content():
+    app = _GeneratePreviewDummy()
+    result = app._do_generate_section(
+        client=None,
+        query="测试需求",
+        contexts=[],
+        section_index=0,
+        existing_chapter_policy="replace",
+    )
+
+    assert result == "append"
+    assert app.apply_payload is not None
+    assert app.apply_payload["section_content"] == "用户确认后的预览正文"
+
+
+def test_do_generate_section_passes_accepted_overview_plan_into_prompt():
+    app = _GeneratePreviewDummy()
+    app._prepare_section_overview_before_generation = lambda **_kwargs: ("accept", "总览A：先冲突后缓和")
+
+    result = app._do_generate_section(
+        client=None,
+        query="测试需求",
+        contexts=[],
+        section_index=0,
+        existing_chapter_policy="replace",
+    )
+
+    assert result == "append"
+    assert app.prepare_prompt_kwargs is not None
+    assert app.prepare_prompt_kwargs["section_overview_plan"] == "总览A：先冲突后缓和"
+
+
+def test_generate_in_sections_uses_section_overview_plan():
+    app = _SegmentOverviewDummy()
+    client = _SegmentClient()
+    ok = app._generate_in_sections(
+        client=client,
+        requirement="测试需求",
+        contexts=[],
+        sections=[{"title": "第一段", "items": []}],
+        target_chars=1200,
+    )
+
+    assert ok is True
+    assert len(app.section_prompt_calls) == 1
+    assert app.section_prompt_calls[0]["section_overview_plan"] == "第1段总览"
+
+
+def test_global_overview_signature_mismatch_triggers_review():
+    app = _GlobalOverviewDummy()
+    expected_sig = app._build_story_global_overview_signature(
+        requirement="新需求",
+        category="校园",
+        outline_text="1. 新目录",
+    )
+
+    action, overview = app._ensure_story_global_overview_before_generation(
+        client=_PreviewClient("unused"),
+        requirement="新需求",
+        category="校园",
+        contexts=[],
+        outline_text="1. 新目录",
+        force_review=False,
+    )
+
+    assert action == "accept"
+    assert overview == "新总览"
+    assert app.dialog_called == 1
+    assert app.story_global_overview_signature == expected_sig
+
+
+def test_global_overview_signature_match_skips_review():
+    app = _GlobalOverviewDummy()
+    app.story_global_overview_text = "稳定总览"
+    app.story_global_overview_signature = app._build_story_global_overview_signature(
+        requirement="稳定需求",
+        category="校园",
+        outline_text="1. 稳定目录",
+    )
+
+    action, overview = app._ensure_story_global_overview_before_generation(
+        client=_PreviewClient("unused"),
+        requirement="稳定需求",
+        category="校园",
+        contexts=[],
+        outline_text="1. 稳定目录",
+        force_review=False,
+    )
+
+    assert action == "accept"
+    assert overview == "稳定总览"
+    assert app.dialog_called == 0

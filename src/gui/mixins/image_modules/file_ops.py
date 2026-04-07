@@ -135,26 +135,9 @@ class FileOperationsMixin:
 
 		if hasattr(self, '_ui_get'):
 			story_content = (self._ui_get(self.output.get, "1.0", END) or "").strip()
-			category = self._ui_get(self.category.get) if hasattr(self, 'category') else None
-			requirement = self._ui_get(self._get_prompt_content) if hasattr(self, '_get_prompt_content') else None
-			style = self._ui_get(self.style.get) if hasattr(self, 'style') else None
-			target_chars = self._ui_get(self.target_chars.get) if hasattr(self, 'target_chars') else None
 		else:
 			story_content = self.output.get("1.0", END).strip()
-			category = self.category.get()
-			requirement = self._get_prompt_content()
-			style = self.style.get()
-			target_chars = self.target_chars.get()
-		outline = getattr(self, "current_outline", "") or ""
-		parsed_sections = getattr(self, "parsed_sections", []) or []
-		story_memory_ledger = getattr(self, "story_memory_ledger", []) or []
-		chapter_quality_reports = getattr(self, "chapter_quality_reports", []) or []
-		section_index = 0
-		if hasattr(self, "section_selector"):
-			try:
-				section_index = self._ui_get(self.section_selector.current) if hasattr(self, "_ui_get") else self.section_selector.current()
-			except Exception:
-				section_index = 0
+		meta_payload = self._collect_story_project_meta_payload()
 
 		if not story_content or story_content == "生成中...":
 			return
@@ -163,15 +146,7 @@ class FileOperationsMixin:
 			# 保存故事和参数
 			self.current_project.save_story(
 				story_content,
-				category=category,
-				requirement=requirement,
-				style=style,
-				target_chars=target_chars,
-				outline=outline,
-				parsed_sections=parsed_sections,
-				story_memory_ledger=story_memory_ledger,
-				chapter_quality_reports=chapter_quality_reports,
-				section_index=section_index,
+				**meta_payload,
 			)
 			if hasattr(self, "_remember_last_project_path"):
 				try:
@@ -192,6 +167,66 @@ class FileOperationsMixin:
 		except Exception as e:
 			# 静默失败，不打扰用户
 			print(f"自动保存失败: {e}")
+
+	def _collect_story_project_meta_payload(self) -> dict:
+		"""收敛当前故事相关元数据，供自动保存和仅元数据保存复用。"""
+		if hasattr(self, '_ui_get'):
+			category = self._ui_get(self.category.get) if hasattr(self, 'category') else None
+			requirement = self._ui_get(self._get_prompt_content) if hasattr(self, '_get_prompt_content') else None
+			style = self._ui_get(self.style.get) if hasattr(self, 'style') else None
+			target_chars = self._ui_get(self.target_chars.get) if hasattr(self, 'target_chars') else None
+		else:
+			category = self.category.get()
+			requirement = self._get_prompt_content()
+			style = self.style.get()
+			target_chars = self.target_chars.get()
+
+		outline = getattr(self, "current_outline", "") or ""
+		story_global_overview = getattr(self, "story_global_overview_text", "") or ""
+		story_global_overview_signature = getattr(self, "story_global_overview_signature", "") or ""
+		parsed_sections = getattr(self, "parsed_sections", []) or []
+		story_memory_ledger = getattr(self, "story_memory_ledger", []) or []
+		chapter_quality_reports = getattr(self, "chapter_quality_reports", []) or []
+		section_index = 0
+		if hasattr(self, "section_selector"):
+			try:
+				section_index = self._ui_get(self.section_selector.current) if hasattr(self, "_ui_get") else self.section_selector.current()
+			except Exception:
+				section_index = 0
+
+		return {
+			"category": category,
+			"requirement": requirement,
+			"style": style,
+			"target_chars": target_chars,
+			"outline": outline,
+			"story_global_overview": story_global_overview,
+			"story_global_overview_signature": story_global_overview_signature,
+			"parsed_sections": parsed_sections,
+			"story_memory_ledger": story_memory_ledger,
+			"chapter_quality_reports": chapter_quality_reports,
+			"section_index": section_index,
+		}
+
+	def _auto_save_story_meta_only(self) -> None:
+		"""仅保存项目元数据，不覆盖 story.txt（用于单独修改全书总览等场景）。"""
+		if not self.current_project:
+			return
+		try:
+			meta_payload = self._collect_story_project_meta_payload()
+			self.current_project.metadata.update(meta_payload)
+			if hasattr(self.current_project, "_save_metadata"):
+				self.current_project._save_metadata()
+			else:
+				existing_story = self.current_project.load_story()
+				self.current_project.save_story(existing_story, **meta_payload)
+			if hasattr(self, "_remember_last_project_path"):
+				try:
+					self._remember_last_project_path()
+				except Exception:
+					pass
+		except Exception as e:
+			print(f"元数据自动保存失败: {e}")
 	
 	# ==================== 风格选择功能 ====================
 	

@@ -93,6 +93,8 @@ class KbMixin:
 		self.btn_ingest.configure(state=state)
 		self.btn_generate.configure(state=state)
 		self.btn_outline.configure(state=state)
+		if hasattr(self, 'btn_story_overview'):
+			self.btn_story_overview.configure(state=state)
 		if hasattr(self, 'btn_test_api'):
 			self.btn_test_api.configure(state=state)
 		if hasattr(self, 'btn_test_img_api'):
