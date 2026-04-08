@@ -7,6 +7,7 @@ import tkinter as tk
 from tkinter import ttk
 import logging
 import threading
+import time  # 用于流式缓冲
 import re
 from pathlib import Path
 try:
@@ -27,6 +28,10 @@ def print(*args, **kwargs):  # type: ignore[override]
 
 class StoryGeneratorMixin:
 	"""Story story_generator 功能"""
+
+	# 流式输出缓冲配置（优化性能，减少 UI 线程切换）
+	STREAM_BUFFER_SIZE = 30      # 累积 30 个字符或
+	STREAM_FLUSH_INTERVAL = 0.1  # 100ms 刷新一次
 
 	def _persist_target_chars_preference(self) -> None:
 		"""Persist current target chars to .env so it survives restart."""
@@ -84,13 +89,37 @@ class StoryGeneratorMixin:
 			current_target = target_chars if round_idx == 0 else max(300, int(remaining * 1.2))
 			before_len = len(accumulated.strip())
 
+			# 流式缓冲变量（减少 UI 线程切换）
+			buffer_text = ""
+			last_flush = time.time()
+
+			def _flush_buffer(force: bool = False) -> None:
+				nonlocal buffer_text, last_flush
+				now = time.time()
+				should_flush = (
+					force
+					or len(buffer_text) >= self.STREAM_BUFFER_SIZE
+					or (now - last_flush) >= self.STREAM_FLUSH_INTERVAL
+				)
+				if should_flush and buffer_text:
+					text_to_insert = buffer_text
+					buffer_text = ""
+					last_flush = now
+					def _update():
+						self.output.insert(END, text_to_insert)
+						self.output.see(END)
+					self._ui(_update)
+
 			for delta in client.stream([
 				{"role": "system", "content": system_prompt},
 				{"role": "user", "content": current_prompt},
 			], temperature=self.temperature.get(), max_tokens=int(current_target * 2.5)):
-				self._ui(self.output.insert, END, delta)
-				self._ui(self.output.see, END)
 				accumulated += delta
+				buffer_text += delta
+				_flush_buffer(force=False)
+
+			# 每轮结束强制刷新
+			_flush_buffer(force=True)
 
 			after_len = len(accumulated.strip())
 			if after_len >= min_chars:
