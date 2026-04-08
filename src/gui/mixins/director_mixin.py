@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import tkinter as tk
 from tkinter import BOTH, END, LEFT, RIGHT, VERTICAL, Y, messagebox, ttk
+from typing import Optional
 
 from ..helpers.director_script_builder import DirectorScriptBuilder
 from ..theme import Theme
@@ -31,7 +32,7 @@ class DirectorMixin:
         self._last_director_package: dict = {}
         self._director_tree_index_map: dict[str, int] = {}
         self._director_last_markdown_path = None
-        self._director_selected_shot_no: int | None = None
+        self._director_selected_shot_no: Optional[int] = None
         self._director_filter_job = None
         self._director_selection_sync_lock = False
 
@@ -501,7 +502,7 @@ class DirectorMixin:
             return
         self._select_director_target_row(target_iid)
 
-    def _resolve_director_previous_shot_no(self, preserve_selection: bool) -> int | None:
+    def _resolve_director_previous_shot_no(self, preserve_selection: bool) -> Optional[int]:
         """Resolve current selected shot number for selection preservation."""
         if not preserve_selection:
             return None
@@ -531,8 +532,8 @@ class DirectorMixin:
         *,
         keyword: str,
         issue_only: bool,
-        previous_shot_no: int | None,
-    ) -> tuple[int, str | None]:
+        previous_shot_no: Optional[int],
+    ) -> tuple[int, Optional[str]]:
         """Insert filtered shot rows and return visible count + target iid."""
         visible_count = 0
         target_iid = None
@@ -600,7 +601,7 @@ class DirectorMixin:
             self.director_shot_detail_text.delete("1.0", END)
             self.director_shot_detail_text.insert("1.0", "当前筛选条件下没有可显示的分镜")
 
-    def _select_director_target_row(self, target_iid: str | None) -> None:
+    def _select_director_target_row(self, target_iid: Optional[str]) -> None:
         """Select target row, fallback to first visible row."""
         if target_iid is None:
             rows = self.director_shot_tree.get_children()
@@ -618,7 +619,7 @@ class DirectorMixin:
         names = DirectorScriptBuilder.extract_shot_characters(shot)
         return "、".join(names)
 
-    def _get_selected_director_shot_index(self) -> int | None:
+    def _get_selected_director_shot_index(self) -> Optional[int]:
         """Resolve selected shot index from tree."""
         if not hasattr(self, "director_shot_tree"):
             return None
@@ -628,7 +629,7 @@ class DirectorMixin:
         iid = selection[0]
         return self._director_tree_index_map.get(iid)
 
-    def _get_director_shot_by_index(self, idx: int | None) -> dict | None:
+    def _get_director_shot_by_index(self, idx: Optional[int]) -> Optional[dict]:
         """Get shot dict by index in package shot_list."""
         if idx is None:
             return None
@@ -662,7 +663,7 @@ class DirectorMixin:
 
         self._sync_image_shot_selection(shot_index)
 
-    def _sync_image_shot_selection(self, idx: int | None) -> None:
+    def _sync_image_shot_selection(self, idx: Optional[int]) -> None:
         """Sync selection to image tab shot list without feedback loops."""
         if idx is None:
             return

@@ -6,6 +6,7 @@ import os
 import re
 import threading
 from tkinter import END, messagebox
+from typing import Optional
 
 from ...theme import Theme
 from ..config_modules.model_routing import MODEL_ROUTING_TASKS
@@ -441,7 +442,7 @@ class SettingsRoutingProviderMixin:
             self.settings_log.see(END)
         messagebox.showinfo("成功", "模型路由已保存")
 
-    def _toggle_model_routing_advanced_ui(self, enabled: bool | None = None) -> None:
+    def _toggle_model_routing_advanced_ui(self, enabled: Optional[bool] = None) -> None:
         """切换模型路由高级视图（默认隐藏复杂配置）"""
         if enabled is None:
             enabled = bool(self.model_route_advanced_var.get()) if hasattr(self, "model_route_advanced_var") else False

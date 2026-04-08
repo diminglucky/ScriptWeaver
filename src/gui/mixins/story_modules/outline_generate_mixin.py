@@ -5,6 +5,7 @@ import logging
 import threading
 import time
 from pathlib import Path
+from typing import Optional
 
 try:
     from dotenv import load_dotenv
@@ -145,7 +146,7 @@ class OutlineGenerateMixin:
             return True
         return self._is_reasoning_outline_model(model_name)
 
-    def _ensure_outline_index_ready(self) -> bool | None:
+    def _ensure_outline_index_ready(self) -> Optional[bool]:
         """确保目录生成所需索引已就绪。返回 None 表示用户取消。"""
         index_path = Path(self.index_dir.get()) / "kb.index"
         if index_path.exists():
