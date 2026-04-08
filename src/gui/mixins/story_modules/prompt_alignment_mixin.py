@@ -162,6 +162,10 @@ class StoryPromptAlignmentMixin:
         anchor_lines = "\n".join(f"- {item}" for item in anchors) if anchors else "- 以用户需求原文为唯一锚点"
         if stage == "outline":
             stage_rule = "目录每一章都必须命中至少一个锚点，首章必须直接进入主冲突，不得偏题。"
+            # 优化⑥：合并目录对齐到生成prompt，加强约束
+            stage_rule += "\n- 严禁空洞标题：不得使用“第一章：冲突爆发”“第二章：关系升级”等通用模版。"
+            stage_rule += "\n- 必须包含具体名词：每章标题必须包含该章节涉及的人物名、核心道具或特定地点。"
+            stage_rule += "\n- 强因果链：上一章的悬念必须在下一章有明确交代，且下一章必须产生新的推动力。"
         elif stage == "section":
             stage_rule = "本节必须围绕锚点推进，至少兑现一个冲突或关系变化，不能偏离主线。"
         else:

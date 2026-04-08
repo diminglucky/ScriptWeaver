@@ -13,27 +13,10 @@ except Exception:  # pragma: no cover - optional dependency
     def load_dotenv(*args, **kwargs):
         return False
 
-from src.clients.deepseek_client import DeepSeekClient
 from src.utils.text import sanitize as _sanitize
+from src.gui.mixins.story_modules.story_infra import resolve_deepseek_client_cls as _resolve_deepseek_client_cls, log_print as print  # noqa: A001
 
 logger = logging.getLogger(__name__)
-
-
-def print(*args, **kwargs):  # type: ignore[override]
-    logger.info(" ".join(str(a) for a in args))
-
-
-def _resolve_deepseek_client_cls():
-    """Use aggregator module symbol so tests can monkey-patch one stable path."""
-    try:
-        from . import outline_generator as outline_generator_module  # local import avoids circular init timing issues
-
-        patched = getattr(outline_generator_module, "DeepSeekClient", None)
-        if patched is not None:
-            return patched
-    except Exception:
-        pass
-    return DeepSeekClient
 
 
 class OutlineGenerateMixin:
@@ -82,29 +65,10 @@ class OutlineGenerateMixin:
 
     def _resolve_outline_api_config(self, use_ui_get: bool = False) -> tuple[dict, str, str, str]:
         """根据模型路由解析目录生成 API 配置。"""
-        getter = self._ui_get if use_ui_get else (lambda fn: fn())
-
-        fallback_provider = None
-        if hasattr(self, "outline_gen_api"):
-            fallback_provider = getter(self.outline_gen_api.get)
-        if not fallback_provider and hasattr(self, "quick_story_api"):
-            fallback_provider = getter(self.quick_story_api.get)
-        if not fallback_provider and hasattr(self, "api_preset"):
-            fallback_provider = getter(self.api_preset.get)
-
-        fallback_model = None
-        if hasattr(self, "story_model_var"):
-            fallback_model = getter(self.story_model_var.get)
-        elif hasattr(self, "model"):
-            fallback_model = getter(self.model.get)
-
-        api_config = getter(
-            lambda: self._resolve_task_api(
-                "story_outline",
-                fallback_provider=fallback_provider,
-                fallback_model=fallback_model,
-            )
-        )
+        if use_ui_get:
+            api_config = self._resolve_generation_api_config_safe("story_outline")
+        else:
+            api_config = self._resolve_generation_api_config("story_outline")
         selected_api = api_config.get("provider", "")
         selected_model = api_config.get("model", "")
         api_key = _sanitize(api_config.get("key", ""))
@@ -193,7 +157,7 @@ class OutlineGenerateMixin:
         messages: list[dict],
         *,
         temperature: float,
-        max_tokens: int | None = None,
+        max_tokens: Optional[int] = None,
         stage_label: str = "目录生成",
     ) -> str:
         """Wrap client.chat with automatic retry on transient connection errors."""
@@ -202,7 +166,7 @@ class OutlineGenerateMixin:
             "network error", "timed out", "timeout", "temporarily unavailable",
             "remote protocol", "econnreset", "broken pipe",
         )
-        last_exc: Exception | None = None
+        last_exc: Optional[Exception] = None
         for attempt in range(self._OUTLINE_RETRY_MAX):
             try:
                 return client.chat(
@@ -272,7 +236,7 @@ class OutlineGenerateMixin:
         *,
         client,
         requirement: str,
-        contexts: list[str] | None = None,
+        contexts: Optional[list] = None,
     ) -> None:
         """目录生成完成后自动触发全书总览预览，让用户在写正文前确认故事走向。"""
         if not hasattr(self, "_ensure_story_global_overview_before_generation"):
@@ -378,11 +342,6 @@ class OutlineGenerateMixin:
                 retry_max_tokens=outline_max_tokens,
             )
             self._finalize_outline_generation(outline_text, alignment_report)
-            self._offer_story_direction_preview(
-                client=client,
-                requirement=requirement,
-                contexts=contexts,
-            )
         except Exception as exc:
             logger.exception("outline rag generation failed")
             brief = _sanitize(str(exc)) or exc.__class__.__name__
@@ -469,11 +428,6 @@ class OutlineGenerateMixin:
                 retry_max_tokens=outline_max_tokens,
             )
             self._finalize_outline_generation(outline_text, alignment_report)
-            self._offer_story_direction_preview(
-                client=client,
-                requirement=requirement,
-                contexts=[],
-            )
         except Exception as exc:
             self._ui(messagebox.showerror, "错误", str(exc))
             self._ui(self.status.set, "生成目录失败")

@@ -9,6 +9,7 @@ import tkinter as tk
 
 from src.utils.text import sanitize as _sanitize
 from src.gui.helpers.story_quality import extract_last_sentence, strip_duplicate_lines
+from src.gui.helpers.story_feedback_dialog import show_story_feedback_dialog
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +27,25 @@ class OutlinePreviewMixin:
         raw = str(os.getenv("STORY_PREVIEW_BEFORE_APPLY", "1") or "1").strip().lower()
         return raw in {"1", "true", "yes", "on"}
 
+    def _should_auto_accept_by_quality(self, section_index: int) -> bool:
+        """质量评审分数达标时自动通过，跳过手动预览弹窗。"""
+        if not hasattr(self, "chapter_quality_reports"):
+            return False
+        reports = getattr(self, "chapter_quality_reports", [])
+        if not isinstance(reports, list) or section_index >= len(reports):
+            return False
+        report = reports[section_index]
+        if not isinstance(report, dict) or not report:
+            return False
+        avg = float(report.get("avg_score", 0.0) or 0.0)
+        # 平均分 >= 7.5 自动通过
+        auto_threshold = 7.5
+        try:
+            auto_threshold = float(os.getenv("STORY_AUTO_ACCEPT_THRESHOLD", "7.5") or "7.5")
+        except Exception:
+            auto_threshold = 7.5
+        return avg >= auto_threshold
+
     def _preview_generated_section_before_apply(
         self,
         *,
@@ -37,9 +57,17 @@ class OutlinePreviewMixin:
         requirement: str,
         category: str,
         previous_content: str,
+        skip_dialog: bool = False,
     ) -> tuple[str, str]:
-        """Show modal preview and return (`accept|discard`, effective content)."""
-        if not self._is_story_preview_before_apply_enabled():
+        """Show modal preview and return (`accept|discard`, effective content).
+
+        skip_dialog=True 时跳过弹窗自动采用（用于自动批量生成）。
+        质量评审达标时也自动通过，无需手动确认。
+        """
+        if skip_dialog or not self._is_story_preview_before_apply_enabled():
+            return "accept", str(section_content or "").strip()
+        if self._should_auto_accept_by_quality(section_index):
+            logger.info("chapter %d auto-accepted by quality score", section_index + 1)
             return "accept", str(section_content or "").strip()
         return self._run_modal_ui_call(
             self._show_story_section_preview_dialog,
@@ -156,210 +184,31 @@ class OutlinePreviewMixin:
         previous_content: str,
     ) -> tuple[str, str]:
         """Modal preview dialog that supports feedback-based regeneration."""
-        result = {"action": "discard", "content": str(section_content or "").strip()}
-        dialog = tk.Toplevel(self)
-        dialog.title(f"章节预览 - 第 {section_index + 1}/{total_sections} 章")
-        dialog.geometry("1020x780")
-        dialog.minsize(760, 560)
-
-        header = tk.Frame(dialog, bg="#f5f5f5")
-        header.pack(fill="x", padx=12, pady=(12, 8))
-        tk.Label(
-            header,
-            text=f"《{section_title or '未命名章节'}》预览",
-            bg="#f5f5f5",
-            fg="#1f2937",
-            font=("", 13, "bold"),
-            anchor="w",
-        ).pack(fill="x")
-        tk.Label(
-            header,
-            text=f"字数：{len((section_content or '').strip())} 字 | 确认后才会入稿保存",
-            bg="#f5f5f5",
-            fg="#4b5563",
-            anchor="w",
-        ).pack(fill="x", pady=(4, 0))
-
-        tips = tk.Frame(dialog, bg="#f5f5f5")
-        tips.pack(fill="x", padx=12, pady=(0, 8))
-        tk.Label(
-            tips,
-            text="不满意可反复点“重生成预览”（可不填意见）；填意见会按你的要求改写。确认后后续章节按该版本衔接。",
-            bg="#f5f5f5",
-            fg="#6b7280",
-            anchor="w",
-        ).pack(fill="x")
-
-        editor = scrolledtext.ScrolledText(
-            dialog,
-            wrap="word",
-            font=("", 12),
-            bg="#ffffff",
-            fg="#111827",
-            insertbackground="#111827",
-            relief=tk.FLAT,
-        )
-        editor.pack(fill="both", expand=True, padx=12, pady=(0, 10))
-        editor.insert("1.0", result["content"])
-        editor.configure(state="disabled")
-
-        feedback_frame = tk.Frame(dialog, bg="#f5f5f5")
-        feedback_frame.pack(fill="x", padx=12, pady=(0, 8))
-        tk.Label(
-            feedback_frame,
-            text="修改意见：",
-            bg="#f5f5f5",
-            fg="#1f2937",
-            anchor="w",
-            font=("", 10, "bold"),
-        ).pack(anchor="w", pady=(0, 4))
-        feedback_box = scrolledtext.ScrolledText(
-            feedback_frame,
-            wrap="word",
-            height=4,
-            font=("", 11),
-            bg="#ffffff",
-            fg="#111827",
-            insertbackground="#111827",
-            relief=tk.FLAT,
-        )
-        feedback_box.pack(fill="x")
-
-        status_var = tk.StringVar(value="可多次重生成预览，直到满意后再采用。")
-        tk.Label(
-            dialog,
-            textvariable=status_var,
-            bg="#f5f5f5",
-            fg="#4b5563",
-            anchor="w",
-        ).pack(fill="x", padx=12, pady=(0, 8))
-
-        action_row = tk.Frame(dialog, bg="#f5f5f5")
-        action_row.pack(fill="x", padx=12, pady=(0, 12))
-        busy = {"flag": False}
-        regen_round = {"count": 0}
-
-        def _set_preview_text(text: str) -> None:
-            editor.configure(state="normal")
-            editor.delete("1.0", "end")
-            editor.insert("1.0", text)
-            editor.configure(state="disabled")
-
-        def _set_busy(flag: bool, message: str = "") -> None:
-            busy["flag"] = flag
-            state = tk.DISABLED if flag else tk.NORMAL
-            btn_apply.configure(state=state)
-            btn_discard.configure(state=state)
-            btn_regen.configure(state=state)
-            if message:
-                status_var.set(message)
-
-        def _apply():
-            if busy["flag"]:
-                return
-            result["action"] = "accept"
-            result["content"] = str(result.get("content", "") or "").strip()
-            dialog.destroy()
-
-        def _discard():
-            if busy["flag"]:
-                return
-            result["action"] = "discard"
-            dialog.destroy()
-
-        def _regenerate():
-            if busy["flag"]:
-                return
-            feedback = str(feedback_box.get("1.0", "end-1c") or "").strip()
-            current_preview = str(result.get("content", "") or "").strip()
-            if not current_preview:
-                messagebox.showwarning("提示", "当前预览为空，无法重生成。")
-                return
-
-            _set_busy(
-                True,
-                "正在根据你的意见重生成预览..."
-                if feedback
-                else "正在重生成一个新版本预览...",
+        def _regen(current_text: str, feedback: str) -> str:
+            return self._regenerate_section_preview_with_feedback(
+                client=client,
+                section_index=section_index,
+                section_title=section_title,
+                current_content=current_text,
+                feedback=feedback,
+                requirement=requirement,
+                category=category,
+                previous_content=previous_content,
             )
 
-            def _worker():
-                err = ""
-                new_text = current_preview
-                try:
-                    new_text = self._regenerate_section_preview_with_feedback(
-                        client=client,
-                        section_index=section_index,
-                        section_title=section_title,
-                        current_content=current_preview,
-                        feedback=feedback,
-                        requirement=requirement,
-                        category=category,
-                        previous_content=previous_content,
-                    )
-                except Exception as exc:
-                    err = _sanitize(str(exc)) or exc.__class__.__name__
-
-                def _finish():
-                    _set_busy(False)
-                    if err:
-                        status_var.set(f"重生成失败：{err}")
-                        messagebox.showerror("重生成失败", err)
-                        return
-                    merged = str(new_text or "").strip()
-                    if not merged:
-                        status_var.set("重生成结果为空，已保留原预览。")
-                        return
-                    regen_round["count"] += 1
-                    result["content"] = merged
-                    _set_preview_text(merged)
-                    status_var.set(f"已生成第 {regen_round['count']} 个新预览版本，可继续重生成或直接采用。")
-
-                dialog.after(0, _finish)
-
-            threading.Thread(target=_worker, daemon=True).start()
-
-        btn_apply = tk.Button(
-            action_row,
-            text="✅ 采用当前预览并入稿",
-            command=_apply,
-            bg="#16a34a",
-            fg="#ffffff",
-            relief=tk.FLAT,
-            padx=16,
-            pady=8,
-            cursor="hand2",
+        return show_story_feedback_dialog(
+            self,
+            title=f"章节预览 - 第 {section_index + 1}/{total_sections} 章",
+            header_text=f"《{section_title or '未命名章节'}》预览",
+            subtitle_text=f"字数：{len((section_content or '').strip())} 字 | 确认后才会入稿保存",
+            initial_content=section_content,
+            default_status="可多次重生成预览，直到满意后再采用。",
+            geometry="1020x780",
+            accept_label="✅ 采用当前预览并入稿",
+            discard_label="❌ 丢弃本次生成",
+            regen_label="🔄 重生成预览（可多次）",
+            editor_readonly=True,
+            regenerate_fn=_regen,
         )
-        btn_apply.pack(side="right")
-        btn_discard = tk.Button(
-            action_row,
-            text="❌ 丢弃本次生成",
-            command=_discard,
-            bg="#6b7280",
-            fg="#ffffff",
-            relief=tk.FLAT,
-            padx=16,
-            pady=8,
-            cursor="hand2",
-        )
-        btn_discard.pack(side="right", padx=(0, 10))
-        btn_regen = tk.Button(
-            action_row,
-            text="🔄 重生成预览（可多次）",
-            command=_regenerate,
-            bg="#2563eb",
-            fg="#ffffff",
-            relief=tk.FLAT,
-            padx=16,
-            pady=8,
-            cursor="hand2",
-        )
-        btn_regen.pack(side="right", padx=(0, 10))
-
-        dialog.protocol("WM_DELETE_WINDOW", _discard)
-        dialog.transient(self)
-        dialog.grab_set()
-        self.wait_window(dialog)
-        return str(result.get("action", "discard")), str(result.get("content", "") or "").strip()
 
 

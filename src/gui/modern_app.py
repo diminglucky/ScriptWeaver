@@ -10,6 +10,7 @@ import logging
 import os
 from pathlib import Path
 from datetime import datetime
+from typing import Optional
 
 try:
     from dotenv import load_dotenv
@@ -471,7 +472,7 @@ class ModernApp(
 
     def _init_runtime_state_variables(self) -> None:
         """初始化项目与生成运行态变量。"""
-        self.current_outline: str | None = None
+        self.current_outline: Optional[str] = None
         from src.project_manager import ProjectManager
         self.project_manager = ProjectManager()
         self.current_project = None

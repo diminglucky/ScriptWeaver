@@ -8,9 +8,11 @@ from .outline_preview_mixin import OutlinePreviewMixin
 from .outline_quality_mixin import OutlineQualityMixin
 from .outline_section_generate_mixin import OutlineSectionGenerateMixin
 from .outline_section_utils_mixin import OutlineSectionUtilsMixin
+from .story_infra import StoryInfraMixin
 
 
 class OutlineGeneratorMixin(
+    StoryInfraMixin,
     OutlineQualityMixin,
     OutlineGenerateMixin,
     OutlineOverviewMixin,

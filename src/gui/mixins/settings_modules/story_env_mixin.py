@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+from typing import Optional
 
 from ...helpers.story_creativity import (
     DEFAULT_STORY_CREATIVITY_MODE,
@@ -88,7 +89,7 @@ class SettingsStoryEnvMixin:
         return env_path
 
     @staticmethod
-    def _parse_bool_env(raw: str | None, default: bool = False) -> bool:
+    def _parse_bool_env(raw: Optional[str], default: bool = False) -> bool:
         if raw is None:
             return default
         text = str(raw).strip().lower()
@@ -258,7 +259,7 @@ class SettingsStoryEnvMixin:
             self._update_story_generation_mode_desc()
         return mode_key
 
-    def _apply_story_generation_mode(self, mode: str | None, *, persist: bool = False) -> str:
+    def _apply_story_generation_mode(self, mode: Optional[str], *, persist: bool = False) -> str:
         mode_key = normalize_story_generation_mode(mode)
         mode_settings = get_story_generation_mode_settings(mode_key)
         for key, value in mode_settings.items():

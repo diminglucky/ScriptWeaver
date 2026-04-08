@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import tkinter as tk
 from tkinter import END, ttk
+from typing import Optional
 
 from ...theme import Theme
 
@@ -84,7 +85,7 @@ class SettingsPageLayoutApiMixin:
         self,
         parent: tk.Misc,
         width: int = 50,
-        show: str | None = None,
+        show: Optional[str] = None,
     ) -> tk.Entry:
         """创建统一风格的设置页 Entry。"""
         kwargs = {

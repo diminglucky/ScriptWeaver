@@ -2,6 +2,7 @@
 
 from tkinter import DISABLED, NORMAL, messagebox
 import threading
+from typing import Optional
 
 from PIL import Image
 
@@ -31,7 +32,7 @@ class CharacterTurnaroundMixin:
             daemon=True,
         ).start()
 
-    def _prepare_turnaround_request(self) -> dict | None:
+    def _prepare_turnaround_request(self) -> Optional[dict]:
         """校验输入并组装三视图生成请求。"""
         print("🎯 开始生成三视图组合图")
 
@@ -141,7 +142,7 @@ class CharacterTurnaroundMixin:
         with Image.open(BytesIO(img_data)) as tmp_img:
             return tmp_img.copy()
 
-    def _resolve_openai_turnaround_config(self) -> tuple[str, str | None, str]:
+    def _resolve_openai_turnaround_config(self) -> tuple[str, Optional[str], str]:
         """读取 OpenAI 图片配置并合并预设默认值。"""
         api_key = self.img_api_key.get().strip() if hasattr(self, "img_api_key") else ""
         base_url = self.img_base_url.get().strip() if hasattr(self, "img_base_url") else ""

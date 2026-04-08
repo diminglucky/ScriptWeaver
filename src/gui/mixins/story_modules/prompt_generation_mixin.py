@@ -224,16 +224,25 @@ class StoryPromptGenerationMixin:
         section_title = section["title"]
         section_items = "\n".join(f"  - {item}" for item in section["items"]) if section["items"] else ""
         context_hint = ""
+        prev_window = min(2400, max(800, target_chars_per_section))
         if section_index == 0:
-            context_hint = "这是故事的开篇部分，需要引人入胜，设置场景和主要人物。"
+            context_hint = "这是故事的开篇部分，需要在前两段内建立场景、主角出场、核心冲突信号。"
         elif section_index == total_sections - 1:
-            context_hint = f"这是故事的最后部分，需要收尾总结，呼应前文。\n\n前文概要：\n{previous_content[-500:] if previous_content else '无'}"
+            context_hint = (
+                f"这是故事的最后部分（第{section_index+1}/{total_sections}章），必须收束全部主线，"
+                "呼应开篇悬念，给出情感落点。\n\n"
+                f"前文最后片段：\n{previous_content[-prev_window:] if previous_content else '无'}"
+            )
         else:
-            context_hint = f"这是故事的第 {section_index + 1} 部分，需要承上启下，保持情节连贯。\n\n前文最后部分：\n{previous_content[-500:] if previous_content else '无'}"
+            context_hint = (
+                f"这是故事的第 {section_index + 1}/{total_sections} 部分，"
+                "必须承接上章结尾的动作/情绪继续推进，禁止重复上章已写过的事件。\n\n"
+                f"前文最后片段：\n{previous_content[-prev_window:] if previous_content else '无'}"
+            )
         transition_context = self._build_section_transition_context(section_index, previous_content)
         if transition_context:
             context_hint += f"\n\n【跨章衔接线索】\n{transition_context}"
-        memory_context = self._build_story_memory_context(section_index, max_items=3)
+        memory_context = self._build_story_memory_context(section_index, max_items=min(6, max(3, section_index)))
         if memory_context:
             context_hint += (
                 "\n\n【记忆账本（最近章节）】\n"

@@ -6,6 +6,7 @@ import logging
 import os
 import re
 from tkinter import END
+from typing import Optional
 
 from src.gui.helpers.story_pipeline_profile import (
     build_memory_ledger_prompt,
@@ -183,6 +184,20 @@ class OutlineQualityMixin:
             return val
         return default_enabled
 
+    def _is_auto_polish_enabled(self) -> bool:
+        """自动精修是否开启。默认关闭，通过 STORY_AUTO_POLISH=1 开启。"""
+        raw = str(os.getenv("STORY_AUTO_POLISH", "0") or "0").strip().lower()
+        default_enabled = raw in {"1", "true", "yes", "on"}
+        val = getattr(self, "story_auto_polish_enabled", None)
+        if hasattr(val, "get"):
+            try:
+                return bool(val.get())
+            except Exception:
+                return default_enabled
+        if isinstance(val, bool):
+            return val
+        return default_enabled
+
     def _get_story_quality_thresholds(self) -> tuple[float, float]:
         min_avg = 7.4
         min_dim = 6.8
@@ -255,7 +270,7 @@ class OutlineQualityMixin:
             raw = client.chat(
                 [{"role": "user", "content": prompt}],
                 temperature=0.1,
-                max_tokens=600,
+                max_tokens=400,
             )
         except Exception as exc:
             logger.debug("quality review failed: %s", exc)
@@ -369,7 +384,7 @@ class OutlineQualityMixin:
             raw = client.chat(
                 [{"role": "user", "content": prompt}],
                 temperature=0.2,
-                max_tokens=700,
+                max_tokens=400,
             )
             entry = parse_memory_entry(raw)
         except Exception as exc:
@@ -394,7 +409,7 @@ class OutlineQualityMixin:
             self.story_memory_ledger.append({})
         self.story_memory_ledger[section_index] = normalized
 
-    def _evaluate_outline_alignment_safe(self, requirement: str, category: str, outline_text: str) -> dict | None:
+    def _evaluate_outline_alignment_safe(self, requirement: str, category: str, outline_text: str) -> Optional[dict]:
         if not hasattr(self, "_evaluate_outline_alignment"):
             return None
         try:
@@ -420,8 +435,12 @@ class OutlineQualityMixin:
         base_temperature: float,
         stage_tag: str = "",
         prefer_low_latency: bool = False,
-        retry_max_tokens: int | None = None,
-    ) -> tuple[str, dict | None]:
+        retry_max_tokens: Optional[int] = None,
+    ) -> tuple[str, Optional[dict]]:
+        # 优化⑥：目录对齐默认跳过，通过环境变量 STORY_OUTLINE_ALIGN=1 开启
+        if not self._is_outline_alignment_enabled():
+            return outline_text, None
+
         alignment_report = self._evaluate_outline_alignment_safe(requirement, category, outline_text)
         if alignment_report is None:
             return outline_text, None
@@ -484,6 +503,11 @@ class OutlineQualityMixin:
 
         return outline_text, alignment_report
 
+    def _is_outline_alignment_enabled(self) -> bool:
+        """目录对齐是否启用。默认关闭（省API调用），通过 STORY_OUTLINE_ALIGN=1 开启。"""
+        raw = str(os.getenv("STORY_OUTLINE_ALIGN", "0") or "0").strip().lower()
+        return raw in {"1", "true", "yes", "on"}
+
     def _is_outline_alignment_strict_enabled_safe(self) -> bool:
         """读取是否启用严格对齐模式。"""
         if not hasattr(self, "_is_outline_alignment_strict_enabled"):
@@ -523,7 +547,7 @@ class OutlineQualityMixin:
         prev_score: float,
         reason: str,
         log_suffix: str,
-        retry_max_tokens: int | None = None,
+        retry_max_tokens: Optional[int] = None,
     ) -> tuple[str, dict, bool]:
         """尝试调用模型做一次目录纠偏重试。"""
         try:

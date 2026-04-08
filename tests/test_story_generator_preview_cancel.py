@@ -3,6 +3,7 @@ from __future__ import annotations
 from unittest.mock import patch
 
 from src.gui.mixins.story_modules.story_generator import StoryGeneratorMixin
+from src.gui.mixins.story_modules.story_infra import StoryInfraMixin
 
 
 class _Var:
@@ -51,7 +52,7 @@ class _DummyClient:
             yield ""
 
 
-class _DummyStoryGenerator(StoryGeneratorMixin):
+class _DummyStoryGenerator(StoryInfraMixin, StoryGeneratorMixin):
     def __init__(self):
         self.target_chars = _Var(9000)
         self.category = _Var("校园")
@@ -92,7 +93,7 @@ class _DummyStoryGenerator(StoryGeneratorMixin):
         self._saved = True
 
 
-class _DummyStoryGeneratorSingleShot(StoryGeneratorMixin):
+class _DummyStoryGeneratorSingleShot(StoryInfraMixin, StoryGeneratorMixin):
     def __init__(self, preview_action=("accept", "预览确认后的正文")):
         self.target_chars = _Var(1800)
         self.category = _Var("校园")

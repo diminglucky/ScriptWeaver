@@ -1,6 +1,7 @@
 import unittest
 
 from src.gui.mixins.story_modules.story_generator import StoryGeneratorMixin
+from src.gui.mixins.story_modules.story_infra import StoryInfraMixin
 
 
 class _Var:
@@ -25,7 +26,7 @@ class _Output:
         return None
 
 
-class _DummyStoryGenerator(StoryGeneratorMixin):
+class _DummyStoryGenerator(StoryInfraMixin, StoryGeneratorMixin):
     def __init__(self):
         self.temperature = _Var(0.7)
         self.output = _Output()

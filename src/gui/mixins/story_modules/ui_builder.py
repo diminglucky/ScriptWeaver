@@ -1,10 +1,14 @@
 """Story功能模块"""
 
-from tkinter import LEFT, RIGHT, DISABLED, END, scrolledtext
+from tkinter import LEFT, RIGHT, DISABLED, END, scrolledtext, messagebox
+import logging
+import threading
 import tkinter as tk
 from tkinter import ttk
 from ...theme import Theme
 from .prompt_builder_mixin import StoryPromptBuilderMixin
+
+logger = logging.getLogger(__name__)
 
 
 class StoryUIBuilderMixin(StoryPromptBuilderMixin):
@@ -446,7 +450,15 @@ class StoryUIBuilderMixin(StoryPromptBuilderMixin):
 								   relief=tk.FLAT, borderwidth=0, bg="#000000", fg="#ffffff",
 								   insertbackground="white", selectbackground="#ffffff", selectforeground="#000000",
 								   padx=10, pady=8, spacing1=3, spacing3=3, highlightthickness=0)
-		self.prompt_text.pack(fill="both", expand=True)
+		self.prompt_text.pack(side="left", fill="both", expand=True)
+
+		self.btn_ai_expand = tk.Button(
+			prompt_frame, text="✨ AI补充", command=self._on_ai_expand_prompt,
+			font=("", 11, "bold"), bg="#2563eb", fg="#ffffff", relief=tk.FLAT,
+			padx=10, pady=6, cursor="hand2",
+			activebackground="#1d4ed8", activeforeground="#ffffff",
+		)
+		self.btn_ai_expand.pack(side="right", padx=(6, 0), pady=4)
 		
 		# 提示文字
 		self.prompt_text.insert("1.0", "例如：写一个惊悚短篇，要求特别惊奇感人，跌宕起伏...")
@@ -595,5 +607,72 @@ class StoryUIBuilderMixin(StoryPromptBuilderMixin):
 		
 		# 配置行列权重，让output区域可以扩展
 		self.story_tab_create.rowconfigure(3, weight=1)
-		
-		
+
+	# ------------------------------------------------------------------
+	# AI 补充创作需求
+	# ------------------------------------------------------------------
+
+	def _on_ai_expand_prompt(self) -> None:
+		"""根据用户输入的简短需求，用 AI 补充完善为更具体的创作需求。"""
+		raw = self._get_prompt_content() if hasattr(self, "_get_prompt_content") else ""
+		if not raw:
+			messagebox.showwarning("提示", "请先输入一句简短的创作需求，AI 才能帮你补充。")
+			return
+
+		try:
+			api_config = self._resolve_generation_api_config("story_generate")
+		except Exception:
+			messagebox.showwarning("提示", "无法获取 API 配置，请检查设置。")
+			return
+		from src.utils.text import sanitize as _sanitize
+		api_key = _sanitize(api_config.get("key", ""))
+		if not api_key:
+			messagebox.showwarning("提示", "API Key 为空，请先在设置中配置。")
+			return
+
+		category = self.category.get() if hasattr(self, "category") else ""
+		self.btn_ai_expand.configure(state="disabled", text="⏳ 补充中...")
+		self.status.set("AI 正在补充创作需求...")
+
+		def _task():
+			try:
+				from .story_infra import resolve_deepseek_client_cls as _resolve_cls
+				client = _resolve_cls()(
+					api_key=api_key,
+					base_url=_sanitize(api_config.get("base_url", "")),
+					model=api_config.get("model", ""),
+				)
+				prompt = (
+					"你是中文小说策划。用户给出了一句简短的创作需求，请帮他补充完善为一段更具体、"
+					"更有画面感的创作需求说明（100~200字）。\n"
+					"要求：\n"
+					"1) 保留用户原意，不要偏离主题；\n"
+					"2) 补充故事氛围、主角特征、核心冲突、情感基调等；\n"
+					"3) 仅输出补充后的完整创作需求，不要解释你在做什么。\n\n"
+					f"题材：{category or '自动'}\n"
+					f"用户原始需求：{raw}\n"
+				)
+				result = client.chat(
+					[{"role": "user", "content": prompt}],
+					temperature=0.75,
+					max_tokens=600,
+				).strip()
+				if result:
+					def _apply():
+						self.prompt_text.delete("1.0", "end")
+						self.prompt_text.insert("1.0", result)
+						self.prompt_text.tag_remove("placeholder", "1.0", "end")
+						self.status.set("AI 补充完成，可继续编辑。")
+					self.after(0, _apply)
+				else:
+					self.after(0, lambda: self.status.set("AI 返回为空，请重试。"))
+			except Exception as exc:
+				logger.debug("ai expand prompt failed: %s", exc)
+				brief = str(exc)[:120]
+				self.after(0, lambda: self.status.set(f"AI 补充失败：{brief}"))
+			finally:
+				def _restore_btn():
+					self.btn_ai_expand.configure(state="normal", text="✨ AI补充")
+				self.after(0, _restore_btn)
+
+		threading.Thread(target=_task, daemon=True).start()

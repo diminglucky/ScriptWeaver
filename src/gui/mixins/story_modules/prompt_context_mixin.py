@@ -158,6 +158,28 @@ class StoryPromptContextMixin:
         else:
             self.story_memory_summary_var.set("记忆账本：暂无章节记忆")
 
+    def _build_enhanced_system_prompt(self, base_system_prompt: str) -> str:
+        """在模版 system prompt 基础上追加专业写作标准，提升真实感与连贯性。
+
+        这不是提示词调优，而是建立持久的写作人格和行为准则。
+        """
+        craft_rules = (
+            "\n\n【写作准则（全程遵守）】\n"
+            "1. 场景真实：每个场景必须有具体的时间、地点、光线、声音等感官锚点，"
+            "读者能'看到'画面而不是'听到'总结。\n"
+            "2. 对话驱动：用对话推进剧情和暴露人物性格，对话要口语化、有潜台词，"
+            "不同人物的说话方式必须有区分度。\n"
+            "3. 动作代替描述：用'她把杯子摔在桌上'代替'她很生气'，"
+            "用微动作（攥拳、移开视线、咬嘴唇）传递情绪。\n"
+            "4. 因果链清晰：每个情节转折必须有前因，角色的每个重大决定都要有动机铺垫，"
+            "不能突然性格反转。\n"
+            "5. 禁止总结腔：不要出现'就这样，他们……''从此以后……''这件事让他明白了……'等"
+            "旁白式总结，让事件本身说话。\n"
+            "6. 节奏控制：紧张场景用短句、快切；情感场景放慢节奏，加入环境细节和内心独白。\n"
+            "7. 每段话推进一个信息点，禁止原地踏步或重复已知信息。"
+        )
+        return base_system_prompt.rstrip() + craft_rules
+
     def _format_story_rules(self, rules):
         items = []
         for rule in (rules or []):

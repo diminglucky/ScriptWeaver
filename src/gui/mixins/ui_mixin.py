@@ -3,6 +3,7 @@ Ui-related mixin helpers.
 """
 
 import threading
+from typing import Optional
 import tkinter as tk
 from tkinter import BOTH, END, ttk
 
@@ -61,7 +62,7 @@ class UiMixin:
             raise state["error"]
         return state["result"]
 
-    def _header_status(self, text: str, icon: str = "🔄", color: str | None = None):
+    def _header_status(self, text: str, icon: str = "🔄", color: Optional[str] = None):
         """Thread-safe wrapper for top header status updates."""
         if not hasattr(self, "update_header_status"):
             return

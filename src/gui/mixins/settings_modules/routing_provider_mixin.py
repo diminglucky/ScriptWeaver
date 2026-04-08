@@ -90,7 +90,7 @@ class SettingsRoutingProviderMixin:
         route = self.model_routing.get(task_key, {}) if isinstance(self.model_routing, dict) else {}
         return route if isinstance(route, dict) else {}
 
-    def _resolve_task_api(self, task_key: str, fallback_provider: str | None = None, fallback_model: str | None = None) -> dict:
+    def _resolve_task_api(self, task_key: str, fallback_provider: Optional[str] = None, fallback_model: Optional[str] = None) -> dict:
         """解析任务应使用的 API 配置（provider/key/base_url/model）"""
         self._ensure_model_routing_loaded()
 

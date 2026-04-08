@@ -62,6 +62,20 @@ class App(tk.Tk, ProjectMixin, StoryMixin, ImageMixin, KbMixin, ConfigMixin, UiM
 		self.top_p = tk.DoubleVar(value=0.9)
 		self.model_only = tk.BooleanVar(value=False)
 		
+		# 故事生成功能开关（需在 _build_ui 前初始化）
+		self.story_global_overview_enabled = tk.BooleanVar(
+			value=os.getenv("STORY_GLOBAL_OVERVIEW_ENABLED", "1").strip().lower() in {"1", "true", "yes", "on"}
+		)
+		self.story_overview_before_generate = tk.BooleanVar(
+			value=os.getenv("STORY_OVERVIEW_BEFORE_GENERATE", "1").strip().lower() in {"1", "true", "yes", "on"}
+		)
+		self.story_preview_before_apply = tk.BooleanVar(
+			value=os.getenv("STORY_PREVIEW_BEFORE_APPLY", "1").strip().lower() in {"1", "true", "yes", "on"}
+		)
+		self.story_quality_review_enabled = tk.BooleanVar(
+			value=os.getenv("STORY_QUALITY_REVIEW_ENABLED", "1").strip().lower() in {"1", "true", "yes", "on"}
+		)
+		
 		# API 配置
 		self.api_key = tk.StringVar()
 		self.base_url = tk.StringVar(value="https://api.deepseek.com/v1")

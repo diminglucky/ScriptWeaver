@@ -5,6 +5,7 @@ Project相关功能模块
 import re
 import logging
 from pathlib import Path
+from typing import Optional, Union
 from tkinter import BOTH, LEFT, RIGHT, DISABLED, NORMAL, END, messagebox, filedialog
 import tkinter as tk
 from tkinter import ttk
@@ -265,7 +266,7 @@ class ProjectMixin:
 		except Exception as e:
 			messagebox.showerror("错误", f"刷新项目列表失败: {e}")
 
-	def _remember_last_project_path(self, project_path: Path | str | None = None) -> None:
+	def _remember_last_project_path(self, project_path: Optional[Union[Path, str]] = None) -> None:
 		"""记住最后活跃项目，供下次启动自动恢复"""
 		if not hasattr(self, "project_manager"):
 			return
@@ -298,7 +299,7 @@ class ProjectMixin:
 		except Exception as e:
 			logger.debug("ensure characters dir failed: %s", e)
 
-	def _select_project_in_tree(self, project_path: Path | str) -> None:
+	def _select_project_in_tree(self, project_path: Union[Path, str]) -> None:
 		if not hasattr(self, "project_tree"):
 			return
 		try:
@@ -325,7 +326,7 @@ class ProjectMixin:
 
 	def _load_project_by_path(
 		self,
-		project_path: Path | str,
+		project_path: Union[Path, str],
 		*,
 		show_popup: bool = True,
 		switch_to_story: bool = True,

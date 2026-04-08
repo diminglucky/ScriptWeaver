@@ -6,6 +6,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from src.gui.mixins.story_modules.outline_section_generate_mixin import OutlineSectionGenerateMixin
+from src.gui.mixins.story_modules.story_infra import StoryInfraMixin
 
 
 class _Var:
@@ -75,7 +76,7 @@ class _DummyIngestConfig:
         self.kwargs = kwargs
 
 
-class _DummyApp(OutlineSectionGenerateMixin):
+class _DummyApp(StoryInfraMixin, OutlineSectionGenerateMixin):
     def __init__(self, index_dir: Path):
         self.parsed_sections = [{"title": "第一章"}]
         self.section_selector = _Selector(0)

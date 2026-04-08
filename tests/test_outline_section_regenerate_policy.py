@@ -5,6 +5,7 @@ from unittest.mock import patch
 from src.gui.mixins.story_modules.outline_section_generate_mixin import OutlineSectionGenerateMixin
 from src.gui.mixins.story_modules.outline_overview_mixin import OutlineOverviewMixin
 from src.gui.mixins.story_modules.outline_preview_mixin import OutlinePreviewMixin
+from src.gui.mixins.story_modules.story_infra import StoryInfraMixin
 
 
 class _Var:
@@ -49,7 +50,7 @@ class _PreviewClient:
         return self.reply
 
 
-class _DummyApp(OutlineSectionGenerateMixin):
+class _DummyApp(StoryInfraMixin, OutlineSectionGenerateMixin):
     def __init__(self):
         self.output = _Output()
         self.status = _Var("")
@@ -69,7 +70,7 @@ class _DummyApp(OutlineSectionGenerateMixin):
         return fn(*args, **kwargs)
 
 
-class _PreviewDummy(OutlinePreviewMixin, OutlineSectionGenerateMixin):
+class _PreviewDummy(StoryInfraMixin, OutlinePreviewMixin, OutlineSectionGenerateMixin):
     def __init__(self):
         self.temperature = _Var(0.7)
 
@@ -82,7 +83,7 @@ class _PreviewDummy(OutlinePreviewMixin, OutlineSectionGenerateMixin):
         return "- 第2章《走廊风声》摘要：他确认周明在隐瞒关键证据。"
 
 
-class _GeneratePreviewDummy(OutlineOverviewMixin, OutlinePreviewMixin, OutlineSectionGenerateMixin):
+class _GeneratePreviewDummy(StoryInfraMixin, OutlineOverviewMixin, OutlinePreviewMixin, OutlineSectionGenerateMixin):
     def __init__(self):
         self.output = _Output()
         self.status = _Var("")
@@ -120,6 +121,16 @@ class _GeneratePreviewDummy(OutlineOverviewMixin, OutlinePreviewMixin, OutlineSe
     def _repair_section_transition_if_needed(self, *_args, **_kwargs):
         return ""
 
+    def _is_section_tail_complete(self, text: str) -> bool:
+        tail = (text or "").strip()
+        if not tail:
+            return False
+        import re
+        # Check if text ends with Chinese punctuation
+        if re.search(r"[。！？!?…；;]\s*$", tail):
+            return True
+        return False
+
     def _is_story_quality_review_enabled(self):
         return False
 
@@ -151,7 +162,7 @@ class _SegmentClient:
         yield "分段正文"
 
 
-class _SegmentOverviewDummy(OutlineSectionGenerateMixin):
+class _SegmentOverviewDummy(StoryInfraMixin, OutlineSectionGenerateMixin):
     def __init__(self):
         self.output = _Output()
         self.status = _Var("")
@@ -180,6 +191,15 @@ class _SegmentOverviewDummy(OutlineSectionGenerateMixin):
     def _repair_section_tail_if_needed(self, *_args, **_kwargs):
         return ""
 
+    def _is_section_tail_complete(self, text: str) -> bool:
+        tail = (text or "").strip()
+        if not tail:
+            return False
+        import re
+        if re.search(r"[。！？!?…；;]\s*$", tail):
+            return True
+        return False
+
     def _repair_section_transition_if_needed(self, *_args, **_kwargs):
         return ""
 
@@ -196,7 +216,7 @@ class _SegmentOverviewDummy(OutlineSectionGenerateMixin):
         return None
 
 
-class _GlobalOverviewDummy(OutlineOverviewMixin, OutlineSectionGenerateMixin):
+class _GlobalOverviewDummy(StoryInfraMixin, OutlineOverviewMixin, OutlineSectionGenerateMixin):
     def __init__(self):
         self.story_global_overview_enabled = _Var(True)
         self.story_global_overview_text = "旧总览"

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
+from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -11,7 +12,7 @@ logger = logging.getLogger(__name__)
 class SettingsRuntimeSyncMixin:
     """Sync image API settings to runtime variables."""
 
-    def _sync_img_runtime_from_settings(self, provider_name: str | None = None) -> None:
+    def _sync_img_runtime_from_settings(self, provider_name: Optional[str] = None) -> None:
         try:
             name = provider_name or (self.settings_img_provider.get().strip() if hasattr(self, "settings_img_provider") else "")
             key = self.settings_img_api_key.get().strip() if hasattr(self, "settings_img_api_key") else ""
@@ -39,7 +40,7 @@ class SettingsRuntimeSyncMixin:
         except Exception as e:
             logger.debug("sync image runtime from settings failed: %s", e)
 
-    def _sync_img_runtime_from_config(self, provider_name: str | None = None) -> None:
+    def _sync_img_runtime_from_config(self, provider_name: Optional[str] = None) -> None:
         try:
             name = provider_name or ""
             if not name:

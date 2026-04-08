@@ -16,14 +16,11 @@ except Exception:  # pragma: no cover - fallback for minimal environments
 	def load_dotenv(*args, **kwargs):
 		return False
 
-from src.clients.deepseek_client import DeepSeekClient
+from src.clients.deepseek_client import DeepSeekClient  # backward-compat for test monkey-patching
 from src.utils.text import sanitize as _sanitize
+from src.gui.mixins.story_modules.story_infra import log_print as print  # noqa: A001
 
 logger = logging.getLogger(__name__)
-
-
-def print(*args, **kwargs):  # type: ignore[override]
-	logger.info(" ".join(str(a) for a in args))
 
 
 class StoryGeneratorMixin:
@@ -189,19 +186,7 @@ class StoryGeneratorMixin:
 	
 	def _resolve_story_api_config(self) -> dict:
 		"""Resolve API config for story generation from model routing and fallbacks."""
-		fallback_provider = None
-		if hasattr(self, 'story_gen_api'):
-			fallback_provider = self.story_gen_api.get()
-		if not fallback_provider and hasattr(self, 'quick_story_api'):
-			fallback_provider = self.quick_story_api.get()
-		if not fallback_provider and hasattr(self, 'api_preset'):
-			fallback_provider = self.api_preset.get()
-		fallback_model = None
-		if hasattr(self, 'story_model_var'):
-			fallback_model = self.story_model_var.get()
-		elif hasattr(self, 'model'):
-			fallback_model = self.model.get()
-		return self._resolve_task_api("story_generate", fallback_provider=fallback_provider, fallback_model=fallback_model)
+		return self._resolve_generation_api_config("story_generate")
 
 	def _run_story_generation(
 		self,
@@ -224,24 +209,7 @@ class StoryGeneratorMixin:
 		self._header_status("AI创作故事中...", "📝")
 		print(f"🤖 使用模型: {selected_model}")
 
-		client = DeepSeekClient(
-			api_key=api_key,
-			base_url=_sanitize(api_config.get("base_url", "")),
-			model=selected_model,
-		)
-		if hasattr(self, "_ensure_story_global_overview_before_generation"):
-			overview_action, _overview_text = self._ensure_story_global_overview_before_generation(
-				client=client,
-				requirement=query,
-				category=category_val,
-				contexts=contexts,
-				outline_text=(current_outline_val or ""),
-				force_review=False,
-			)
-			if overview_action == "discard":
-				self._ui(self.status.set, "已取消（全书总览未采用）")
-				self._header_status("生成已取消", "↩️")
-				return
+		client = self._create_generation_client(api_config)
 		self._ui(self.output.delete, "1.0", END)
 		banner_text = ""
 		if hasattr(self, "_build_story_run_banner"):

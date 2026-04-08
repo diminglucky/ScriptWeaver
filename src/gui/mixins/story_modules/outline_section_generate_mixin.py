@@ -17,13 +17,13 @@ except Exception:  # pragma: no cover - optional dependency
     def load_dotenv(*args, **kwargs):
         return False
 
-from src.clients.deepseek_client import DeepSeekClient
 from src.utils.text import sanitize as _sanitize
 from src.gui.helpers.story_quality import (
     extract_last_sentence,
     should_polish,
     strip_duplicate_lines,
 )
+from src.gui.mixins.story_modules.story_infra import resolve_deepseek_client_cls as _resolve_deepseek_client_cls, log_print as print  # noqa: A001
 
 logger = logging.getLogger(__name__)
 
@@ -37,23 +37,6 @@ COMPLETED_CHAPTER_BLOCK_RE = re.compile(
     r"(?P<body>.*?)\n\n={20,}\n✅ 第\s*(?P=chapter)\s*章完成！本章字数：(?P<chars>\d+)\s*字\n)",
     re.S,
 )
-
-
-def print(*args, **kwargs):  # type: ignore[override]
-    logger.info(" ".join(str(a) for a in args))
-
-
-def _resolve_deepseek_client_cls():
-    """Use aggregator module symbol so tests can monkey-patch one stable path."""
-    try:
-        from . import outline_generator as outline_generator_module  # local import avoids circular init timing issues
-
-        patched = getattr(outline_generator_module, "DeepSeekClient", None)
-        if patched is not None:
-            return patched
-    except Exception:
-        pass
-    return DeepSeekClient
 
 
 class OutlineSectionGenerateMixin:
@@ -87,16 +70,24 @@ class OutlineSectionGenerateMixin:
             "remote protocol",
             "econnreset",
             "broken pipe",
+            "bad gateway",
+            "502",
+            "503",
+            "429",
+            "rate limit",
+            "service unavailable",
+            "server error",
+            "internal server error",
         )
         return any(mark in text for mark in markers)
 
     @staticmethod
-    def _build_token_candidates(max_tokens: int, *, floor: int = 900) -> list[int]:
+    def _build_token_candidates(max_tokens: int, *, floor: int = 600) -> list[int]:
         upper = max(600, int(max_tokens))
-        candidates = [upper, int(upper * 0.78), int(upper * 0.62), floor]
+        candidates = [upper, max(floor, int(upper * 0.7))]
         unique: list[int] = []
         for val in candidates:
-            cur = max(600, int(val))
+            cur = max(floor, int(val))
             if cur not in unique:
                 unique.append(cur)
         return unique
@@ -156,20 +147,7 @@ class OutlineSectionGenerateMixin:
             self._story_creativity_nonce = ""
         
         # 章节生成前置检查：根据模型路由确认 API Key
-        fallback_provider = None
-        if hasattr(self, 'story_gen_api'):
-            fallback_provider = self.story_gen_api.get()
-        if not fallback_provider and hasattr(self, 'quick_story_api'):
-            fallback_provider = self.quick_story_api.get()
-        if not fallback_provider and hasattr(self, 'api_preset'):
-            fallback_provider = self.api_preset.get()
-        fallback_model = None
-        if hasattr(self, 'story_model_var'):
-            fallback_model = self.story_model_var.get()
-        elif hasattr(self, 'model'):
-            fallback_model = self.model.get()
-        
-        api_config = self._resolve_task_api("story_generate", fallback_provider=fallback_provider, fallback_model=fallback_model)
+        api_config = self._resolve_generation_api_config("story_generate")
         if not _sanitize(api_config.get("key", "")):
             messagebox.showwarning("提示", "API Key 为空，请在设置页配置")
             return
@@ -242,43 +220,61 @@ class OutlineSectionGenerateMixin:
         previous_content: str,
         requirement: str,
         category: str,
-    ) -> tuple[str, str, dict | None]:
-        """并行执行末尾修复、衔接修复、质量评审，减少串行等待。
+        include_memory: bool = False,
+    ) -> tuple[str, str, "dict | None", "dict | None"]:
+        """并行执行末尾修复、衔接修复、质量评审、记忆提取，减少串行等待。
 
         Returns:
-            (tail_patch, transition_result, review)
-            - tail_patch: 需追加到末尾的文本，空字符串表示无需修复
-            - transition_result: 衔接修复后的完整内容，与原文相同表示无需修复
-            - review: 质量评审结果字典，None 表示未启用评审
+            (tail_patch, transition_result, review, memory_entry)
         """
-        quality_enabled = self._is_story_quality_review_enabled()
+        fast = hasattr(self, '_is_story_fast_mode') and self._is_story_fast_mode()
+        quality_enabled = (not fast) and self._is_story_quality_review_enabled()
 
-        with ThreadPoolExecutor(max_workers=3) as pool:
-            ft_tail: Future[str] = pool.submit(
+        # 末尾修复、衔接修复、记忆提取仅在质量评审开启时执行，避免额外 API 调用
+        need_tail = quality_enabled and not self._is_section_tail_complete(section_content)
+        need_transition = quality_enabled and section_index > 0
+        include_memory = include_memory and quality_enabled
+
+        tasks_needed = sum([need_tail, need_transition, quality_enabled, include_memory])
+        if tasks_needed == 0:
+            return "", section_content, None, None
+
+        with ThreadPoolExecutor(max_workers=max(1, tasks_needed)) as pool:
+            ft_tail = pool.submit(
                 self._repair_section_tail_if_needed,
                 client, section_title, section_content,
-            )
-            ft_transition: Future[str] = pool.submit(
+            ) if need_tail else None
+
+            ft_transition = pool.submit(
                 self._repair_section_transition_if_needed,
                 client,
                 section_index=section_index,
                 section_title=section_title,
                 previous_content=previous_content,
                 section_content=section_content,
-            )
-            ft_review: Future[dict] | None = None
-            if quality_enabled:
-                ft_review = pool.submit(
-                    self._review_section_quality,
-                    client, section_title, section_content,
-                    requirement, category,
-                )
+            ) if need_transition else None
 
-            tail_patch = ft_tail.result()
-            transition_result = ft_transition.result()
-            review = ft_review.result() if ft_review is not None else None
+            ft_review = pool.submit(
+                self._review_section_quality,
+                client, section_title, section_content,
+                requirement, category,
+            ) if quality_enabled else None
 
-        return tail_patch, transition_result, review
+            # 优化③：记忆提取也并行执行
+            ft_memory = pool.submit(
+                self._extract_memory_entry,
+                client,
+                section_index=section_index,
+                section_title=section_title,
+                section_content=section_content,
+            ) if include_memory else None
+
+            tail_patch = ft_tail.result() if ft_tail else ""
+            transition_result = ft_transition.result() if ft_transition else section_content
+            review = ft_review.result() if ft_review else None
+            memory_entry = ft_memory.result() if ft_memory else None
+
+        return tail_patch, transition_result, review, memory_entry
 
     @staticmethod
     def _merge_post_stream_repairs(
@@ -309,22 +305,7 @@ class OutlineSectionGenerateMixin:
         category = self.category.get()
         stopped_by_preview = False
 
-        global_action, _global_overview = self._ensure_story_global_overview_before_generation(
-            client=client,
-            requirement=requirement,
-            category=category,
-            contexts=contexts,
-            outline_text=(getattr(self, "current_outline", "") or ""),
-            force_review=False,
-        )
-        if global_action == "discard":
-            self._ui(self.output.insert, END, "⏹️ 已在全书总览阶段取消，本轮分段生成已停止。\n")
-            self._ui(self.output.see, END)
-            self._ui(self.status.set, "已停止（全书总览未采用）")
-            if hasattr(self, 'update_header_status'):
-                self._ui(self.update_header_status, "分段生成已停止", "⏹️")
-            return False
-        
+        fast = hasattr(self, '_is_story_fast_mode') and self._is_story_fast_mode()
         for idx, section in enumerate(sections):
             overview_action, section_overview_plan = self._prepare_section_overview_before_generation(
                 client=client,
@@ -335,6 +316,7 @@ class OutlineSectionGenerateMixin:
                 contexts=contexts,
                 category=category,
                 previous_content=accumulated_content,
+                skip_dialog=True,
             )
             if overview_action == "discard":
                 self._ui(self.output.insert, END, f"⏹️ 已取消第 {idx+1} 段生成（章节总览未采用）。\n")
@@ -376,20 +358,37 @@ class OutlineSectionGenerateMixin:
                 "story_system_prompt",
                 "你是资深中文叙事作者，擅长结合资料写出有观点、有结构的中文故事。",
             )
+            if hasattr(self, '_build_enhanced_system_prompt'):
+                story_system_prompt = self._build_enhanced_system_prompt(story_system_prompt)
             
-            # 流式生成本段
+            # 流式生成本段（使用缓冲批量更新 UI）
             section_content = ""
+            _buf = ""
+            _last_t = time.time()
             for delta in client.stream([
                 {"role": "system", "content": story_system_prompt},
                 {"role": "user", "content": section_prompt},
             ], temperature=self.temperature.get(), max_tokens=int(target_per_section*2.5)):
-                self._ui(self.output.insert, END, delta)
-                self._ui(self.output.see, END)
                 section_content += delta
+                _buf += delta
+                _now = time.time()
+                if len(_buf) >= self.STREAM_BUFFER_SIZE or (_now - _last_t) >= self.STREAM_FLUSH_INTERVAL:
+                    _text = _buf
+                    _buf = ""
+                    _last_t = _now
+                    def _upd(_t=_text):
+                        self.output.insert(END, _t)
+                        self.output.see(END)
+                    self._ui(_upd)
+            if _buf:
+                def _upd_final(_t=_buf):
+                    self.output.insert(END, _t)
+                    self.output.see(END)
+                self._ui(_upd_final)
 
-            # 并行执行：末尾修复 + 衔接修复 + 质量评审
+            # 并行执行：末尾修复 + 衔接修复 + 质量评审 + 记忆提取
             original_content = section_content
-            tail_patch, transition_result, review = self._parallel_post_stream_repairs(
+            tail_patch, transition_result, review, memory_entry = self._parallel_post_stream_repairs(
                 client=client,
                 section_content=section_content,
                 section_title=section.get("title", ""),
@@ -397,6 +396,7 @@ class OutlineSectionGenerateMixin:
                 previous_content=accumulated_content,
                 requirement=requirement,
                 category=category,
+                include_memory=not fast,
             )
             section_content = self._merge_post_stream_repairs(
                 section_content, tail_patch, transition_result,
@@ -406,28 +406,29 @@ class OutlineSectionGenerateMixin:
                 self._ui(self.output.insert, END, section_content)
                 self._ui(self.output.see, END)
 
-            # 质量评审结果 → 自动精修
+            # 质量评审结果 → 自动精修（优化④由环境变量控制）
             if review is not None:
                 self._update_chapter_quality_report(idx, section.get("title", ""), review)
-                min_avg, min_dim = self._get_story_quality_thresholds()
-                needs_polish = should_polish(review, min_avg_score=min_avg, min_dimension_score=min_dim)
-                if not needs_polish and self._needs_continuity_polish(review, idx):
-                    needs_polish = True
-                if needs_polish:
-                    polished = self._polish_section_text(
-                        client,
-                        section.get("title", ""),
-                        section_content,
-                        review,
-                        target_per_section,
-                        section_index=idx,
-                        previous_content=accumulated_content,
-                    )
-                    if polished and polished != section_content:
-                        self._ui(self.output.delete, section_start_pos, "end-1c")
-                        self._ui(self.output.insert, END, polished)
-                        self._ui(self.output.see, END)
-                        section_content = polished
+                if self._is_auto_polish_enabled():
+                    min_avg, min_dim = self._get_story_quality_thresholds()
+                    needs_polish = should_polish(review, min_avg_score=min_avg, min_dimension_score=min_dim)
+                    if not needs_polish and self._needs_continuity_polish(review, idx):
+                        needs_polish = True
+                    if needs_polish:
+                        polished = self._polish_section_text(
+                            client,
+                            section.get("title", ""),
+                            section_content,
+                            review,
+                            target_per_section,
+                            section_index=idx,
+                            previous_content=accumulated_content,
+                        )
+                        if polished and polished != section_content:
+                            self._ui(self.output.delete, section_start_pos, "end-1c")
+                            self._ui(self.output.insert, END, polished)
+                            self._ui(self.output.see, END)
+                            section_content = polished
 
             preview_action = self._preview_generated_section_before_apply(
                 client=client,
@@ -438,6 +439,7 @@ class OutlineSectionGenerateMixin:
                 requirement=requirement,
                 category=category,
                 previous_content=accumulated_content,
+                skip_dialog=True,
             )
             if isinstance(preview_action, tuple):
                 action_name, preview_text = preview_action
@@ -458,14 +460,9 @@ class OutlineSectionGenerateMixin:
                 stopped_by_preview = True
                 break
 
-            # 记忆账本（用于后续章节连贯）
-            memory_entry = self._extract_memory_entry(
-                client,
-                section_index=idx,
-                section_title=section.get("title", ""),
-                section_content=section_content,
-            )
-            self._update_story_memory_ledger(idx, section.get("title", ""), memory_entry)
+            # 记忆账本已在并行池中提取完毕
+            if memory_entry:
+                self._update_story_memory_ledger(idx, section.get("title", ""), memory_entry)
             if hasattr(self, "_update_story_diagnostics_panel"):
                 self._ui(self._update_story_diagnostics_panel)
             
@@ -493,36 +490,14 @@ class OutlineSectionGenerateMixin:
             try:
                 self._ui(self.set_busy, True)
                 
-                # 章节生成：根据模型路由选择 API
-                fallback_provider = None
-                if hasattr(self, 'story_gen_api'):
-                    fallback_provider = self._ui_get(self.story_gen_api.get)
-                if not fallback_provider and hasattr(self, 'quick_story_api'):
-                    fallback_provider = self._ui_get(self.quick_story_api.get)
-                if not fallback_provider and hasattr(self, 'api_preset'):
-                    fallback_provider = self._ui_get(self.api_preset.get)
-                fallback_model = None
-                if hasattr(self, 'story_model_var'):
-                    fallback_model = self._ui_get(self.story_model_var.get)
-                elif hasattr(self, 'model'):
-                    fallback_model = self._ui_get(self.model.get)
-                
-                api_config = self._ui_get(lambda: self._resolve_task_api("story_generate", fallback_provider=fallback_provider, fallback_model=fallback_model))
-                selected_api = api_config.get("provider", "")
+                api_config = self._resolve_generation_api_config_safe("story_generate")
                 api_key = _sanitize(api_config.get("key", ""))
                 if not api_key:
-                    self._ui(messagebox.showwarning, "提示", f"API Key 为空，请在'基础 API 配置'中为 {selected_api} 填写后保存")
+                    self._ui(messagebox.showwarning, "提示", f"API Key 为空，请在'基础 API 配置'中为 {api_config.get('provider', '')} 填写后保存")
                     return
                 
-                # 获取用户选择的模型
-                selected_model = api_config.get("model", "")
-                print(f"🤖 使用模型: {selected_model}")
-                
-                client = _resolve_deepseek_client_cls()(
-                    api_key=api_key,
-                    base_url=_sanitize(api_config.get("base_url", "")),
-                    model=selected_model,
-                )
+                print(f"🤖 使用模型: {api_config.get('model', '')}")
+                client = self._create_generation_client(api_config)
                 self._do_generate_section(client, query, contexts, section_index)
             except Exception as e:
                 self._report_section_generation_error(section_index, e)
@@ -533,36 +508,14 @@ class OutlineSectionGenerateMixin:
     
     def _generate_single_section_with_contexts(self, query: str, contexts: list[str], section_index: int) -> None:
         """生成单个章节（带知识库）"""
-        # 章节生成：根据模型路由选择 API
-        fallback_provider = None
-        if hasattr(self, 'story_gen_api'):
-            fallback_provider = self.story_gen_api.get()
-        if not fallback_provider and hasattr(self, 'quick_story_api'):
-            fallback_provider = self.quick_story_api.get()
-        if not fallback_provider and hasattr(self, 'api_preset'):
-            fallback_provider = self.api_preset.get()
-        fallback_model = None
-        if hasattr(self, 'story_model_var'):
-            fallback_model = self.story_model_var.get()
-        elif hasattr(self, 'model'):
-            fallback_model = self.model.get()
-        
-        api_config = self._resolve_task_api("story_generate", fallback_provider=fallback_provider, fallback_model=fallback_model)
-        selected_api = api_config.get("provider", "")
+        api_config = self._resolve_generation_api_config("story_generate")
         api_key = _sanitize(api_config.get("key", ""))
         if not api_key:
-            self._ui(messagebox.showwarning, "提示", f"API Key 为空，请在'基础 API 配置'中为 {selected_api} 填写后保存")
+            self._ui(messagebox.showwarning, "提示", f"API Key 为空，请在'基础 API 配置'中为 {api_config.get('provider', '')} 填写后保存")
             return
         
-        # 获取用户选择的模型
-        selected_model = api_config.get("model", "")
-        print(f"🤖 使用模型: {selected_model}")
-        
-        client = _resolve_deepseek_client_cls()(
-            api_key=api_key,
-            base_url=_sanitize(api_config.get("base_url", "")),
-            model=selected_model,
-        )
+        print(f"🤖 使用模型: {api_config.get('model', '')}")
+        client = self._create_generation_client(api_config)
         self._do_generate_section(client, query, contexts, section_index)
     
     
@@ -573,27 +526,17 @@ class OutlineSectionGenerateMixin:
         contexts,
         section_index,
         existing_chapter_policy: str = "ask",
+        skip_dialog: bool = False,
     ):
-        """实际执行章节生成的核心逻辑。"""
+        """实际执行章节生成的核心逻辑。
+
+        skip_dialog=True 时跳过所有阻塞弹窗（用于自动批量生成）。
+        """
         section = self.parsed_sections[section_index]
         total_sections = len(self.parsed_sections)
         base_output_text = self._get_output_text_snapshot()
 
         try:
-            global_action, _global_overview = self._ensure_story_global_overview_before_generation(
-                client=client,
-                requirement=query,
-                category=self.category.get(),
-                contexts=contexts,
-                outline_text=(getattr(self, "current_outline", "") or ""),
-                force_review=False,
-            )
-            if global_action == "discard":
-                self._ui(self.status.set, f"已取消第 {section_index+1} 章生成（全书总览未采用）")
-                if hasattr(self, "update_header_status"):
-                    self._ui(self.update_header_status, f"第 {section_index+1} 章已取消", "↩️")
-                return "preview_discard"
-
             overview_action, section_overview_plan = self._prepare_section_overview_before_generation(
                 client=client,
                 section=section,
@@ -603,6 +546,7 @@ class OutlineSectionGenerateMixin:
                 contexts=contexts,
                 category=self.category.get(),
                 previous_content=self.generated_content,
+                skip_dialog=skip_dialog,
             )
             if overview_action == "discard":
                 self._ui(self.status.set, f"已取消第 {section_index+1} 章生成（总览未采用）")
@@ -630,9 +574,10 @@ class OutlineSectionGenerateMixin:
                 target_per_section=target_per_section,
             )
 
-            # 并行执行：末尾修复 + 衔接修复 + 质量评审
+            # 并行执行：末尾修复 + 衔接修复 + 质量评审 + 记忆提取
+            fast = hasattr(self, '_is_story_fast_mode') and self._is_story_fast_mode()
             original_content = section_content
-            tail_patch, transition_result, review = self._parallel_post_stream_repairs(
+            tail_patch, transition_result, review, memory_entry = self._parallel_post_stream_repairs(
                 client=client,
                 section_content=section_content,
                 section_title=section.get("title", ""),
@@ -640,6 +585,7 @@ class OutlineSectionGenerateMixin:
                 previous_content=self.generated_content,
                 requirement=query,
                 category=self.category.get(),
+                include_memory=not fast,
             )
             section_content = self._merge_post_stream_repairs(
                 section_content, tail_patch, transition_result,
@@ -649,27 +595,28 @@ class OutlineSectionGenerateMixin:
                 self._ui(self.output.insert, END, section_content)
                 self._ui(self.output.see, END)
 
-            # 质量评审结果 → 自动精修
+            # 质量评审结果 → 自动精修（优化④由环境变量控制）
             if review is not None:
-                min_avg, min_dim = self._get_story_quality_thresholds()
-                needs_polish = should_polish(review, min_avg_score=min_avg, min_dimension_score=min_dim)
-                if not needs_polish and self._needs_continuity_polish(review, section_index):
-                    needs_polish = True
-                if needs_polish:
-                    polished = self._polish_section_text(
-                        client,
-                        section.get("title", ""),
-                        section_content,
-                        review,
-                        target_per_section,
-                        section_index=section_index,
-                        previous_content=self.generated_content,
-                    )
-                    if polished and polished != section_content:
-                        self._ui(self.output.delete, section_start_pos, "end-1c")
-                        self._ui(self.output.insert, END, polished)
-                        self._ui(self.output.see, END)
-                        section_content = polished
+                if self._is_auto_polish_enabled():
+                    min_avg, min_dim = self._get_story_quality_thresholds()
+                    needs_polish = should_polish(review, min_avg_score=min_avg, min_dimension_score=min_dim)
+                    if not needs_polish and self._needs_continuity_polish(review, section_index):
+                        needs_polish = True
+                    if needs_polish:
+                        polished = self._polish_section_text(
+                            client,
+                            section.get("title", ""),
+                            section_content,
+                            review,
+                            target_per_section,
+                            section_index=section_index,
+                            previous_content=self.generated_content,
+                        )
+                        if polished and polished != section_content:
+                            self._ui(self.output.delete, section_start_pos, "end-1c")
+                            self._ui(self.output.insert, END, polished)
+                            self._ui(self.output.see, END)
+                            section_content = polished
 
             preview_action = self._preview_generated_section_before_apply(
                 client=client,
@@ -680,6 +627,7 @@ class OutlineSectionGenerateMixin:
                 requirement=query,
                 category=self.category.get(),
                 previous_content=self.generated_content,
+                skip_dialog=skip_dialog,
             )
             if isinstance(preview_action, tuple):
                 action_name, preview_text = preview_action
@@ -711,13 +659,9 @@ class OutlineSectionGenerateMixin:
             if action in {"append", "replace"}:
                 if review is not None:
                     self._update_chapter_quality_report(section_index, section.get("title", ""), review)
-                memory_entry = self._extract_memory_entry(
-                    client,
-                    section_index=section_index,
-                    section_title=section.get("title", ""),
-                    section_content=section_content,
-                )
-                self._update_story_memory_ledger(section_index, section.get("title", ""), memory_entry)
+                # 记忆账本已在并行池中提取完毕
+                if memory_entry:
+                    self._update_story_memory_ledger(section_index, section.get("title", ""), memory_entry)
                 if hasattr(self, "_update_story_diagnostics_panel"):
                     self._ui(self._update_story_diagnostics_panel)
                 self._ui(self.status.set, f"第 {section_index+1} 章完成（{len(section_content)} 字）")
@@ -777,6 +721,8 @@ class OutlineSectionGenerateMixin:
             "story_system_prompt",
             "你是资深中文叙事作者，擅长结合资料写出有观点、有结构的中文故事。",
         )
+        if hasattr(self, '_build_enhanced_system_prompt'):
+            story_system_prompt = self._build_enhanced_system_prompt(story_system_prompt)
         return target_per_section, section_prompt, story_system_prompt
 
     def _ensure_generated_content_initialized(self, query: str, contexts: list[str]) -> None:
@@ -1056,47 +1002,25 @@ class OutlineSectionGenerateMixin:
             try:
                 self._ui(self.set_busy, True)
                 
-                # 自动生成章节：根据模型路由选择 API
-                fallback_provider = None
-                if hasattr(self, 'story_gen_api'):
-                    fallback_provider = self._ui_get(self.story_gen_api.get)
-                if not fallback_provider and hasattr(self, 'quick_story_api'):
-                    fallback_provider = self._ui_get(self.quick_story_api.get)
-                if not fallback_provider and hasattr(self, 'api_preset'):
-                    fallback_provider = self._ui_get(self.api_preset.get)
-                fallback_model = None
-                if hasattr(self, 'story_model_var'):
-                    fallback_model = self._ui_get(self.story_model_var.get)
-                elif hasattr(self, 'model'):
-                    fallback_model = self._ui_get(self.model.get)
-                
-                api_config = self._ui_get(lambda: self._resolve_task_api("story_generate", fallback_provider=fallback_provider, fallback_model=fallback_model))
-                selected_api = api_config.get("provider", "")
+                api_config = self._resolve_generation_api_config_safe("story_generate")
                 api_key = _sanitize(api_config.get("key", ""))
-                
                 if not api_key:
-                    self._ui(messagebox.showwarning, "提示", f"API Key 为空，请在'基础 API 配置'中为 {selected_api} 填写后保存")
+                    self._ui(messagebox.showwarning, "提示", f"API Key 为空，请在'基础 API 配置'中为 {api_config.get('provider', '')} 填写后保存")
                     return
                 
-                # 获取用户选择的模型
-                selected_model = api_config.get("model", "")
-                print(f"🤖 使用模型: {selected_model}")
-                
-                client = _resolve_deepseek_client_cls()(
-                    api_key=api_key,
-                    base_url=_sanitize(api_config.get("base_url", "")),
-                    model=selected_model,
-                )
+                print(f"🤖 使用模型: {api_config.get('model', '')}")
+                client = self._create_generation_client(api_config)
                 
                 total_sections = len(self.parsed_sections)
                 current_idx = start_index
+
                 for idx in range(start_index, total_sections):
                     current_idx = idx
                     # 更新选择器
                     self._ui(self.section_selector.current, idx)
                     
-                    # 生成当前章节
-                    result = self._do_generate_section(client, query, contexts, idx, existing_chapter_policy="replace")
+                    # 自动模式：跳过所有弹窗（总览/预览/重生成策略）
+                    result = self._do_generate_section(client, query, contexts, idx, existing_chapter_policy="replace", skip_dialog=True)
                     if result == "preview_discard":
                         self._ui(self.output.insert, END, "\n⏹️ 已在预览阶段取消，自动生成已停止。\n")
                         self._ui(self.output.see, END)

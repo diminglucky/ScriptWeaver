@@ -5,6 +5,7 @@ Extracted from outline_section_generate_mixin.py to reduce file size.
 
 from tkinter import END, messagebox, scrolledtext
 import hashlib, logging, os, re, threading
+from typing import Optional
 import tkinter as tk
 from pathlib import Path
 
@@ -13,19 +14,12 @@ try:
 except Exception:
     def load_dotenv(*a, **k): return False
 
-from src.clients.deepseek_client import DeepSeekClient
 from src.utils.text import sanitize as _sanitize
 from src.gui.helpers.story_quality import extract_last_sentence, strip_duplicate_lines
+from src.gui.helpers.story_feedback_dialog import show_story_feedback_dialog
+from src.gui.mixins.story_modules.story_infra import resolve_deepseek_client_cls as _resolve_deepseek_client_cls
 
 logger = logging.getLogger(__name__)
-
-def _resolve_deepseek_client_cls():
-    try:
-        from . import outline_generator as m
-        p = getattr(m, "DeepSeekClient", None)
-        if p is not None: return p
-    except Exception: pass
-    return DeepSeekClient
 
 class OutlineOverviewMixin:
     """Global story overview + section overview."""
@@ -237,42 +231,33 @@ class OutlineOverviewMixin:
     @staticmethod
     def _build_global_overview_detail_constraints(detail_level: str, chapter_count: int) -> tuple[str, int]:
         if detail_level == "brief":
-            min_rows = max(4, chapter_count)
+            n = max(3, chapter_count)
             return (
-                "详细度：简版（强调速度）。\n"
-                "- 「全书故事总览（从开篇到结局）」写 1 段（180-280 字），必须包含开端/升级/反转/结局；\n"
-                "- 「三幕推进」至少 3 条；\n"
-                f"- 「逐章剧情总览」至少 {min_rows} 条，尽量按章节对应；\n"
-                "- 每条写明：本章发生什么 + 人物关系变化 + 章节结尾悬念；\n"
-                "- 「写作守则（精简）」不超过 4 条，避免大段规则清单。",
-                1200,
+                "要求：简洁版。\n"
+                "- 「整体故事线」1段（200~350字），完整交代起因、发展、转折、结局；\n"
+                f"- 「逐章剧情」{n}条，每条 80~120 字，写清本章具体发生了什么事、人物关系变化和悬念；\n"
+                "- 「人物弧线」主角各 1~2 句；\n"
+                "- 「高潮与结局」3~4 句。",
+                max(1200, 200 * n),
             )
         if detail_level == "rich":
-            min_rows = max(8, chapter_count)
+            n = max(6, chapter_count)
             return (
-                "详细度：深度版（强调完整叙事与执行性）。\n"
-                "- 「全书故事总览（从开篇到结局）」写 2-4 段（360-700 字），像真正故事梗概，必须看到完整结局；\n"
-                "- 「三幕推进」至少 6 条（起势/中段反压/终局决断分开写）；\n"
-                f"- 「逐章剧情总览」至少 {min_rows} 条，尽量与章节一一对应；\n"
-                "- 每条必须包含：场景锚点 / 本章事件 / 关系变化 / 冲突代价 / 结尾钩子；\n"
-                "- 「人物弧线与关系变化」至少 6 条，写清“前态->触发->后态”；\n"
-                "- 「高潮与结局设计」至少 3 条，必须说明最终真相、关键抉择、情感落点；\n"
-                "- 「伏笔与回收映射」至少 6 条，写明埋点章次与回收章次；\n"
-                "- 「写作守则（精简）」最多 6 条，避免输出泛化口号。",
-                2600,
+                "要求：详细版。\n"
+                "- 「整体故事线」2~3段（400~600字），像小说梗概一样完整叙述从开篇到结局的故事；\n"
+                f"- 「逐章剧情」{n}条，每条 150~250 字，必须包含：具体场景描写、核心事件经过、人物对话/冲突细节、关系转折点、章末悬念；\n"
+                "- 「人物弧线」每个主要角色 3~4 句，写清性格/立场/关系变化轨迹；\n"
+                "- 「高潮与结局」4~6 句，写清最终冲突的具体场景、人物抉择和情感结果。",
+                max(2400, 300 * n),
             )
-        min_rows = max(6, chapter_count)
+        n = max(4, chapter_count)
         return (
-            "详细度：详细版（推荐）。\n"
-            "- 「全书故事总览（从开篇到结局）」写 2-3 段（260-520 字），完整交代主线走向与结局；\n"
-            "- 「三幕推进」至少 4 条；\n"
-            f"- 「逐章剧情总览」至少 {min_rows} 条，尽量与章节一一对应；\n"
-            "- 每条必须包含：场景锚点 / 本章事件 / 关系变化 / 结尾钩子；\n"
-            "- 「人物弧线与关系变化」至少 5 条，写清关系变化方向；\n"
-            "- 「高潮与结局设计」至少 2 条，避免结尾悬空；\n"
-            "- 「伏笔与回收映射」至少 4 条，避免后文悬空；\n"
-            "- 「写作守则（精简）」最多 5 条，使用明确可执行语句。",
-            1900,
+            "要求：标准版。\n"
+            "- 「整体故事线」1~2段（300~500字），像讲故事一样完整交代起因、发展、高潮、结局；\n"
+            f"- 「逐章剧情」{n}条，每条 100~180 字，必须写清：本章发生了什么具体事件（在哪里、谁做了什么）、人物之间的关键对话或冲突、关系如何变化、章末留下什么悬念；\n"
+            "- 「人物弧线」每个主要角色 2~3 句，写清性格和关系的变化方向；\n"
+            "- 「高潮与结局」3~5 句，写清最终冲突的具体场景和结果。",
+            max(1800, 250 * n),
         )
 
     @staticmethod
@@ -287,7 +272,7 @@ class OutlineOverviewMixin:
             return (
                 "输出 10-14 条短句（每条 24-65 字）。\n"
                 "必须覆盖：场景锚点、人物目标、障碍来源、关键动作、对话张力、心理波动、细节意象、结尾钩子。\n"
-                "至少给出 2 个“可直接写入正文”的关键句（动作或台词），以保证落地写作。",
+                "至少给出 2 个\u201c可直接写入正文\u201d的关键句（动作或台词），以保证落地写作。",
                 1700,
             )
         return (
@@ -349,7 +334,7 @@ class OutlineOverviewMixin:
         requirement: str,
         category: str,
         previous_content: str,
-        section_points: list[str] | None = None,
+        section_points: Optional[list] = None,
     ) -> str:
         """Build editable section overview fallback for connection failures."""
         prev_tail = extract_last_sentence(previous_content or "", max_chars=120)
@@ -373,42 +358,50 @@ class OutlineOverviewMixin:
             "10. 一致性提醒：本章不改人设、不改规则，所有转折都由前文线索触发。"
         )
 
+    def _strip_html_from_error(self, text: str) -> str:
+        """Strip HTML tags from error messages (e.g. 502 Bad Gateway responses)."""
+        import re as _re
+        cleaned = _re.sub(r"<[^>]+>", " ", str(text or ""))
+        cleaned = _re.sub(r"\s+", " ", cleaned).strip()
+        return cleaned[:200] if cleaned else text[:200]
+
     def on_generate_story_overview(self) -> None:
-        """生成/编辑全书总览（供后续章节强约束使用）。"""
+        """查看/生成全书总览。已有缓存时直接展示，无缓存时才调用 API 生成。"""
         requirement = self._get_prompt_content()
         if not requirement:
             messagebox.showwarning("提示", "请先输入创作需求/主题")
             return
 
-        fallback_provider = None
-        if hasattr(self, "story_gen_api"):
-            fallback_provider = self.story_gen_api.get()
-        if not fallback_provider and hasattr(self, "quick_story_api"):
-            fallback_provider = self.quick_story_api.get()
-        if not fallback_provider and hasattr(self, "api_preset"):
-            fallback_provider = self.api_preset.get()
+        category = self.category.get() if hasattr(self, "category") else ""
+        outline_text = self.current_outline or ""
 
-        fallback_model = None
-        if hasattr(self, "story_model_var"):
-            fallback_model = self.story_model_var.get()
-        elif hasattr(self, "model"):
-            fallback_model = self.model.get()
-
-        api_config = self._resolve_task_api(
-            "story_generate",
-            fallback_provider=fallback_provider,
-            fallback_model=fallback_model,
+        # ---------- 有缓存且未过期 → 直接弹窗查看/编辑，不调 API ----------
+        cached = self._get_story_global_overview_text()
+        expected_sig = self._build_story_global_overview_signature(
+            requirement=requirement, category=category, outline_text=outline_text,
         )
-        selected_api = api_config.get("provider", "")
+        current_sig = str(getattr(self, "story_global_overview_signature", "") or "").strip()
+        is_fresh = bool(cached) and current_sig == expected_sig
+
+        if is_fresh:
+            self._show_cached_overview_dialog(
+                cached_text=cached,
+                requirement=requirement,
+                category=category,
+                outline_text=outline_text,
+                expected_sig=expected_sig,
+            )
+            return
+
+        # ---------- 无缓存或已过期 → 后台生成再弹窗 ----------
+        api_config = self._resolve_generation_api_config("story_generate")
         api_key = _sanitize(api_config.get("key", ""))
         if not api_key:
-            messagebox.showwarning("提示", f"API Key 为空，请在'基础 API 配置'中为 {selected_api} 填写后保存")
+            messagebox.showwarning("提示", f"API Key 为空，请在'基础 API 配置'中为 {api_config.get('provider', '')} 填写后保存")
             return
 
         selected_model = api_config.get("model", "")
-        category = self.category.get() if hasattr(self, "category") else ""
         top_k = self.top_k.get() if hasattr(self, "top_k") else 6
-        outline_text = self.current_outline or ""
         model_only = bool(self.model_only.get()) if hasattr(self, "model_only") else True
         index_dir_value = self.index_dir.get() if hasattr(self, "index_dir") else ""
         index_exists = bool(index_dir_value) and (Path(index_dir_value) / "kb.index").exists()
@@ -458,12 +451,14 @@ class OutlineOverviewMixin:
                         self._ui(self.update_header_status, "总览未更新", "↩️")
                     return
                 if overview_text:
-                    self._set_story_global_overview_text(overview_text, autosave=True)
+                    self._set_story_global_overview_text(overview_text, autosave=True,
+                                                         signature=expected_sig)
                 self._ui(self.status.set, "全书总览已确认")
                 if hasattr(self, "update_header_status"):
                     self._ui(self.update_header_status, "全书总览已确认", "✅")
             except Exception as e:
-                brief = _sanitize(str(e)) or e.__class__.__name__
+                raw = _sanitize(str(e)) or e.__class__.__name__
+                brief = self._strip_html_from_error(raw)
                 self._ui(messagebox.showerror, "错误", f"生成全书总览失败：{brief}")
                 self._ui(self.status.set, "全书总览生成失败")
                 if hasattr(self, "update_header_status"):
@@ -472,6 +467,48 @@ class OutlineOverviewMixin:
                 self._ui(self.set_busy, False)
 
         threading.Thread(target=task, daemon=True).start()
+
+    def _show_cached_overview_dialog(
+        self,
+        *,
+        cached_text: str,
+        requirement: str,
+        category: str,
+        outline_text: str,
+        expected_sig: str,
+    ) -> None:
+        """直接展示已缓存的总览，支持编辑保存，无需 API 调用。"""
+
+        def _on_dialog_done(action: str, text: str) -> None:
+            if action == "accept" and text:
+                self._set_story_global_overview_text(text, autosave=True,
+                                                     signature=expected_sig)
+                if hasattr(self, "status"):
+                    self.status.set("全书总览已更新")
+                if hasattr(self, "update_header_status"):
+                    self.update_header_status("全书总览已更新", "✅")
+
+        action, text = show_story_feedback_dialog(
+            self,
+            title="全书总览",
+            header_text="\U0001f9ed 全书故事情节总览",
+            subtitle_text="这是已确认的总览。可直接编辑后保存，或点取消不改动。",
+            initial_content=cached_text,
+            default_status="当前为已保存版本，可直接编辑。",
+            geometry="980x760",
+            min_size=(780, 580),
+            accept_label="\u2705 保存修改",
+            discard_label="\u274c 关闭",
+            regen_label=None,
+            editor_readonly=False,
+            regenerate_fn=None,
+        )
+        _on_dialog_done(action, text)
+
+    def _is_story_fast_mode(self) -> bool:
+        """STORY_FAST_MODE=1 时跳过所有可选步骤（总览/预览/质量评审/记忆提取）。"""
+        raw = str(os.getenv("STORY_FAST_MODE", "0") or "0").strip().lower()
+        return raw in {"1", "true", "yes", "on"}
 
     def _is_story_global_overview_enabled(self) -> bool:
         """Whether to enforce a global story overview before正文生成。"""
@@ -508,7 +545,7 @@ class OutlineOverviewMixin:
         text: str,
         *,
         autosave: bool = False,
-        signature: str | None = None,
+        signature: Optional[str] = None,
     ) -> None:
         self.story_global_overview_text = str(text or "").strip()
         if signature is not None:
@@ -533,8 +570,12 @@ class OutlineOverviewMixin:
         contexts: list[str],
         outline_text: str,
         force_review: bool = False,
+        skip_dialog: bool = False,
     ) -> tuple[str, str]:
-        """确保存在“已确认全书总览”，用于约束后续写作不跑偏。"""
+        """确保存在“已确认全书总览”，用于约束后续写作不跑偏。
+
+        skip_dialog=True 时跳过弹窗自动采用（用于自动批量生成）。
+        """
         current = self._get_story_global_overview_text()
         expected_sig = self._build_story_global_overview_signature(
             requirement=requirement,
@@ -568,6 +609,14 @@ class OutlineOverviewMixin:
             )
         if not initial_text:
             return "accept", current
+
+        if skip_dialog:
+            self._set_story_global_overview_text(
+                initial_text,
+                autosave=False,
+                signature=expected_sig,
+            )
+            return "accept", initial_text
 
         action, overview_text = self._run_modal_ui_call(
             self._show_story_global_overview_dialog,
@@ -603,15 +652,6 @@ class OutlineOverviewMixin:
                 style_value = str(self.style.get() or "").strip()
             except Exception:
                 style_value = ""
-        context_rows: list[str] = []
-        for idx, ctx in enumerate(contexts or []):
-            snippet = str(ctx or "").strip()
-            if not snippet:
-                continue
-            context_rows.append(f"- 资料{idx+1}：{snippet[:280]}")
-            if len(context_rows) >= 5:
-                break
-        contexts_text = "\n".join(context_rows) if context_rows else "- 无"
         outline_clean = str(outline_text or "").strip()
         if not outline_clean:
             outline_clean = "（尚未生成目录，请根据需求自行规划章节推进）"
@@ -633,27 +673,16 @@ class OutlineOverviewMixin:
         temp = max(0.35, min(0.85, temp - 0.05))
 
         prompt = (
-            "你是中文长篇小说总编，请输出“整篇小说总览”。\n"
-            "输出规范：\n"
-            "1) 仅输出总览，不写正文；\n"
-            "2) 按以下固定结构输出：\n"
-            "【全书故事总览（从开篇到结局）】\n"
-            "【三幕推进】\n"
-            "【逐章剧情总览】\n"
-            "【人物弧线与关系变化】\n"
-            "【高潮与结局设计】\n"
-            "【伏笔与回收映射】\n"
-            "【写作守则（精简）】\n"
-            "3) 重点是“整本会发生什么”，不是规则口号；\n"
-            "4) 「逐章剧情总览」必须覆盖到结局章节，每条写清：本章事件+关系变化+章节钩子；\n"
-            "5) 必须与创作需求、题材、目录一致，不能自相矛盾；\n"
-            "6) 避免输出大段“必须/禁止”清单，规则项保持精简。\n\n"
+            "你是中文小说策划，请根据目录和创作需求，输出整篇故事情节总览。\n"
+            "核心要求：\n"
+            "- 像讲故事一样把整个剧情讲清楚，读完后要能知道这本小说从头到尾到底讲了什么；\n"
+            "- 每章剧情必须写具体事件（谁在哪里做了什么），不要用“发生了冲突”“关系变化”等笼统表述；\n"
+            "- 仅输出情节总览，不写正文，不写规则。\n\n"
             f"{detail_constraints}\n\n"
             f"创作需求：{requirement}\n"
             f"题材：{category}\n"
             f"风格：{style_value or '自动匹配'}\n\n"
-            f"当前目录：\n{outline_clean}\n\n"
-            f"参考资料：\n{contexts_text}\n"
+            f"目录：\n{outline_clean}\n"
         )
         text, error = self._chat_with_retry_and_token_fallback(
             client=client,
@@ -664,14 +693,6 @@ class OutlineOverviewMixin:
         )
         if text:
             cleaned = strip_duplicate_lines(text)
-            cleaned = self._rewrite_story_global_overview_if_too_generic(
-                client=client,
-                requirement=requirement,
-                category=category,
-                outline_text=outline_text,
-                current_text=cleaned,
-                max_tokens=max_tokens,
-            )
             self._story_global_overview_last_source = "ai"
             return cleaned
         if error and self._is_connection_like_error(error):
@@ -749,14 +770,6 @@ class OutlineOverviewMixin:
         if not rewritten:
             return current
         rewritten = strip_duplicate_lines(rewritten)
-        rewritten = self._rewrite_story_global_overview_if_too_generic(
-            client=client,
-            requirement=requirement,
-            category=category,
-            outline_text=outline_text,
-            current_text=rewritten,
-            max_tokens=regen_max_tokens,
-        )
         if rewritten:
             self._story_global_overview_last_source = "ai"
         return rewritten or current
@@ -773,201 +786,37 @@ class OutlineOverviewMixin:
     ) -> tuple[str, str]:
         """显示全书总览确认弹窗，支持反复反馈重生成。"""
         _ = contexts
-        result = {"action": "discard", "content": str(initial_text or "").strip()}
-        dialog = tk.Toplevel(self)
-        dialog.title("全书总览确认")
-        dialog.geometry("980x760")
-        dialog.minsize(780, 580)
-
-        header = tk.Frame(dialog, bg="#f5f5f5")
-        header.pack(fill="x", padx=12, pady=(12, 8))
-        tk.Label(
-            header,
-            text="🧭 全书总览（从开篇到结局，后续章节按此推进）",
-            bg="#f5f5f5",
-            fg="#1f2937",
-            font=("", 13, "bold"),
-            anchor="w",
-        ).pack(fill="x")
-        tk.Label(
-            header,
-            text="先确认整本故事会怎么发展、怎么收束；可直接改文案或反馈后重生成。",
-            bg="#f5f5f5",
-            fg="#4b5563",
-            anchor="w",
-        ).pack(fill="x", pady=(4, 0))
-
-        editor = scrolledtext.ScrolledText(
-            dialog,
-            wrap="word",
-            font=("", 12),
-            bg="#ffffff",
-            fg="#111827",
-            insertbackground="#111827",
-            relief=tk.FLAT,
-        )
-        editor.pack(fill="both", expand=True, padx=12, pady=(0, 8))
-        editor.insert("1.0", result["content"])
-
-        feedback_frame = tk.Frame(dialog, bg="#f5f5f5")
-        feedback_frame.pack(fill="x", padx=12, pady=(0, 6))
-        tk.Label(
-            feedback_frame,
-            text="修改意见：",
-            bg="#f5f5f5",
-            fg="#1f2937",
-            font=("", 10, "bold"),
-            anchor="w",
-        ).pack(anchor="w", pady=(0, 4))
-        feedback_box = scrolledtext.ScrolledText(
-            feedback_frame,
-            wrap="word",
-            height=4,
-            font=("", 11),
-            bg="#ffffff",
-            fg="#111827",
-            insertbackground="#111827",
-            relief=tk.FLAT,
-        )
-        feedback_box.pack(fill="x")
 
         initial_source = str(getattr(self, "_story_global_overview_last_source", "ai") or "ai").strip().lower()
         default_status = "可多次重生成，直到你认可这个全书总览。"
         if initial_source == "fallback":
             default_status = "⚠️ 当前是本地应急草案（网络异常），内容可能偏泛。建议重生成到AI版本后再采用。"
-        status_var = tk.StringVar(value=default_status)
-        tk.Label(
-            dialog,
-            textvariable=status_var,
-            bg="#f5f5f5",
-            fg="#4b5563",
-            anchor="w",
-        ).pack(fill="x", padx=12, pady=(0, 8))
 
-        action_row = tk.Frame(dialog, bg="#f5f5f5")
-        action_row.pack(fill="x", padx=12, pady=(0, 12))
-        busy = {"flag": False}
-        regen_round = {"count": 0}
-
-        def _set_busy(flag: bool, message: str = "") -> None:
-            busy["flag"] = flag
-            state = tk.DISABLED if flag else tk.NORMAL
-            btn_apply.configure(state=state)
-            btn_discard.configure(state=state)
-            btn_regen.configure(state=state)
-            if message:
-                status_var.set(message)
-
-        def _accept():
-            if busy["flag"]:
-                return
-            merged = str(editor.get("1.0", "end-1c") or "").strip()
-            if not merged:
-                messagebox.showwarning("提示", "总览为空，请先生成或补充后再采用。")
-                return
-            result["action"] = "accept"
-            result["content"] = merged
-            dialog.destroy()
-
-        def _discard():
-            if busy["flag"]:
-                return
-            result["action"] = "discard"
-            dialog.destroy()
-
-        def _regenerate():
-            if busy["flag"]:
-                return
-            current = str(editor.get("1.0", "end-1c") or "").strip()
-            if not current:
-                messagebox.showwarning("提示", "当前总览为空，无法重生成。")
-                return
-            feedback = str(feedback_box.get("1.0", "end-1c") or "").strip()
-            _set_busy(
-                True,
-                "正在根据你的意见重生成全书总览..." if feedback else "正在重生成一个新总览版本...",
+        def _regen(current_text: str, feedback: str) -> str:
+            return self._regenerate_story_global_overview_with_feedback(
+                client=client,
+                requirement=requirement,
+                category=category,
+                outline_text=outline_text,
+                current_text=current_text,
+                feedback=feedback,
             )
 
-            def _worker():
-                err = ""
-                rewritten = current
-                try:
-                    rewritten = self._regenerate_story_global_overview_with_feedback(
-                        client=client,
-                        requirement=requirement,
-                        category=category,
-                        outline_text=outline_text,
-                        current_text=current,
-                        feedback=feedback,
-                    )
-                except Exception as exc:
-                    err = _sanitize(str(exc)) or exc.__class__.__name__
-
-                def _finish():
-                    _set_busy(False)
-                    if err:
-                        status_var.set(f"重生成失败：{err}")
-                        messagebox.showerror("重生成失败", err)
-                        return
-                    merged = str(rewritten or "").strip()
-                    if not merged:
-                        status_var.set("重生成结果为空，已保留原总览。")
-                        return
-                    regen_round["count"] += 1
-                    editor.delete("1.0", "end")
-                    editor.insert("1.0", merged)
-                    source = str(getattr(self, "_story_global_overview_last_source", "ai") or "ai").strip().lower()
-                    if source == "fallback":
-                        status_var.set("⚠️ 网络仍不稳定，当前仍是应急草案。建议稍后继续重生成获取AI版本。")
-                    else:
-                        status_var.set(f"已生成第 {regen_round['count']} 个总览版本，可继续调整或直接采用。")
-
-                dialog.after(0, _finish)
-
-            threading.Thread(target=_worker, daemon=True).start()
-
-        btn_apply = tk.Button(
-            action_row,
-            text="✅ 采用总览",
-            command=_accept,
-            bg="#16a34a",
-            fg="#ffffff",
-            relief=tk.FLAT,
-            padx=16,
-            pady=8,
-            cursor="hand2",
+        return show_story_feedback_dialog(
+            self,
+            title="全书总览确认",
+            header_text="🧭 全书总览（从开篇到结局，后续章节按此推进）",
+            subtitle_text="先确认整本故事会怎么发展、怎么收束；可直接改文案或反馈后重生成。",
+            initial_content=initial_text,
+            default_status=default_status,
+            geometry="980x760",
+            min_size=(780, 580),
+            accept_label="✅ 采用总览",
+            discard_label="❌ 取消",
+            regen_label="🔄 重生成总览（可多次）",
+            editor_readonly=False,
+            regenerate_fn=_regen,
         )
-        btn_apply.pack(side="right")
-        btn_discard = tk.Button(
-            action_row,
-            text="❌ 取消",
-            command=_discard,
-            bg="#6b7280",
-            fg="#ffffff",
-            relief=tk.FLAT,
-            padx=16,
-            pady=8,
-            cursor="hand2",
-        )
-        btn_discard.pack(side="right", padx=(0, 10))
-        btn_regen = tk.Button(
-            action_row,
-            text="🔄 重生成总览（可多次）",
-            command=_regenerate,
-            bg="#2563eb",
-            fg="#ffffff",
-            relief=tk.FLAT,
-            padx=16,
-            pady=8,
-            cursor="hand2",
-        )
-        btn_regen.pack(side="right", padx=(0, 10))
-
-        dialog.protocol("WM_DELETE_WINDOW", _discard)
-        dialog.transient(self)
-        dialog.grab_set()
-        self.wait_window(dialog)
-        return str(result.get("action", "discard")), str(result.get("content", "") or "").strip()
 
     def _is_story_overview_before_generate_enabled(self) -> bool:
         """Whether to generate a chapter overview before正文写作。"""
@@ -991,8 +840,14 @@ class OutlineOverviewMixin:
         contexts: list[str],
         category: str,
         previous_content: str,
+        skip_dialog: bool = False,
     ) -> tuple[str, str]:
-        """先生成章节总览，允许用户反馈改写后再进入正文。"""
+        """先生成章节总览，允许用户反馈改写后再进入正文。
+
+        skip_dialog=True 时跳过弹窗自动采用（用于自动批量生成）。
+        """
+        if self._is_story_fast_mode():
+            return "accept", ""
         if not self._is_story_overview_before_generate_enabled():
             return "accept", ""
         if client is None or not hasattr(client, "chat"):
@@ -1022,6 +877,9 @@ class OutlineOverviewMixin:
 
         if not overview:
             return "accept", ""
+
+        if skip_dialog:
+            return "accept", overview
 
         return self._run_modal_ui_call(
             self._show_section_overview_dialog,
@@ -1185,197 +1043,34 @@ class OutlineOverviewMixin:
     ) -> tuple[str, str]:
         """章节总览确认弹窗：可多次反馈改写后再进入正文。"""
         _ = contexts
-        result = {"action": "discard", "content": str(initial_overview or "").strip()}
+        section_title = str(section.get("title", "") or "未命名章节")
 
-        dialog = tk.Toplevel(self)
-        dialog.title(f"章节总览确认 - 第 {section_index + 1}/{total_sections} 章")
-        dialog.geometry("960x720")
-        dialog.minsize(760, 560)
-
-        header = tk.Frame(dialog, bg="#f5f5f5")
-        header.pack(fill="x", padx=12, pady=(12, 8))
-        tk.Label(
-            header,
-            text=f"《{str(section.get('title', '') or '未命名章节')}》总览草案",
-            bg="#f5f5f5",
-            fg="#1f2937",
-            font=("", 13, "bold"),
-            anchor="w",
-        ).pack(fill="x")
-        tk.Label(
-            header,
-            text="先确认总览，再开始本章正文生成。你可以写意见并反复重生成。",
-            bg="#f5f5f5",
-            fg="#4b5563",
-            anchor="w",
-        ).pack(fill="x", pady=(4, 0))
-
-        overview_box = scrolledtext.ScrolledText(
-            dialog,
-            wrap="word",
-            height=16,
-            font=("", 12),
-            bg="#ffffff",
-            fg="#111827",
-            insertbackground="#111827",
-            relief=tk.FLAT,
-        )
-        overview_box.pack(fill="both", expand=True, padx=12, pady=(0, 8))
-        overview_box.insert("1.0", result["content"])
-
-        feedback_frame = tk.Frame(dialog, bg="#f5f5f5")
-        feedback_frame.pack(fill="x", padx=12, pady=(0, 6))
-        tk.Label(
-            feedback_frame,
-            text="你的修改意见：",
-            bg="#f5f5f5",
-            fg="#1f2937",
-            font=("", 10, "bold"),
-            anchor="w",
-        ).pack(anchor="w", pady=(0, 4))
-        feedback_box = scrolledtext.ScrolledText(
-            feedback_frame,
-            wrap="word",
-            height=4,
-            font=("", 11),
-            bg="#ffffff",
-            fg="#111827",
-            insertbackground="#111827",
-            relief=tk.FLAT,
-        )
-        feedback_box.pack(fill="x")
-
-        status_var = tk.StringVar(value="可反复重生成总览，满意后再进入正文。")
-        tk.Label(
-            dialog,
-            textvariable=status_var,
-            bg="#f5f5f5",
-            fg="#4b5563",
-            anchor="w",
-        ).pack(fill="x", padx=12, pady=(0, 8))
-
-        action_row = tk.Frame(dialog, bg="#f5f5f5")
-        action_row.pack(fill="x", padx=12, pady=(0, 12))
-        busy = {"flag": False}
-        regen_round = {"count": 0}
-
-        def _set_busy(flag: bool, message: str = "") -> None:
-            busy["flag"] = flag
-            state = tk.DISABLED if flag else tk.NORMAL
-            btn_apply.configure(state=state)
-            btn_discard.configure(state=state)
-            btn_regen.configure(state=state)
-            if message:
-                status_var.set(message)
-
-        def _accept():
-            if busy["flag"]:
-                return
-            merged = str(overview_box.get("1.0", "end-1c") or "").strip()
-            if not merged:
-                messagebox.showwarning("提示", "总览为空，请先生成或补充后再采用。")
-                return
-            result["action"] = "accept"
-            result["content"] = merged
-            dialog.destroy()
-
-        def _discard():
-            if busy["flag"]:
-                return
-            result["action"] = "discard"
-            dialog.destroy()
-
-        def _regenerate():
-            if busy["flag"]:
-                return
-            current_overview = str(overview_box.get("1.0", "end-1c") or "").strip()
-            if not current_overview:
-                messagebox.showwarning("提示", "当前总览为空，无法重生成。")
-                return
-            feedback = str(feedback_box.get("1.0", "end-1c") or "").strip()
-            _set_busy(
-                True,
-                "正在根据你的意见重生成总览..." if feedback else "正在重生成一个新版本总览...",
+        def _regen(current_text: str, feedback: str) -> str:
+            return self._regenerate_section_overview_with_feedback(
+                client=client,
+                section_index=section_index,
+                total_sections=total_sections,
+                section_title=section_title,
+                requirement=requirement,
+                category=category,
+                previous_content=previous_content,
+                current_overview=current_text,
+                feedback=feedback,
             )
 
-            def _worker():
-                err = ""
-                new_text = current_overview
-                try:
-                    new_text = self._regenerate_section_overview_with_feedback(
-                        client=client,
-                        section_index=section_index,
-                        total_sections=total_sections,
-                        section_title=str(section.get("title", "") or ""),
-                        requirement=requirement,
-                        category=category,
-                        previous_content=previous_content,
-                        current_overview=current_overview,
-                        feedback=feedback,
-                    )
-                except Exception as exc:
-                    err = _sanitize(str(exc)) or exc.__class__.__name__
-
-                def _finish():
-                    _set_busy(False)
-                    if err:
-                        status_var.set(f"重生成失败：{err}")
-                        messagebox.showerror("重生成失败", err)
-                        return
-                    merged = str(new_text or "").strip()
-                    if not merged:
-                        status_var.set("重生成结果为空，已保留原总览。")
-                        return
-                    regen_round["count"] += 1
-                    overview_box.delete("1.0", "end")
-                    overview_box.insert("1.0", merged)
-                    status_var.set(f"已生成第 {regen_round['count']} 个新总览版本，可继续调整或直接采用。")
-
-                dialog.after(0, _finish)
-
-            threading.Thread(target=_worker, daemon=True).start()
-
-        btn_apply = tk.Button(
-            action_row,
-            text="✅ 采用总览并开始生成正文",
-            command=_accept,
-            bg="#16a34a",
-            fg="#ffffff",
-            relief=tk.FLAT,
-            padx=16,
-            pady=8,
-            cursor="hand2",
+        return show_story_feedback_dialog(
+            self,
+            title=f"章节总览确认 - 第 {section_index + 1}/{total_sections} 章",
+            header_text=f"《{section_title}》总览草案",
+            subtitle_text="先确认总览，再开始本章正文生成。你可以写意见并反复重生成。",
+            initial_content=initial_overview,
+            default_status="可反复重生成总览，满意后再进入正文。",
+            geometry="960x720",
+            accept_label="✅ 采用总览并开始生成正文",
+            discard_label="❌ 取消本章生成",
+            regen_label="🔄 重生成总览（可多次）",
+            editor_readonly=False,
+            regenerate_fn=_regen,
         )
-        btn_apply.pack(side="right")
-        btn_discard = tk.Button(
-            action_row,
-            text="❌ 取消本章生成",
-            command=_discard,
-            bg="#6b7280",
-            fg="#ffffff",
-            relief=tk.FLAT,
-            padx=16,
-            pady=8,
-            cursor="hand2",
-        )
-        btn_discard.pack(side="right", padx=(0, 10))
-        btn_regen = tk.Button(
-            action_row,
-            text="🔄 重生成总览（可多次）",
-            command=_regenerate,
-            bg="#2563eb",
-            fg="#ffffff",
-            relief=tk.FLAT,
-            padx=16,
-            pady=8,
-            cursor="hand2",
-        )
-        btn_regen.pack(side="right", padx=(0, 10))
-
-        dialog.protocol("WM_DELETE_WINDOW", _discard)
-        dialog.transient(self)
-        dialog.grab_set()
-        self.wait_window(dialog)
-        return str(result.get("action", "discard")), str(result.get("content", "") or "").strip()
 
 
