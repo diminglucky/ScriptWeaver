@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from ...helpers.story_creativity import build_story_creativity_block
+from ...helpers.story_quality import extract_last_sentence
 from ...helpers.story_pipeline_profile import (
     build_emotion_arc_guidelines,
     build_section_transition_guidelines,
@@ -224,20 +225,29 @@ class StoryPromptGenerationMixin:
         section_title = section["title"]
         section_items = "\n".join(f"  - {item}" for item in section["items"]) if section["items"] else ""
         context_hint = ""
-        prev_window = min(2400, max(800, target_chars_per_section))
+        prev_window = min(3200, max(1200, int(target_chars_per_section * 1.2)))
         if section_index == 0:
             context_hint = "这是故事的开篇部分，需要在前两段内建立场景、主角出场、核心冲突信号。"
-        elif section_index == total_sections - 1:
-            context_hint = (
-                f"这是故事的最后部分（第{section_index+1}/{total_sections}章），必须收束全部主线，"
-                "呼应开篇悬念，给出情感落点。\n\n"
-                f"前文最后片段：\n{previous_content[-prev_window:] if previous_content else '无'}"
-            )
         else:
-            context_hint = (
-                f"这是故事的第 {section_index + 1}/{total_sections} 部分，"
-                "必须承接上章结尾的动作/情绪继续推进，禁止重复上章已写过的事件。\n\n"
-                f"前文最后片段：\n{previous_content[-prev_window:] if previous_content else '无'}"
+            # 提取上章结尾关键句，强化衔接
+            last_sentence = extract_last_sentence(previous_content or "", max_chars=300)
+            if section_index == total_sections - 1:
+                context_hint = (
+                    f"这是故事的最后部分（第{section_index+1}/{total_sections}章），必须收束全部主线，"
+                    "呼应开篇悬念，给出情感落点。\n\n"
+                )
+            else:
+                context_hint = (
+                    f"这是故事的第 {section_index + 1}/{total_sections} 部分。\n\n"
+                )
+            context_hint += (
+                f"【上章结尾原文（必须衔接）】\n{last_sentence}\n\n"
+                "⚠️ 衔接硬性要求：\n"
+                "1. 本章开头的第一段必须紧接上章结尾的场景/动作/情绪，仿佛读者翻页后立刻看到下文；\n"
+                "2. 禁止重复上章结尾已描写的事件或对话；\n"
+                "3. 保持时间线、地点、人物状态的连续性——上章结尾人物在做什么，本章开头就从那一刻继续；\n"
+                "4. 不要用'第二天'/'后来'等大幅跳跃开头，除非蓝图明确要求时间跳跃。\n\n"
+                f"前文参考片段（最后{prev_window}字）：\n{previous_content[-prev_window:] if previous_content else '无'}"
             )
         transition_context = self._build_section_transition_context(section_index, previous_content)
         if transition_context:
@@ -269,9 +279,19 @@ class StoryPromptGenerationMixin:
         )
         overview_plan_part = ""
         if section_overview_plan and str(section_overview_plan).strip():
+            # 在蓝图中追加上章实际结尾，确保 AI 同时看到蓝图规划和真实上文
+            actual_tail_note = ""
+            if section_index > 0 and previous_content:
+                actual_tail = extract_last_sentence(previous_content, max_chars=300)
+                if actual_tail:
+                    actual_tail_note = (
+                        f"\n\n⚠️ 注意：上章实际写出的结尾如下（必须从此处接续，蓝图中的【承接上章】仅供参考）：\n"
+                        f"{actual_tail}"
+                    )
             overview_plan_part = (
                 "【已确认章节总览（必须遵循）】\n"
-                f"{str(section_overview_plan).strip()}\n\n"
+                f"{str(section_overview_plan).strip()}"
+                f"{actual_tail_note}\n\n"
             )
         return (
             f"{section_intro}\n\n"
@@ -298,5 +318,9 @@ class StoryPromptGenerationMixin:
             f"{section_reminder}\n"
             f"主题/需求：{requirement}\n\n"
             + (f"【参考资料】\n{ctx}\n" if ctx else "")
+            + (
+                f"⚠️ 最终衔接指令：本章第一段必须从上章结尾的那一刻紧接着写，不得跳跃或重复。\n\n"
+                if section_index > 0 else ""
+            )
             + "请直接开始写正文，不要任何前缀或标题："
         )

@@ -230,7 +230,6 @@ class OutlineSectionGenerateMixin:
         fast = hasattr(self, '_is_story_fast_mode') and self._is_story_fast_mode()
         quality_enabled = (not fast) and self._is_story_quality_review_enabled()
 
-        # 末尾修复、衔接修复、记忆提取仅在质量评审开启时执行，避免额外 API 调用
         need_tail = quality_enabled and not self._is_section_tail_complete(section_content)
         need_transition = quality_enabled and section_index > 0
         include_memory = include_memory and quality_enabled
@@ -269,10 +268,21 @@ class OutlineSectionGenerateMixin:
                 section_content=section_content,
             ) if include_memory else None
 
-            tail_patch = ft_tail.result() if ft_tail else ""
-            transition_result = ft_transition.result() if ft_transition else section_content
-            review = ft_review.result() if ft_review else None
-            memory_entry = ft_memory.result() if ft_memory else None
+            _REPAIR_TIMEOUT = 45  # 单个后处理任务最多等 45 秒
+
+            def _safe_result(ft, default, label: str = ""):
+                if ft is None:
+                    return default
+                try:
+                    return ft.result(timeout=_REPAIR_TIMEOUT)
+                except Exception as exc:
+                    logger.warning("post-stream %s timed out or failed: %s", label, str(exc)[:60])
+                    return default
+
+            tail_patch = _safe_result(ft_tail, "", "tail_repair")
+            transition_result = _safe_result(ft_transition, section_content, "transition_repair")
+            review = _safe_result(ft_review, None, "quality_review")
+            memory_entry = _safe_result(ft_memory, None, "memory_extract")
 
         return tail_patch, transition_result, review, memory_entry
 
@@ -296,7 +306,7 @@ class OutlineSectionGenerateMixin:
         """分段生成长文本。返回 True=正常完成，False=中途取消。"""
         total_sections = len(sections)
         target_per_section = int(target_chars / total_sections)
-        
+
         self._ui(self.output.insert, END, f"📖 开始分段生成（共{total_sections}段，目标总字数{target_chars}字）\n\n")
         self._ui(self.output.insert, END, "=" * 50 + "\n\n")
         
@@ -361,30 +371,13 @@ class OutlineSectionGenerateMixin:
             if hasattr(self, '_build_enhanced_system_prompt'):
                 story_system_prompt = self._build_enhanced_system_prompt(story_system_prompt)
             
-            # 流式生成本段（使用缓冲批量更新 UI）
-            section_content = ""
-            _buf = ""
-            _last_t = time.time()
-            for delta in client.stream([
-                {"role": "system", "content": story_system_prompt},
-                {"role": "user", "content": section_prompt},
-            ], temperature=self.temperature.get(), max_tokens=int(target_per_section*2.5)):
-                section_content += delta
-                _buf += delta
-                _now = time.time()
-                if len(_buf) >= self.STREAM_BUFFER_SIZE or (_now - _last_t) >= self.STREAM_FLUSH_INTERVAL:
-                    _text = _buf
-                    _buf = ""
-                    _last_t = _now
-                    def _upd(_t=_text):
-                        self.output.insert(END, _t)
-                        self.output.see(END)
-                    self._ui(_upd)
-            if _buf:
-                def _upd_final(_t=_buf):
-                    self.output.insert(END, _t)
-                    self.output.see(END)
-                self._ui(_upd_final)
+            # 流式生成本段（使用缓冲批量更新 UI + 连接中断自动重试）
+            section_content = self._stream_section_content(
+                client=client,
+                story_system_prompt=story_system_prompt,
+                section_prompt=section_prompt,
+                target_per_section=target_per_section,
+            )
 
             # 并行执行：末尾修复 + 衔接修复 + 质量评审 + 记忆提取
             original_content = section_content
@@ -945,6 +938,9 @@ class OutlineSectionGenerateMixin:
             return self._ui_get(self.output.index, "end-1c")
         return self.output.index("end-1c")
 
+    _STREAM_RETRY_MAX = 2
+    _STREAM_RETRY_DELAY = 1.5
+
     def _stream_section_content(
         self,
         *,
@@ -953,47 +949,87 @@ class OutlineSectionGenerateMixin:
         section_prompt: str,
         target_per_section: int,
     ) -> str:
-        """流式生成单章正文（使用缓冲批量更新 UI，提升 5-10 倍性能）。"""
-        section_content = ""
-        buffer_text = ""
-        last_flush = time.time()
+        """流式生成单章正文（使用缓冲批量更新 UI，提升 5-10 倍性能）。
+
+        包含连接中断自动重试：如果流式传输中途断开，自动重试最多 _STREAM_RETRY_MAX 次。
+        """
         max_tokens = max(1200, min(8192, int(target_per_section * 3.2)))
+        messages = [
+            {"role": "system", "content": story_system_prompt},
+            {"role": "user", "content": section_prompt},
+        ]
+        last_exc: Exception | None = None
 
-        # 使用非阻塞方式更新 UI，后台线程缓冲
-        def flush_buffer(force: bool = False) -> None:
-            nonlocal buffer_text, last_flush
-            now = time.time()
-            elapsed = now - last_flush
-            should_flush = (
-                force
-                or len(buffer_text) >= self.STREAM_BUFFER_SIZE
-                or elapsed >= self.STREAM_FLUSH_INTERVAL
-            )
-            if should_flush and buffer_text:
-                text_to_insert = buffer_text
-                buffer_text = ""
-                last_flush = now
-                # 批量插入 + 滚动（单次 _ui 调用合并操作）
-                def _update():
-                    self.output.insert(END, text_to_insert)
-                    self.output.see(END)
-                self._ui(_update)
+        for attempt in range(self._STREAM_RETRY_MAX):
+            section_content = ""
+            buffer_text = ""
+            last_flush = time.time()
 
-        for delta in client.stream(
-            [
-                {"role": "system", "content": story_system_prompt},
-                {"role": "user", "content": section_prompt},
-            ],
-            temperature=self.temperature.get(),
-            max_tokens=max_tokens,
-        ):
-            section_content += delta
-            buffer_text += delta
-            flush_buffer(force=False)
+            def flush_buffer(force: bool = False) -> None:
+                nonlocal buffer_text, last_flush
+                now = time.time()
+                elapsed = now - last_flush
+                should_flush = (
+                    force
+                    or len(buffer_text) >= self.STREAM_BUFFER_SIZE
+                    or elapsed >= self.STREAM_FLUSH_INTERVAL
+                )
+                if should_flush and buffer_text:
+                    text_to_insert = buffer_text
+                    buffer_text = ""
+                    last_flush = now
+                    def _update():
+                        self.output.insert(END, text_to_insert)
+                        self.output.see(END)
+                    self._ui(_update)
 
-        # 强制刷新剩余内容
-        flush_buffer(force=True)
-        return section_content
+            try:
+                for delta in client.stream(
+                    messages,
+                    temperature=self.temperature.get(),
+                    max_tokens=max_tokens,
+                ):
+                    section_content += delta
+                    buffer_text += delta
+                    flush_buffer(force=False)
+
+                flush_buffer(force=True)
+                return section_content
+            except Exception as exc:
+                last_exc = exc
+                err_text = str(exc).lower()
+                _RETRY_MARKERS = (
+                    "incomplete chunked read", "chunked", "peer closed",
+                    "connection reset", "connection error", "connection aborted",
+                    "timed out", "timeout", "broken pipe", "econnreset",
+                    "temporarily unavailable", "remote protocol",
+                )
+                if not any(m in err_text for m in _RETRY_MARKERS):
+                    raise
+
+                # 连接中断：如果已拿到足够内容（>=60%目标），直接使用
+                if section_content and len(section_content) >= target_per_section * 0.6:
+                    logger.warning("stream interrupted at %d chars (>60%% target), using partial content",
+                                   len(section_content))
+                    flush_buffer(force=True)
+                    return section_content
+
+                if attempt < self._STREAM_RETRY_MAX - 1:
+                    retry_msg = f"流式传输中断，{self._STREAM_RETRY_DELAY}s 后自动重试（{attempt+1}/{self._STREAM_RETRY_MAX-1}）..."
+                    logger.warning("stream interrupted: %s, retrying...", str(exc)[:80])
+                    try:
+                        self._ui(self.status.set, retry_msg)
+                    except Exception:
+                        pass
+                    time.sleep(self._STREAM_RETRY_DELAY)
+                    # 清除之前的半截内容
+                    if section_content:
+                        try:
+                            self._ui(self.output.delete, "end-%dc" % (len(section_content) + 1), "end-1c")
+                        except Exception:
+                            pass
+
+        raise last_exc  # type: ignore[misc]
     
     
     def _auto_generate_all_sections(self, query, contexts, start_index=0):
@@ -1014,22 +1050,53 @@ class OutlineSectionGenerateMixin:
                 total_sections = len(self.parsed_sections)
                 current_idx = start_index
 
+                _PER_CHAPTER_RETRY_MAX = 2
+                _PER_CHAPTER_RETRY_DELAY = 2.0
+
                 for idx in range(start_index, total_sections):
                     current_idx = idx
-                    # 更新选择器
                     self._ui(self.section_selector.current, idx)
                     
-                    # 自动模式：跳过所有弹窗（总览/预览/重生成策略）
-                    result = self._do_generate_section(client, query, contexts, idx, existing_chapter_policy="replace", skip_dialog=True)
-                    if result == "preview_discard":
-                        self._ui(self.output.insert, END, "\n⏹️ 已在预览阶段取消，自动生成已停止。\n")
-                        self._ui(self.output.see, END)
-                        self._ui(self.status.set, "自动生成已停止（预览取消）")
-                        if hasattr(self, 'update_header_status'):
-                            self._ui(self.update_header_status, "自动生成已停止", "⏹️")
-                        return
-                    
-                    # 如果不是最后一章，添加提示
+                    # 单章重试机制：连接中断时自动重试，不中断整条流水线
+                    chapter_ok = False
+                    for ch_attempt in range(_PER_CHAPTER_RETRY_MAX):
+                        try:
+                            result = self._do_generate_section(
+                                client, query, contexts, idx,
+                                existing_chapter_policy="replace",
+                                skip_dialog=True,
+                            )
+                            if result == "preview_discard":
+                                self._ui(self.output.insert, END, "\n⏹️ 已在预览阶段取消，自动生成已停止。\n")
+                                self._ui(self.output.see, END)
+                                self._ui(self.status.set, "自动生成已停止（预览取消）")
+                                if hasattr(self, 'update_header_status'):
+                                    self._ui(self.update_header_status, "自动生成已停止", "⏹️")
+                                return
+                            chapter_ok = True
+                            break
+                        except Exception as ch_exc:
+                            err_lower = str(ch_exc).lower()
+                            _CONN_MARKERS = (
+                                "incomplete chunked", "chunked", "peer closed",
+                                "connection reset", "connection error", "timed out",
+                                "timeout", "broken pipe", "econnreset",
+                            )
+                            is_conn_err = any(m in err_lower for m in _CONN_MARKERS)
+                            if not is_conn_err or ch_attempt >= _PER_CHAPTER_RETRY_MAX - 1:
+                                raise
+                            logger.warning("chapter %d failed (attempt %d): %s, retrying...",
+                                           idx + 1, ch_attempt + 1, str(ch_exc)[:80])
+                            self._ui(self.output.insert, END,
+                                     f"\n⚠️ 第 {idx+1} 章生成中断，{_PER_CHAPTER_RETRY_DELAY}s 后自动重试...\n\n")
+                            self._ui(self.output.see, END)
+                            self._ui(self.status.set,
+                                     f"第 {idx+1} 章连接中断，自动重试中（{ch_attempt+1}/{_PER_CHAPTER_RETRY_MAX-1}）...")
+                            time.sleep(_PER_CHAPTER_RETRY_DELAY)
+
+                    if not chapter_ok:
+                        continue
+
                     if idx < total_sections - 1:
                         self._ui(self.output.insert, END, f"\n\n⏳ 准备生成下一章...\n\n")
                         self._ui(self.output.see, END)

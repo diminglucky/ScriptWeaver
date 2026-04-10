@@ -417,6 +417,14 @@ class StoryUIBuilderMixin(StoryPromptBuilderMixin):
 									  padx=12, pady=10, cursor="hand2",
 									  activebackground="#000000", activeforeground="#ffffff")
 		self.btn_outline.pack(side=LEFT, padx=4)
+		self.btn_blueprint = tk.Button(
+			btn_frame, text="🗺️ 生成蓝图",
+			command=self.generate_chapter_blueprints_async,
+			font=("", 13, "bold"), bg="#000000", fg="#ffffff",
+			relief=tk.FLAT, padx=12, pady=10, cursor="hand2",
+			activebackground="#000000", activeforeground="#ffffff",
+		)
+		self.btn_blueprint.pack(side=LEFT, padx=4)
 		self.btn_generate = tk.Button(btn_frame, text="🚀 生成故事", command=self.on_generate, 
 									   font=("", 13, "bold"), bg="#000000", fg="#ffffff", relief=tk.FLAT, 
 									   padx=12, pady=10, cursor="hand2",

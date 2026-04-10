@@ -44,8 +44,14 @@ def create_compatible_client(
         配置好的 OpenAI 客户端
     """
     http_client = httpx.Client(
-        transport=CustomHTTPTransport(),
-        timeout=timeout
+        transport=CustomHTTPTransport(
+            limits=httpx.Limits(
+                max_connections=20,
+                max_keepalive_connections=10,
+                keepalive_expiry=60,
+            ),
+        ),
+        timeout=httpx.Timeout(timeout, connect=15.0),
     )
     
     return OpenAI(

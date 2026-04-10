@@ -848,6 +848,15 @@ class OutlineOverviewMixin:
         """
         if self._is_story_fast_mode():
             return "accept", ""
+
+        # 优先使用预生成的章节蓝图（跳过 API 调用）
+        if hasattr(self, "_get_chapter_blueprint_for") and self._is_chapter_blueprints_fresh():
+            bp = self._get_chapter_blueprint_for(section_index)
+            if bp:
+                logger.info("chapter %d using cached blueprint (%d chars), skip overview API",
+                            section_index + 1, len(bp))
+                return "accept", bp
+
         if not self._is_story_overview_before_generate_enabled():
             return "accept", ""
         if client is None or not hasattr(client, "chat"):
@@ -1073,4 +1082,281 @@ class OutlineOverviewMixin:
             regenerate_fn=_regen,
         )
 
+    # ── Chapter Blueprint System ─────────────────────────────────
 
+    def _get_chapter_blueprints(self) -> list[dict]:
+        """获取已缓存的章节蓝图列表。"""
+        bps = getattr(self, "chapter_blueprints", [])
+        return bps if isinstance(bps, list) else []
+
+    def _get_chapter_blueprint_for(self, section_index: int) -> str:
+        """获取指定章节的蓝图文本。如果蓝图不存在或已过期，返回空字符串。"""
+        bps = self._get_chapter_blueprints()
+        if section_index < 0 or section_index >= len(bps):
+            return ""
+        bp = bps[section_index]
+        if not isinstance(bp, dict):
+            return ""
+        return str(bp.get("blueprint", "") or "").strip()
+
+    def _is_chapter_blueprints_fresh(self) -> bool:
+        """蓝图是否与当前目录一致（通过签名判断）。"""
+        sig = getattr(self, "_chapter_blueprints_outline_sig", "")
+        outline = str(getattr(self, "current_outline", "") or "").strip()
+        if not sig or not outline:
+            return False
+        return sig == hashlib.md5(outline.encode()).hexdigest()
+
+    def _invalidate_chapter_blueprints(self) -> None:
+        """目录变化时清除蓝图缓存。"""
+        self.chapter_blueprints = []
+        self._chapter_blueprints_outline_sig = ""
+
+    def generate_all_chapter_blueprints(
+        self,
+        *,
+        client,
+        requirement: str,
+        category: str,
+        outline_text: str,
+        sections: list[dict],
+    ) -> list[dict]:
+        """一次 API 调用，批量生成所有章节的详细写作蓝图（每章 ~500 字）。
+
+        蓝图比"总览"详细得多，包含：
+        - 场景走向（在哪里、什么时间、什么氛围）
+        - 核心事件的具体经过（谁做了什么、说了什么）
+        - 人物情绪轨迹（从什么状态到什么状态）
+        - 关键对话的方向（不写原文，写对话要传递的信息）
+        - 与上一章的衔接点
+        - 章末悬念/钩子
+        """
+        n = len(sections)
+        if n == 0:
+            return []
+
+        titles_block = "\n".join(
+            f"第{i+1}章：{s.get('title', '未命名')}" for i, s in enumerate(sections)
+        )
+
+        style_value = ""
+        if hasattr(self, "style"):
+            try:
+                style_value = self.style.get().strip()
+            except Exception:
+                pass
+
+        global_overview = ""
+        if hasattr(self, "_get_story_global_overview_text"):
+            try:
+                global_overview = str(self._get_story_global_overview_text() or "").strip()
+            except Exception:
+                pass
+        overview_block = (
+            f"【全书总览（已确认）】\n{global_overview}\n\n"
+            if global_overview else ""
+        )
+
+        chars_per_chapter = max(400, min(600, 3500 // n))
+
+        prompt = (
+            "你是中文长篇小说的策划总编。请根据目录和创作需求，一次性输出所有章节的**详细写作蓝图**。\n\n"
+            "每章蓝图必须包含以下内容（缺一不可）：\n"
+            "1. 【场景设定】本章发生在什么地方、什么时间、什么氛围（天气/光线/环境声）\n"
+            "2. 【核心事件】本章的主要事件具体经过——谁做了什么、遇到了什么、发现了什么\n"
+            "3. 【人物动态】出场角色各自的情绪起点→终点，关键动作和内心变化\n"
+            "4. 【对话方向】本章需要出现的关键对话（不写原文，写对话要传递的信息和冲突点）\n"
+            "5. 【承接上章】本章开头如何衔接上一章的结尾（第1章写如何开篇破题）\n"
+            "6. 【章末钩子】本章结尾留什么悬念/疑问/转折，驱动读者看下一章\n"
+            "7. 【伏笔线索】本章需要埋下或回收的伏笔（标注：埋伏笔→第N章回收 / 回收→来自第N章）\n\n"
+            "硬性要求：\n"
+            f"- 每章蓝图 {chars_per_chapter}-{chars_per_chapter + 150} 字，必须写具体事件，禁止笼统表述\n"
+            "- 蓝图之间必须因果相连，后面章节的事件必须在前面有铺垫\n"
+            "- 最后一章必须收束所有主线和伏笔\n"
+            "- 人物性格/立场的变化必须跨章连续，不能突变\n"
+            f"- 用 === 第N章 === 作为分隔符\n\n"
+            "输出格式（严格遵循）：\n"
+            "=== 第1章 ===\n"
+            "【场景设定】...\n"
+            "【核心事件】...\n"
+            "【人物动态】...\n"
+            "【对话方向】...\n"
+            "【承接上章】...\n"
+            "【章末钩子】...\n"
+            "【伏笔线索】...\n\n"
+            "=== 第2章 ===\n"
+            "...\n\n"
+            f"{overview_block}"
+            f"创作需求：{requirement}\n"
+            f"题材：{category}\n"
+            f"风格：{style_value or '自动匹配'}\n\n"
+            f"目录（共{n}章）：\n{titles_block}\n"
+        )
+
+        try:
+            temp = float(self.temperature.get())
+        except Exception:
+            temp = 0.7
+        temp = max(0.4, min(0.8, temp - 0.05))
+
+        max_tokens = max(3000, (chars_per_chapter + 200) * n)
+
+        messages = [
+            {"role": "system", "content": "你是资深中文长篇小说策划总编，擅长全局规划故事结构、人物弧线和伏笔网络。"},
+            {"role": "user", "content": prompt},
+        ]
+
+        # 流式生成蓝图，让用户实时看到进度
+        result = ""
+        _buf = ""
+        _last_t = 0.0
+        _FLUSH = 0.08
+        try:
+            import time as _time
+            _last_t = _time.time()
+            for delta in client.stream(messages, temperature=temp, max_tokens=max_tokens):
+                result += delta
+                _buf += delta
+                now = _time.time()
+                if now - _last_t >= _FLUSH or "\n" in delta:
+                    try:
+                        self._ui(self.output.insert, "end", _buf)
+                        self._ui(self.output.see, "end")
+                    except Exception:
+                        pass
+                    _buf = ""
+                    _last_t = now
+            if _buf:
+                try:
+                    self._ui(self.output.insert, "end", _buf)
+                    self._ui(self.output.see, "end")
+                except Exception:
+                    pass
+        except Exception as exc:
+            logger.warning("generate chapter blueprints stream failed: %s", exc)
+            if not result.strip():
+                # 流式失败，回退到阻塞调用
+                try:
+                    result = client.chat(messages, temperature=temp, max_tokens=max_tokens)
+                except Exception as exc2:
+                    logger.warning("generate chapter blueprints fallback failed: %s", exc2)
+                    return []
+
+        if not result or not result.strip():
+            return []
+
+        # 解析：按 === 第N章 === 分割
+        blueprints = self._parse_chapter_blueprints(result.strip(), n)
+        if blueprints:
+            self.chapter_blueprints = blueprints
+            self._chapter_blueprints_outline_sig = hashlib.md5(
+                str(outline_text or "").strip().encode()
+            ).hexdigest()
+        return blueprints
+
+    @staticmethod
+    def _parse_chapter_blueprints(raw_text: str, expected_count: int) -> list[dict]:
+        """解析 AI 输出的蓝图文本，按章节分割。"""
+        import re as _re
+        # 按 === 第N章 === 或类似分隔符切割
+        parts = _re.split(r"={2,}\s*第\s*(\d+)\s*章\s*={2,}", raw_text)
+        # parts: ['前缀', '1', '蓝图1', '2', '蓝图2', ...]
+        blueprints: list[dict] = []
+        i = 1
+        while i < len(parts) - 1:
+            try:
+                chapter_num = int(parts[i])
+            except (ValueError, TypeError):
+                i += 2
+                continue
+            text = parts[i + 1].strip()
+            if text:
+                blueprints.append({
+                    "chapter_index": chapter_num - 1,
+                    "blueprint": text,
+                })
+            i += 2
+
+        # 如果解析不出来（AI 没按格式），按空行切割兜底
+        if len(blueprints) < max(1, expected_count // 2):
+            chunks = _re.split(r"\n{2,}(?=第\d+章|【场景|章节\d+)", raw_text)
+            blueprints = []
+            for idx, chunk in enumerate(chunks):
+                chunk = chunk.strip()
+                if chunk and len(chunk) > 50:
+                    blueprints.append({
+                        "chapter_index": idx,
+                        "blueprint": chunk,
+                    })
+
+        return blueprints
+
+    def generate_chapter_blueprints_async(self) -> None:
+        """UI 入口：异步生成全部章节蓝图。"""
+        outline = str(getattr(self, "current_outline", "") or "").strip()
+        sections = getattr(self, "parsed_sections", [])
+        if not outline or not sections:
+            from tkinter import messagebox
+            messagebox.showwarning("提示", "请先生成目录")
+            return
+
+        requirement = self._get_prompt_content()
+        if not requirement:
+            from tkinter import messagebox
+            messagebox.showwarning("提示", "请先输入创作需求")
+            return
+
+        def task():
+            try:
+                self._ui(self.set_busy, True)
+                self._ui(self.status.set, "正在生成全部章节蓝图...")
+                if hasattr(self, "update_header_status"):
+                    self._ui(self.update_header_status, "蓝图生成中...", "📋")
+
+                # 记录流式输出前的位置，生成完毕后清除蓝图文本
+                pre_pos = self._ui_get(self.output.index, "end-1c") if hasattr(self, "_ui_get") else "end-1c"
+
+                api_config = self._resolve_generation_api_config_safe("story_generate")
+                client = self._create_generation_client(api_config)
+                category = self._ui_get(self.category.get)
+
+                blueprints = self.generate_all_chapter_blueprints(
+                    client=client,
+                    requirement=requirement,
+                    category=category,
+                    outline_text=outline,
+                    sections=sections,
+                )
+
+                # 清除流式输出的蓝图文本（蓝图已缓存到 self.chapter_blueprints）
+                try:
+                    self._ui(self.output.delete, pre_pos, "end-1c")
+                except Exception:
+                    pass
+
+                if blueprints:
+                    n = len(blueprints)
+                    total_chars = sum(len(bp.get("blueprint", "")) for bp in blueprints)
+                    self._ui(self.status.set, f"蓝图已生成（{n}章，共{total_chars}字）")
+                    if hasattr(self, "update_header_status"):
+                        self._ui(self.update_header_status, f"蓝图就绪（{n}章）", "✅")
+                    # 输出简洁汇总（蓝图数据已缓存，无需在输出区占位）
+                    summary_lines = [f"📋 蓝图已就绪（{n}章，共{total_chars}字）"]
+                    for bp in blueprints:
+                        idx = bp.get("chapter_index", 0)
+                        bp_text = bp.get("blueprint", "")
+                        first_line = bp_text.split("\n")[0][:60] if bp_text else ""
+                        summary_lines.append(f"  第{idx+1}章: {first_line}...")
+                    self._ui(self.output.insert, "end", "\n".join(summary_lines) + "\n\n")
+                    self._ui(self.output.see, "end")
+                else:
+                    self._ui(self.status.set, "蓝图生成失败，将使用逐章总览")
+                    if hasattr(self, "update_header_status"):
+                        self._ui(self.update_header_status, "蓝图生成失败", "⚠️")
+            except Exception as exc:
+                logger.exception("chapter blueprint generation failed")
+                self._ui(self.status.set, f"蓝图生成失败：{str(exc)[:60]}")
+            finally:
+                self._ui(self.set_busy, False)
+
+        threading.Thread(target=task, daemon=True).start()

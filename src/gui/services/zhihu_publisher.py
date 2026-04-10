@@ -128,12 +128,23 @@ class ZhihuPublisher:
         try:
             if not await self._ensure_logged_in(progress_callback):
                 return False, "登录超时或失败"
-            await self._open_creator_center(progress_callback)
-            await self._open_article_editor_page(progress_callback)
+
+            # 直接打开写文章页面（跳过创作中心导航）
+            self._report_progress(progress_callback, "打开文章编辑器...")
+            await self.page.goto(
+                "https://zhuanlan.zhihu.com/write",
+                wait_until="domcontentloaded",
+                timeout=30000,
+            )
+            await asyncio.sleep(3)
+
             await self._wait_editor_ready(progress_callback)
             await self._input_article_title(title, progress_callback)
             await self._input_article_content(content, progress_callback)
-            return await self._wait_for_manual_publish()
+
+            # 标题和内容已填好，通知用户自行选择专栏/标签后发布
+            self._report_progress(progress_callback, "✅ 标题和内容已填好，请手动发布")
+            return True, "标题和内容已填充完毕，请在浏览器中选择专栏、标签后点击发布。"
         except Exception as e:
             msg = f"发布过程出错: {str(e)}"
             if progress_callback:
@@ -365,25 +376,19 @@ def publish_to_zhihu_sync(
         try:
             if not await publisher.initialize():
                 return False, "初始化浏览器失败"
-            return await publisher.publish_article(title, content, progress_callback)
-        finally:
+            result = await publisher.publish_article(title, content, progress_callback)
+            # 不关闭浏览器，让用户自行操作后关闭
+            return result
+        except Exception as e:
             await publisher.close()
+            raise
 
-    loop = None
     try:
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         return loop.run_until_complete(_run())
+        # 注意：不关闭 loop，不取消 tasks，不 stop playwright
+        # 浏览器由 playwright 管理，loop 关闭 = playwright 断开 = 浏览器关闭
+        # 让 loop 和 publisher 自然存活，用户关闭浏览器窗口后自行回收
     except Exception as e:
         return False, f"执行失败: {str(e)}"
-    finally:
-        if loop:
-            try:
-                pending = asyncio.all_tasks(loop)
-                for task in pending:
-                    task.cancel()
-                if pending:
-                    loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
-                loop.close()
-            except Exception:
-                pass

@@ -340,10 +340,10 @@ class ProjectMixin:
 			self.lbl_current_project.config(text=f"当前项目: {project_name}", fg="#4CAF50")
 			self.btn_save_story.config(state=NORMAL)
 
-			# 恢复故事内容到输出框
+			# 恢复故事内容到输出框（先清空旧内容）
+			self.output.delete("1.0", END)
 			story_content = self.current_project.load_story()
 			if story_content:
-				self.output.delete("1.0", END)
 				self.output.insert(END, story_content)
 				if hasattr(self, "status"):
 					self.status.set(f"已加载项目: {project_name} ({len(story_content)} 字)")
@@ -358,16 +358,14 @@ class ProjectMixin:
 			if hasattr(self, "_load_project_characters"):
 				self._load_project_characters()
 
-			# 恢复创作参数
+			# 恢复创作参数（无值时清空旧项目残留）
 			meta = self.current_project.metadata
-			if meta.get("category"):
-				self.category.set(meta["category"])
+			self.category.set(meta.get("category", ""))
+			self.prompt_text.delete("1.0", END)
 			if meta.get("requirement"):
-				self.prompt_text.delete("1.0", END)
 				self.prompt_text.insert("1.0", meta["requirement"])
 				self.prompt_text.tag_remove("placeholder", "1.0", "end")
-			if meta.get("style"):
-				self.style.set(meta["style"])
+			self.style.set(meta.get("style", ""))
 			if meta.get("target_chars"):
 				self.target_chars.set(meta["target_chars"])
 

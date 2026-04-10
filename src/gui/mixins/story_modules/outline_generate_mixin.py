@@ -148,8 +148,8 @@ class OutlineGenerateMixin:
         contexts = [c for c, _s, _m in rag_rows]
         return contexts, rag_rows
 
-    _OUTLINE_RETRY_MAX = 3
-    _OUTLINE_RETRY_DELAYS = (1.0, 2.0, 3.0)
+    _OUTLINE_RETRY_MAX = 2
+    _OUTLINE_RETRY_DELAYS = (0.5, 1.0)
 
     def _chat_with_connection_retry(
         self,
@@ -191,6 +191,56 @@ class OutlineGenerateMixin:
                     time.sleep(delay)
         raise last_exc  # type: ignore[misc]
 
+    def _stream_outline_generation(
+        self,
+        client,
+        messages: list[dict],
+        *,
+        temperature: float,
+        max_tokens: int,
+        stage_label: str = "目录生成",
+    ) -> str:
+        """流式生成目录，让用户实时看到文字出现。"""
+        outline_text = ""
+        _buf = ""
+        _last_t = time.time()
+        _FLUSH_INTERVAL = 0.08
+        try:
+            for delta in client.stream(
+                messages,
+                temperature=temperature,
+                max_tokens=max_tokens,
+            ):
+                outline_text += delta
+                _buf += delta
+                now = time.time()
+                if now - _last_t >= _FLUSH_INTERVAL or "\n" in delta:
+                    self._ui(self.output.insert, END, _buf)
+                    self._ui(self.output.see, END)
+                    _buf = ""
+                    _last_t = now
+            if _buf:
+                self._ui(self.output.insert, END, _buf)
+                self._ui(self.output.see, END)
+        except Exception as exc:
+            err_text = str(exc).lower()
+            _CONNECTION_MARKERS = (
+                "connection error", "connection reset", "timed out",
+                "timeout", "temporarily unavailable", "broken pipe",
+            )
+            if any(m in err_text for m in _CONNECTION_MARKERS) and not outline_text.strip():
+                self._ui(self.status.set, f"{stage_label}网络波动，回退到阻塞调用...")
+                return self._chat_with_connection_retry(
+                    client, messages,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                    stage_label=stage_label,
+                )
+            if outline_text.strip():
+                return outline_text.strip()
+            raise
+        return outline_text.strip()
+
     def _emit_outline_generation_banner(self, requirement: str, rag_rows: list) -> None:
         """输出目录生成前的运行横幅。"""
         self._ui(self.output.delete, "1.0", END)
@@ -207,6 +257,8 @@ class OutlineGenerateMixin:
         self.parsed_sections = self._parse_outline_sections(self.current_outline)
         self.story_memory_ledger = []
         self.chapter_quality_reports = []
+        if hasattr(self, "_invalidate_chapter_blueprints"):
+            self._invalidate_chapter_blueprints()
 
         self._ui(self._update_section_selector)
         if hasattr(self, "_update_story_diagnostics_panel"):
@@ -224,7 +276,7 @@ class OutlineGenerateMixin:
         self._ui(
             self.output.insert,
             END,
-            f"目录（共{len(self.parsed_sections)}章，预估字数≈{estimate}字）\n\n{self.current_outline}\n\n",
+            f"\n\n目录（共{len(self.parsed_sections)}章，预估字数≈{estimate}字）\n\n",
         )
         if hasattr(self, "_auto_save_to_project"):
             self._ui(self._auto_save_to_project)
@@ -315,7 +367,7 @@ class OutlineGenerateMixin:
             )
             self._emit_outline_generation_banner(requirement, rag_rows)
 
-            outline_text = self._chat_with_connection_retry(
+            outline_text = self._stream_outline_generation(
                 client,
                 [
                     {"role": "system", "content": outline_system_prompt},
@@ -401,7 +453,7 @@ class OutlineGenerateMixin:
             self._emit_outline_generation_banner(requirement, [])
 
             temperature_val = self._ui_get(self.temperature.get)
-            outline_text = self._chat_with_connection_retry(
+            outline_text = self._stream_outline_generation(
                 client,
                 [
                     {"role": "system", "content": outline_system_prompt},

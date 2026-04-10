@@ -328,6 +328,11 @@ class DummyDeepSeekClient:
         return "好的"
 
     def stream(self, messages, **_kwargs):
+        text = " ".join(m.get("content", "") for m in messages if isinstance(m, dict))
+        if "目录" in text or "章节" in text:
+            for token in ["1. 开端\n", "2. 发展\n", "3. 高潮\n", "4. 结局"]:
+                yield token
+            return
         for token in ["故事", "内容", "生成"]:
             yield token
 
