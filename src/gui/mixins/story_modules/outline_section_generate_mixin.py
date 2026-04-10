@@ -230,7 +230,8 @@ class OutlineSectionGenerateMixin:
         fast = hasattr(self, '_is_story_fast_mode') and self._is_story_fast_mode()
         quality_enabled = (not fast) and self._is_story_quality_review_enabled()
 
-        need_tail = quality_enabled and not self._is_section_tail_complete(section_content)
+        # 末尾截断修复始终开启（不受快速模式/质量评审开关影响）
+        need_tail = not self._is_section_tail_complete(section_content)
         need_transition = quality_enabled and section_index > 0
         include_memory = include_memory and quality_enabled
 

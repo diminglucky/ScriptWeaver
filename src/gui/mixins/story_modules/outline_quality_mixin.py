@@ -39,6 +39,8 @@ class OutlineQualityMixin:
             return True
         return False
 
+    _TAIL_REPAIR_MAX_RETRIES = 2
+
     def _repair_section_tail_if_needed(self, client, section_title: str, section_content: str) -> str:
         if self._is_section_tail_complete(section_content):
             return ""
@@ -64,28 +66,38 @@ class OutlineQualityMixin:
             f"当前结尾片段：\n{tail}\n\n"
             "请直接输出补写内容："
         )
-        try:
-            extra = client.chat(
-                [{"role": "user", "content": prompt}],
-                temperature=temp,
-            ).strip()
-        except Exception as exc:
-            logger.debug("repair section tail failed: %s", exc)
-            return ""
 
-        if not extra:
-            return ""
+        for attempt in range(self._TAIL_REPAIR_MAX_RETRIES):
+            try:
+                extra = client.chat(
+                    [{"role": "user", "content": prompt}],
+                    temperature=temp,
+                    max_tokens=500,
+                ).strip()
+            except Exception as exc:
+                logger.warning("repair section tail attempt %d failed: %s", attempt + 1, str(exc)[:80])
+                if attempt < self._TAIL_REPAIR_MAX_RETRIES - 1:
+                    import time
+                    time.sleep(1)
+                continue
 
-        extra = re.sub(r"^\s*【?第.*?章[：:】]\s*", "", extra)
-        extra = re.sub(r"^\s*(补写|续写|续：)\s*", "", extra)
-        extra = extra.strip()
-        if not extra:
-            return ""
-        if len(extra) > 280:
-            extra = extra[:280].rstrip()
-        if not self._is_section_tail_complete(extra):
-            extra = extra.rstrip("，,：:；;、") + "。"
-        return extra
+            if not extra:
+                continue
+
+            extra = re.sub(r"^\s*【?第.*?章[：:】]\s*", "", extra)
+            extra = re.sub(r"^\s*(补写|续写|续：)\s*", "", extra)
+            extra = extra.strip()
+            if not extra:
+                continue
+            if len(extra) > 280:
+                extra = extra[:280].rstrip()
+            if not self._is_section_tail_complete(extra):
+                extra = extra.rstrip("，,：:；;、") + "。"
+            logger.info("tail repair succeeded on attempt %d (%d chars)", attempt + 1, len(extra))
+            return extra
+
+        logger.warning("tail repair exhausted all retries for: %s", section_title)
+        return ""
 
     def _split_section_head_and_rest(self, section_content: str) -> tuple[str, str]:
         """Split section into opening block and remaining body."""
