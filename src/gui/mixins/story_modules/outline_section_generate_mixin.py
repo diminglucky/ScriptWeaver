@@ -1103,13 +1103,19 @@ class OutlineSectionGenerateMixin:
                         self._ui(self.output.see, END)
                 
                 # 全部完成
+                total_chars = len(self.generated_content)
                 self._ui(self.output.insert, END, f"\n\n{'='*50}\n")
-                self._ui(self.output.insert, END, f"🎉 全部章节生成完成！共 {total_sections} 章，总字数：{len(self.generated_content)} 字\n")
-                self._ui(self.status.set, f"全部完成（{len(self.generated_content)} 字）")
-                # 更新顶部状态栏
+                self._ui(self.output.insert, END, f"🎉 全部章节生成完成！共 {total_sections} 章，总字数：{total_chars} 字\n")
+                self._ui(self.output.see, END)
+                self._ui(self.status.set, f"全部完成（{total_chars} 字）")
                 if hasattr(self, 'update_header_status'):
                     self._ui(self.update_header_status, "全部章节完成", "✅")
-                self._ui(messagebox.showinfo, "完成", f"所有章节已生成完成！\n\n共 {total_sections} 章，总字数：{len(self.generated_content)} 字")
+                self._auto_save_to_project()
+                # 弹窗放在 try 外，超时不影响结果
+                try:
+                    self._ui(messagebox.showinfo, "完成", f"所有章节已生成完成！\n\n共 {total_sections} 章，总字数：{total_chars} 字")
+                except Exception:
+                    pass
             except Exception as e:
                 self._report_section_generation_error(current_idx, e, prefix="自动生成出错")
                 # 更新顶部状态栏
