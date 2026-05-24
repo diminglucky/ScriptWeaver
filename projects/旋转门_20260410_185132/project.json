@@ -1,7 +1,7 @@
 {
   "name": "旋转门",
   "created_at": "2026-04-10T18:51:32.374715",
-  "updated_at": "2026-04-10T21:02:22.701195",
+  "updated_at": "2026-04-12T17:57:26.498300",
   "category": "悬疑",
   "requirement": "在阴雨连绵、霓虹闪烁的都市角落，绝望的中年父亲林浩——一个憔悴而偏执的普通上班族，为拯救身患绝症的女儿小薇，在雨夜邂逅神秘斗篷男，得知一扇刻有古老符文的旋转门能隔离阴阳两界。林浩毅然踏入诡谲阴界，面对亡魂的诡异求助和阴阳规则的残酷挑战，在一位看似友善的影子助手引导下寻找希望。故事氛围神秘压抑，核心冲突在于父爱驱使下与鬼魂斗争，并通过智慧破解谜题，但林浩逐渐怀疑影子助手，却未察觉其背后真相：小薇的绝症竟是恶魔复活的契机，恶魔与斗篷男曾为情侣，阴谋暗藏。情感基调悲壮交织悬疑，情节从父女温馨日常跌宕至门后惊险探索，真相层层反转，林浩在悲壮牺牲中遗留隐秘线索，让读者在刺激烧脑中窥见隐藏真相——他始终不知复活的是影子，而自身已卷入更深的诡计。",
   "style": "情感起伏/反转/细节描写/有画面感/口语化",
@@ -195,11 +195,26 @@
     }
   ],
   "chapter_quality_reports": [
-    {},
-    {},
+    {
+      "chapter_index": 0,
+      "chapter_title": "",
+      "avg_score": 0.0,
+      "scores": {},
+      "issues": [],
+      "key_fix": ""
+    },
+    {
+      "chapter_index": 1,
+      "chapter_title": "",
+      "avg_score": 0.0,
+      "scores": {},
+      "issues": [],
+      "key_fix": ""
+    },
     {
       "chapter_index": 2,
       "chapter_title": "阴界的第一位求助者",
+      "avg_score": 7.2,
       "scores": {
         "realism": 7.0,
         "detail": 8.0,
@@ -207,7 +222,6 @@
         "continuity": 6.0,
         "naturalness": 8.0
       },
-      "avg_score": 7.2,
       "issues": [
         "影子助手的指引出现突兀，缺乏前文铺垫或背景解释"
       ],
@@ -216,6 +230,7 @@
     {
       "chapter_index": 3,
       "chapter_title": "影子助手的出现",
+      "avg_score": 7.6,
       "scores": {
         "realism": 8.0,
         "detail": 7.0,
@@ -223,7 +238,6 @@
         "continuity": 7.0,
         "naturalness": 8.0
       },
-      "avg_score": 7.6,
       "issues": [
         "影子助手动机未充分揭示，影响阴谋理解"
       ],
@@ -232,6 +246,7 @@
     {
       "chapter_index": 4,
       "chapter_title": "小薇病房的异常线索",
+      "avg_score": 7.6,
       "scores": {
         "realism": 7.0,
         "detail": 8.0,
@@ -239,7 +254,6 @@
         "continuity": 7.0,
         "naturalness": 8.0
       },
-      "avg_score": 7.6,
       "issues": [
         "斗篷人飘移行为缺乏物理解释，可能削弱真实感"
       ],
@@ -248,6 +262,7 @@
     {
       "chapter_index": 5,
       "chapter_title": "规则背后的残酷代价",
+      "avg_score": 7.6,
       "scores": {
         "realism": 7.0,
         "detail": 8.0,
@@ -255,16 +270,23 @@
         "continuity": 7.0,
         "naturalness": 8.0
       },
-      "avg_score": 7.6,
       "issues": [
         "章节结尾突然中断，影响情节连贯性和阅读体验"
       ],
       "key_fix": "完善结尾过渡，避免突兀中断"
     },
-    {},
+    {
+      "chapter_index": 6,
+      "chapter_title": "",
+      "avg_score": 0.0,
+      "scores": {},
+      "issues": [],
+      "key_fix": ""
+    },
     {
       "chapter_index": 7,
       "chapter_title": "以父之名的最终抉择",
+      "avg_score": 7.8,
       "scores": {
         "realism": 7.0,
         "detail": 8.0,
@@ -272,12 +294,11 @@
         "continuity": 7.0,
         "naturalness": 9.0
       },
-      "avg_score": 7.8,
       "issues": [
         "禁术机制解释略显简略，可能让读者困惑"
       ],
       "key_fix": "补充禁术原理，增强逻辑清晰度"
     }
   ],
-  "section_index": 7
+  "section_index": -1
 }

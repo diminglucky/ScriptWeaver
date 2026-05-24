@@ -28,7 +28,24 @@ echo "✨ 启动现代化UI界面..."
 echo "=========================================="
 echo ""
 
-python run_modern_app.py
+LAUNCH_PY="python"
+if [[ "$(uname -s)" == "Darwin" ]]; then
+  CUR_VER="$(python -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")' 2>/dev/null || true)"
+  if [[ "${CUR_VER}" == "3.12" ]]; then
+    if command -v /opt/homebrew/bin/python3.11 >/dev/null 2>&1; then
+      LAUNCH_PY="/opt/homebrew/bin/python3.11"
+      echo "⚠ 检测到当前环境 Python 3.12，自动切换到 ${LAUNCH_PY} 以避免 Tk 闪退。"
+    elif command -v python3.11 >/dev/null 2>&1; then
+      LAUNCH_PY="python3.11"
+      echo "⚠ 检测到当前环境 Python 3.12，自动切换到 ${LAUNCH_PY} 以避免 Tk 闪退。"
+    else
+      echo "⚠ 当前是 Python 3.12 且未发现 Python 3.11，可能出现 Tk 闪退。"
+      echo "  可先安装 Python 3.11，或设置 STORY_PYTHON=/path/to/python3.11。"
+    fi
+  fi
+fi
+
+"${LAUNCH_PY}" run_modern_app.py
 
 echo ""
 echo "应用已关闭"
