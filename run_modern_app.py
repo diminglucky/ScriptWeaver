@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-启动现代化UI版本 - AI Story Creator Pro
+启动现代化UI版本 - ScriptWeaver
 """
 import os
 import sys
@@ -113,7 +113,7 @@ def main():
     try:
         # 尝试导入现代化UI
         from src.gui.modern_app import ModernApp
-        print("[INFO] 启动 AI Story Creator Pro (现代化UI版本)...")
+        print("[INFO] 启动 ScriptWeaver (现代化UI版本)...")
         app = ModernApp()
         app.mainloop()
     except Exception as e:

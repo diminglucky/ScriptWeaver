@@ -69,7 +69,7 @@ class ModernApp(
         super().__init__()
         
         # 窗口配置
-        self.title("AI Story Creator Pro - 智能故事创作平台")
+        self.title("ScriptWeaver - 智能故事创作平台")
         self.geometry("1400x900")
         self.minsize(1200, 700)
         

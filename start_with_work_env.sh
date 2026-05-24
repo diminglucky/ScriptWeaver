@@ -1,7 +1,7 @@
 #!/bin/bash
-# 使用conda work环境启动AI Story Creator Pro
+# 使用conda work环境启动ScriptWeaver
 
-echo "🎨 AI Story Creator Pro - 智能故事创作平台"
+echo "🎨 ScriptWeaver - 智能故事创作平台"
 echo "=========================================="
 echo ""
 echo "📦 激活conda work环境..."

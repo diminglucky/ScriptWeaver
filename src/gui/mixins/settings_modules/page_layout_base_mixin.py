@@ -211,7 +211,7 @@ class SettingsPageLayoutBaseMixin:
         about_frame = tk.Frame(grp_about, bg=Theme.BG_SECONDARY)
         about_frame.pack(fill="x", padx=8, pady=8)
         
-        tk.Label(about_frame, text="AI Story Creator Pro v2.0", bg=Theme.BG_SECONDARY, fg=Theme.TEXT_PRIMARY,
+        tk.Label(about_frame, text="ScriptWeaver v2.0", bg=Theme.BG_SECONDARY, fg=Theme.TEXT_PRIMARY,
                  font=("", 14, "bold")).pack(anchor="w")
         tk.Label(about_frame, text="智能故事创作平台 - 支持多种AI提供商", bg=Theme.BG_SECONDARY, fg=Theme.TEXT_SECONDARY).pack(anchor="w", pady=2)
         tk.Label(about_frame, text="支持的AI: OpenAI, Gemini, Claude, DeepSeek, 通义, 文心, 智谱等", 

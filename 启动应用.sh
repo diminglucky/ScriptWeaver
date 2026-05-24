@@ -44,5 +44,5 @@ if ! PYTHON_BIN="$(pick_python_bin)"; then
   exit 1
 fi
 
-echo "Starting AI Story Creator Pro with ${PYTHON_BIN}..."
+echo "Starting ScriptWeaver with ${PYTHON_BIN}..."
 exec "${PYTHON_BIN}" run_modern_app.py

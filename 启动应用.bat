@@ -21,7 +21,7 @@ if "%PYTHON_CMD%"=="" (
     exit /b 1
 )
 
-echo Starting AI Story Creator Pro...
+echo Starting ScriptWeaver...
 %PYTHON_CMD% run_modern_app.py
 
 echo.

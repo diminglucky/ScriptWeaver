@@ -416,7 +416,7 @@ class VideoPromptMixin:
 - 转场可以在后期添加
 
 ---
-*由 AI Story Creator Pro 自动生成*
+*由 ScriptWeaver 自动生成*
 """
 		
 		return md

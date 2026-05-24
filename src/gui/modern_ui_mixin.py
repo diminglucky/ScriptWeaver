@@ -247,7 +247,7 @@ class ModernUiMixin:
 
         tk.Label(
             title_frame,
-            text="AI Story Creator Pro",
+            text="ScriptWeaver",
             font=(Theme.FONT_FAMILY, 18, "bold"),
             bg=Theme.BG_PRIMARY,
             fg=Theme.TEXT_PRIMARY
