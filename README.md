@@ -87,7 +87,7 @@ python3.11 -m uvicorn src.services.image_service.runtime:app --host 127.0.0.1 --
 常用环境变量：
 
 ```bash
-export WSF_REPO_ROOT=/path/to/Zhihu_short_stories
+export WSF_REPO_ROOT=/path/to/ScriptWeaver
 export WSF_BACKEND_TOKEN=dev-token
 export WSF_SERVICE_TOKEN=dev-service-token
 export WSF_RAG_BASE_URL=http://127.0.0.1:8101
