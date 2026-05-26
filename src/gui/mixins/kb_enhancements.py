@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 SUPPORTED_KB_EXTENSIONS = (".txt", ".md", ".markdown", ".json", ".csv", ".docx", ".pdf")
 SEARCHABLE_KB_EXTENSIONS = {".txt", ".md", ".markdown", ".json", ".csv", ".docx", ".pdf"}
-INDEX_ARTIFACT_NAMES = {"kb.index", "faiss.index", "chunks.npy", "meta.npy"}
+INDEX_ARTIFACT_NAMES = {"kb.index", "faiss.index", "chunks.npy", "meta.npy", "kb.faiss", "kb.pkl"}
 
 
 def _discover_supported_files(kb_path: Path) -> list[Path]:
@@ -88,7 +88,7 @@ def _clear_known_index_artifacts(index_dir: Path) -> tuple[int, int]:
 def _has_valid_index_artifacts(index_dir: Path) -> bool:
     if not index_dir.exists():
         return False
-    return any((index_dir / name).exists() for name in ("kb.index", "faiss.index"))
+    return any((index_dir / name).exists() for name in ("kb.index", "faiss.index", "kb.faiss"))
 
 
 class KBPreviewDialog:

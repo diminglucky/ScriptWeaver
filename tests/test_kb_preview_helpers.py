@@ -56,15 +56,19 @@ class KBPreviewHelperTests(unittest.TestCase):
             root = Path(tmp)
             (root / "kb.index").write_bytes(b"a")
             (root / "chunks.npy").write_bytes(b"b")
+            (root / "kb.faiss").write_bytes(b"c")
+            (root / "kb.pkl").write_bytes(b"d")
             keep = root / "notes.txt"
             keep.write_text("keep", encoding="utf-8")
 
             removed, kept = _clear_known_index_artifacts(root)
 
-            self.assertEqual(removed, 2)
+            self.assertEqual(removed, 4)
             self.assertEqual(kept, 1)
             self.assertFalse((root / "kb.index").exists())
             self.assertFalse((root / "chunks.npy").exists())
+            self.assertFalse((root / "kb.faiss").exists())
+            self.assertFalse((root / "kb.pkl").exists())
             self.assertTrue(keep.exists())
 
     def test_has_valid_index_artifacts_accepts_kb_index(self):
@@ -77,6 +81,12 @@ class KBPreviewHelperTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             (root / "faiss.index").write_bytes(b"a")
+            self.assertTrue(_has_valid_index_artifacts(root))
+
+    def test_has_valid_index_artifacts_accepts_kb_faiss(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "kb.faiss").write_bytes(b"a")
             self.assertTrue(_has_valid_index_artifacts(root))
 
 

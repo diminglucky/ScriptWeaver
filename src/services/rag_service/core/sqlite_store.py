@@ -1,0 +1,162 @@
+"""SQLite metadata store, one per shard. See v2 plan §4.3.
+
+Schema (single ``chunks`` table) is the source of truth for chunk identity
+and ordering inside the companion vector array. The ``ordinal`` column maps
+a chunk to its row index in the shard's ``vectors.npy``.
+"""
+
+from __future__ import annotations
+
+import json
+import sqlite3
+from pathlib import Path
+from typing import Iterable
+
+_SCHEMA = """
+CREATE TABLE IF NOT EXISTS chunks (
+    chunk_id   TEXT PRIMARY KEY,
+    source_id  TEXT NOT NULL,
+    path       TEXT NOT NULL,
+    position   INTEGER NOT NULL DEFAULT 0,
+    text       TEXT NOT NULL,
+    kb_type    TEXT NOT NULL,
+    project_id TEXT,
+    tags_json  TEXT NOT NULL DEFAULT '[]',
+    ordinal    INTEGER NOT NULL UNIQUE
+);
+CREATE INDEX IF NOT EXISTS idx_chunks_source   ON chunks(source_id);
+CREATE INDEX IF NOT EXISTS idx_chunks_ordinal  ON chunks(ordinal);
+"""
+
+
+def _row_to_dict(row: sqlite3.Row) -> dict:
+    d = dict(row)
+    raw = d.pop("tags_json", "[]")
+    try:
+        d["tags"] = json.loads(raw) if raw else []
+    except json.JSONDecodeError:
+        d["tags"] = []
+    return d
+
+
+class SqliteStore:
+    """Thin sqlite wrapper. Connection is lazily opened in :meth:`init`."""
+
+    def __init__(self, db_path: Path):
+        self.db_path = Path(db_path)
+        self._conn: sqlite3.Connection | None = None
+
+    # ------------------------------------------------------------------
+    # Lifecycle
+
+    def init(self) -> None:
+        self.db_path.parent.mkdir(parents=True, exist_ok=True)
+        conn = sqlite3.connect(self.db_path, check_same_thread=False)
+        conn.row_factory = sqlite3.Row
+        conn.executescript(_SCHEMA)
+        conn.commit()
+        self._conn = conn
+
+    def close(self) -> None:
+        if self._conn is not None:
+            self._conn.close()
+            self._conn = None
+
+    def __enter__(self) -> "SqliteStore":
+        self.init()
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        self.close()
+
+    @property
+    def conn(self) -> sqlite3.Connection:
+        if self._conn is None:
+            raise RuntimeError("SqliteStore not initialised; call .init() first")
+        return self._conn
+
+    # ------------------------------------------------------------------
+    # Writes
+
+    def next_ordinal(self) -> int:
+        cur = self.conn.execute("SELECT COALESCE(MAX(ordinal), -1) + 1 FROM chunks")
+        return int(cur.fetchone()[0])
+
+    def upsert_chunks(self, rows: Iterable[dict]) -> None:
+        """Insert or replace chunk rows.
+
+        Each row must contain ``chunk_id``, ``source_id``, ``path``,
+        ``position``, ``text``, ``kb_type``, ``ordinal``; ``project_id`` and
+        ``tags`` (list[str]) are optional.
+        """
+        payload = []
+        for r in rows:
+            payload.append((
+                r["chunk_id"],
+                r["source_id"],
+                r["path"],
+                int(r.get("position", 0)),
+                r["text"],
+                r["kb_type"],
+                r.get("project_id"),
+                json.dumps(list(r.get("tags") or []), ensure_ascii=False),
+                int(r["ordinal"]),
+            ))
+        self.conn.executemany(
+            """
+            INSERT OR REPLACE INTO chunks
+                (chunk_id, source_id, path, position, text, kb_type, project_id, tags_json, ordinal)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            payload,
+        )
+        self.conn.commit()
+
+    def delete_source(self, source_id: str) -> list[int]:
+        """Delete all chunks for a source. Returns the removed ordinals."""
+        cur = self.conn.execute(
+            "SELECT ordinal FROM chunks WHERE source_id = ?", (source_id,)
+        )
+        ords = [int(row[0]) for row in cur.fetchall()]
+        if ords:
+            self.conn.execute("DELETE FROM chunks WHERE source_id = ?", (source_id,))
+            self.conn.commit()
+        return ords
+
+    def reassign_ordinals(self, mapping: dict[int, int]) -> None:
+        """Apply ``{old_ordinal: new_ordinal}`` updates atomically."""
+        if not mapping:
+            return
+        # Two-phase: bump to a disjoint negative space first to dodge the
+        # UNIQUE constraint on ordinal, then settle final values.
+        items = list(mapping.items())
+        tmp = [(-(i + 1), old) for i, (old, _) in enumerate(items)]
+        self.conn.executemany("UPDATE chunks SET ordinal = ? WHERE ordinal = ?", tmp)
+        final = [(new, -(i + 1)) for i, (_, new) in enumerate(items)]
+        self.conn.executemany("UPDATE chunks SET ordinal = ? WHERE ordinal = ?", final)
+        self.conn.commit()
+
+    # ------------------------------------------------------------------
+    # Reads
+
+    def fetch_chunks(self, chunk_ids: list[str]) -> list[dict]:
+        if not chunk_ids:
+            return []
+        placeholders = ",".join("?" * len(chunk_ids))
+        cur = self.conn.execute(
+            f"SELECT * FROM chunks WHERE chunk_id IN ({placeholders})", chunk_ids
+        )
+        return [_row_to_dict(r) for r in cur.fetchall()]
+
+    def fetch_by_ordinals(self, ordinals: list[int]) -> dict[int, dict]:
+        if not ordinals:
+            return {}
+        placeholders = ",".join("?" * len(ordinals))
+        cur = self.conn.execute(
+            f"SELECT * FROM chunks WHERE ordinal IN ({placeholders})", ordinals
+        )
+        return {int(row["ordinal"]): _row_to_dict(row) for row in cur.fetchall()}
+
+    def count(self) -> int:
+        cur = self.conn.execute("SELECT COUNT(*) FROM chunks")
+        return int(cur.fetchone()[0])

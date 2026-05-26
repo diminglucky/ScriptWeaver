@@ -1,176 +1,218 @@
-# ScriptWeaver 🤖✨
+# ScriptWeaver / Zhihu Short Stories
 
-**ScriptWeaver** 是一款基于 Tkinter 的现代化、轻量化且高健壮性的本地故事创作助手。它专为知乎短篇小说及长篇连载创作设计，深度整合了 **本地 RAG 检索增强技术**、**一键多阶段故事生成流**、**角色人设一致性配图系统**，并配备了针对 macOS 环境的高可靠启动保护机制。
+ScriptWeaver 是一个面向知乎短篇、长篇连载和图文内容生产的本地创作工作台。项目当前同时保留成熟的 Tkinter 现代化 GUI，并引入 v2 微服务架构：`rag-service`、`story-service`、`image-service` 通过 FastAPI 提供可测试、可扩展的后端能力。
 
----
+## 当前状态
 
-## 🎨 核心功能亮点
+- **GUI 入口**：使用 `run_modern_app.py` 启动现代化 UI。
+- **不要使用旧入口**：不要用旧 `main.py` 启动，它会进入旧版 GUI。
+- **v2 后端**：已提供 RAG、故事生成、图片生成的 FastAPI skeleton 与 deterministic workflow，可在无真实 API Key 的情况下跑通测试和基本流程。
+- **测试状态**：当前全量回归通过，覆盖 GUI backend、RAG、Story workflow、Image API、配置、SSE、运行管理等模块。
 
-1. **现代化科技风 UI 界面** (`src/gui/modern_app.py`)
-   * 基于 Tkinter 深度定制的深色与浅色双模主题。
-   * 优雅的主题动态更新系统，支持全屏组件响应、圆角边框、自定义组件态。
-   * 输入框及标签在高对比度深色模式下字迹清晰，操作流程顺畅。
-2. **经典 Tkinter UI 回退机制** (`src/gui_app.py` / `src/gui/main_window.py`)
-   * 当现代化 UI 加载或渲染在老旧设备异常时，启动器会自动降级并调起经典 Tkinter UI，确保 100% 可用性。
-3. **macOS 启动安全重定向 (Re-exec 保护)** (`run_modern_app.py`)
-   * *技术痛点*：在 macOS 上使用 Python 3.12 运行 Tkinter 程序，极易触发底层原生 Tk 运行时的线程或窗口崩溃。
-   * *防闪退设计*：启动器自动探测系统中的 Python 3.11 运行时。如果当前在 Python 3.12 环境下运行，它将以透明重定向（`os.execve`）的方式，无缝切换到 `python3.11` 引擎运行，从而完美规避系统闪退。
-4. **多阶段小说生成控制流** (`src/gui/mixins/story_modules/`)
-   * **目录/大纲预生成**：结合创作需求、故事种类及细分风格，一键输出多章节目录。
-   * **分章独立创作**：支持选择任意章节进行生成，支持续写、预览与反复重生成对比。
-   * **连更控制系统**：支持自动流水线式撰写，系统会自动对各章节的衔接进行过渡修复（Transition Repair）和尾部补完（Tail Completion），保持全书剧情和逻辑闭环。
-5. **本地 RAG 知识库检索增强** (`src/kb/`, `src/story_cli.py`)
-   * **本地向量数据库**：支持将本地的 `.txt`、`.docx`、`.pdf` 格式的优质素材或历史文章导入，利用 sentence-transformers + FAISS 构建高精度的语义向量索引。
-   * **知乎体 RAG 增强**：在故事大纲和内容生成时，自动从素材库检索最相似的上下文片段并拼装至 Prompt。生成的短文自带知乎“高热度回答”的叙事口吻和结构美感。
-6. **角色一致性 AI 绘图系统** (`src/gui/services/image_service.py` / `src/gui/mixins/image_modules/`)
-   * 支持对接 OpenAI DALL-E-3、DALL-E-2 以及各类自定义 API 预设。
-   * **角色人设管理器**：专门管理角色的长相、衣着、性格等 Visual Prompts，确保生成的插画在不同场景中人物面部、服装风格保持极高一致性，解决传统 AI 配图“配角变主角、长相每张不同”的硬伤。
+## 功能概览
 
----
+### 1. 现代化本地 GUI
 
-## 🏗️ 项目技术架构
+- 基于 Tkinter 的现代化 UI：`src/gui/modern_app.py`。
+- 支持故事生成、知识库、图片生成、导演脚本、项目管理、API 配置等工作区。
+- macOS 环境下推荐 Python 3.11，`run_modern_app.py` 包含启动保护逻辑。
 
-项目的逻辑层和渲染层完全解耦，以 `Mixins` 注入机制构建了丰富的功能矩阵：
+### 2. RAG 知识库
 
-```mermaid
-graph TD
-    A[启动入口: 启动应用.sh / run_modern_app.py] --> B{macOS 闪退保护?}
-    B -- 是 (当前 >= 3.12) --> C[重定向执行 python3.11]
-    B -- 否 --> D[加载 ModernApp 现代化UI]
-    D --> E[经典/现代化 UI 渲染层]
-    E --> F[核心功能 Mixins 注入层]
-    
-    subgraph 核心服务矩阵
-        F --> G[故事生成模块 StoryGenerator]
-        F --> H[一致性配图模块 ImageService]
-        F --> I[本地 RAG 知识库 Ingest/Search]
-        F --> J[项目及导出管理 ProjectManager]
-    end
-    
-    I --> K[(FAISS 向量索引库)]
-    H --> L[DALL-E-3 / 自定义图片 API]
-    G --> M[DeepSeek / 自定义大语言模型]
-```
+- 传统 GUI 知识库能力位于 `src/kb/`。
+- v2 RAG 微服务位于 `src/services/rag_service/`。
+- 支持文档 ingest、文本切分、embedding hub、SQLite metadata store、vector shard/index hub。
+- 支持 `reference`、`project_memory`、`style_corpus` 三类知识库。
+- 提供 HTTP search、project memory、manifest、reindex API。
 
----
+### 3. Story Service
 
-## ⚙️ 环境要求与依赖安装
+`src/services/story_service/` 提供故事工作流后端：
 
-* **操作系统**：macOS (推荐 13+) / Linux / Windows 10+
-* **Python 版本**：极力推荐使用 **`Python 3.11`**。
-* **Tkinter 支持**：确保 Python 环境自带或已安装 `tkinter` 组件。
+- `ModelRegistry`：统一模型路由和 deterministic fallback。
+- `PromptLibrary`：集中构建 story bible、character、outline、chapter、review prompts。
+- `SimpleCompiledGraph`：不强依赖 LangGraph runtime 的可测试 compiled graph 兼容层。
+- Novel / Character / Review workflows：story bible、角色设计、大纲、章节、review skeleton、ProjectStore 持久化。
+- `WorkflowRunner`：接入 `CreativeService`，通过 run/event 协议驱动后台任务。
+- HTTP API 覆盖 projects、novel run、character run、runs、reviews、models/routing。
 
-### 1. 快捷依赖安装
+### 4. Image Service
 
-```bash
-pip install -r requirements.txt
-```
+`src/services/image_service/` 提供 deterministic image-service skeleton：
 
-*若想启用高级知识库（RAG）功能，请安装额外支持：*
-```bash
-pip install faiss-cpu python-docx pypdf
-```
+- image prompt generation
+- shot prompt list/render/batch
+- character turnaround/photo run
+- single image render
+- director script generation/read
+- Zhihu publish dry-run result
+- run SSE events and cancel
 
-### 2. 本地自检脚本
+当前实现优先保证 API contract 和端到端测试可运行；真实图片 provider、真实发布能力可在后续替换 deterministic adapter。
 
-```bash
-# 1. 验证 tkinter 库是否正常且未损坏
-python -c "import tkinter as tk; r=tk.Tk(); r.withdraw(); r.destroy(); print('tkinter 可用')"
+### 5. GUI Backend Client
 
-# 2. 验证主程序正常导入，无 Circular Import
-python -c "from src.gui.modern_app import ModernApp; print('主程序现代化UI组件加载成功')"
-```
+`src/gui/backend/` 是 GUI 与 v2 微服务之间的 facade，包含 `BackendClient`、`RagClient`、`StoryClient`、`ImageClient`、`ServiceSupervisor`、SSE event parsing、ports/runtime 管理和 HTTP error envelope 转换。
 
----
+## 推荐启动方式
 
-## 🚀 启动方式
+### 启动现代化 GUI
 
-项目提供了针对不同操作环境及 Conda 管理器的多套极简化启动方案。
-
-### 方案 A：一键自适应启动（推荐，全平台 macOS / Linux）
-
-```bash
-./启动应用.sh
-```
-* **特点**：此脚本具有高鲁棒性。它会自动探测系统已安装的 Python 环境，在 macOS 上识别并绕过不兼容的 3.12 版本，挑选最稳定、拥有 Tkinter 支持的 `python3.11` 加载运行。
-
-### 方案 B：本地 conda 环境专属启动 (适用于 Conda 虚拟环境 `work`)
-
-```bash
-./start_with_work_env.sh
-```
-* **特点**：专为本地配有 Conda 且命名为 `work` 的环境而设计。激活后会自动检查 `openai`, `faiss`, `sentence_transformers` 等核心包版本，并自动安全拉起 Modern UI。
-
-### 方案 C：双击快捷启动（Windows 平台）
-
-直接双击运行根目录的：
-```cmd
-启动应用.bat
-```
-
-### 方案 D：手动显式调用
-
-```bash
-python run_modern_app.py
-```
-*如果您的 macOS 存在多环境，可以直接强制用 Python 3.11 稳定启动：*
 ```bash
 /opt/homebrew/bin/python3.11 run_modern_app.py
 ```
 
----
+或：
 
-## 📝 快速创作指南
+```bash
+python3.11 run_modern_app.py
+```
 
-1. **API 配置与快速切换**：
-   * 启动程序后，点击顶部的 **“设置”** 标签。
-   * 配置您的模型密钥（例如配置“自定义”或 DeepSeek 预设，填写 API Key、Base URL 及特定 Model）。
-   * 在“⚡ 快速 API 切换”处，故事生成及图片生成都一键选定保存，即时生效。
-2. **大纲创作**：
-   * 进入“故事生成”标签页，在输入框中写下您的短篇主题需求（如 *“一个被困在时间循环里的程序员，每次死掉都能多获得一行代码”*）。
-   * 选择您心仪的故事类型（职场/科幻/情感等）和故事风格，点击 **“生成目录”**。
-3. **章节创作与补齐**：
-   * 目录生成完成后，系统将在下方呈现全书总览和结构章节。
-   * 您可以单选某一章生成，也可以点击 **“自动生成全部”** 连贯生成整书。
-   * 期间可通过图片管理器为特定角色生成固定特征的角色卡片。
+### 使用本地 Conda work 环境
 
----
+```bash
+./start_with_work_env.sh
+```
 
-## 📂 项目结构概览
+### 启动 v2 微服务
+
+可以通过 GUI backend supervisor 管理，也可以直接用 uvicorn：
+
+```bash
+python3.11 -m uvicorn src.services.rag_service.runtime:app --host 127.0.0.1 --port 8101
+python3.11 -m uvicorn src.services.story_service.runtime:app --host 127.0.0.1 --port 8102
+python3.11 -m uvicorn src.services.image_service.runtime:app --host 127.0.0.1 --port 8103
+```
+
+常用环境变量：
+
+```bash
+export WSF_REPO_ROOT=/path/to/Zhihu_short_stories
+export WSF_BACKEND_TOKEN=dev-token
+export WSF_SERVICE_TOKEN=dev-service-token
+export WSF_RAG_BASE_URL=http://127.0.0.1:8101
+export WSF_STORY_BASE_URL=http://127.0.0.1:8102
+export WSF_IMAGE_BASE_URL=http://127.0.0.1:8103
+```
+
+## 安装依赖
+
+```bash
+python3.11 -m pip install -r requirements.txt
+```
+
+主要依赖包括 FastAPI、uvicorn、httpx、Pydantic v2、LangChain、LangGraph、numpy、scipy、transformers、sentence-transformers、requests、Pillow、tqdm、playwright。
+
+## 项目结构
 
 ```text
-├── config/                  # 动态及缓存配置（API配置及主题缓存）
-├── data/
-│   └── raw/                 # 放置您的参考素材 (.txt / .md / .pdf)，用于构建RAG
-├── docs/                    # 用户指南及系统说明文档
-├── index/                   # 本地知识库的 FAISS 向量索引物理存储
-├── projects/                # 保存的所有短篇故事项目（正文、目录大纲、角色图片等）
+.
+├── config/                         # prompt/profile/guardrail/theme 等配置
+├── docs/                           # 架构文档与实施计划
+├── projects/                       # 本地项目数据与生成结果
+├── scripts/dev/                    # 开发辅助脚本
 ├── src/
-│   ├── clients/             # LLM 及 绘图 API 客户端（含 DeepSeek, OpenAI 等）
-│   ├── core/                # 系统核心控制逻辑
-│   ├── gui/                 # 现代化 UI 组件、核心 Mixins（故事生成控制流、绘图服务）
-│   ├── kb/                  # 向量知识库数据分块、导入、语义匹配实现
-│   └── utils/               # 工具函数
-├── tests/                   # 完整的高覆盖率回归测试包 (50+测试文件)
-├── requirements.txt         # 基础依赖依赖项
-├── run_modern_app.py        # 统一的高健壮性 UI 启动入口（含防闪退重定向）
-├── start_with_work_env.sh   # 本地 Conda 环境专属启动脚本
-└── 启动应用.sh               # 推荐的 macOS/Linux 一键启动脚本
+│   ├── clients/                    # 传统 GUI 使用的外部 API client
+│   ├── gui/                        # Tkinter GUI 与 GUI backend facade
+│   ├── kb/                         # 传统 GUI 知识库模块
+│   ├── services/
+│   │   ├── rag_service/            # v2 RAG FastAPI service
+│   │   ├── story_service/          # v2 Story FastAPI service + workflows
+│   │   └── image_service/          # v2 Image FastAPI service skeleton
+│   └── shared/                     # domain schemas/errors/events/config/http helpers
+├── tests/                          # 原有测试
+├── tests/v2/                       # v2 微服务与 backend 测试
+├── requirements.txt
+├── run_modern_app.py               # 推荐 GUI 启动入口
+└── start_with_work_env.sh
 ```
 
----
+## 测试
 
-## 🧪 自动化测试与持续回归
+### 全量回归
 
-本项目拥有极其雄厚的单元测试保障（**190+ 测试用例**），覆盖了 API 回退机制、安全配置项加密导出、角色 Prompt 构建策略、Transition 过渡修复、RAG 向量搜索流程等多维度：
-
-在项目根目录下，直接键入即可跑完全程：
 ```bash
-pytest -q
+/opt/homebrew/bin/python3.11 -m pytest -q --no-header --tb=short -p no:cacheprovider
 ```
 
----
+### v2 测试
 
-## 📄 开源许可证
+```bash
+/opt/homebrew/bin/python3.11 -m pytest tests/v2 -q --no-header --tb=short -p no:cacheprovider
+```
 
-本项目基于 **MIT License** 许可开源。使用本项目生成的文本及图片内容请遵守当地法律法规。
+### import smoke
+
+```bash
+/opt/homebrew/bin/python3.11 scripts/dev/smoke_imports.py
+```
+
+## API 概览
+
+### rag-service
+
+- `GET /v1/health`
+- `POST /v1/kb/{kb_type}/ingest`
+- `DELETE /v1/kb/{kb_type}/sources/{source_id}`
+- `POST /v1/kb/{kb_type}/search`
+- `POST /v1/projects/{project_id}/memory`
+- `GET /v1/projects/{project_id}/memory`
+- `DELETE /v1/projects/{project_id}/memory`
+- `POST /v1/admin/reindex`
+- `GET /v1/admin/manifest`
+
+### story-service
+
+- `GET /v1/health`
+- `POST /v1/projects`
+- `GET /v1/projects`
+- `GET /v1/projects/{project_id}`
+- `GET /v1/projects/{project_id}/storybible`
+- `GET /v1/projects/{project_id}/chapters`
+- `GET /v1/projects/{project_id}/chapters/{idx}`
+- `GET /v1/projects/{project_id}/story`
+- `POST /v1/projects/{project_id}/novel:run`
+- `POST /v1/projects/{project_id}/characters:design`
+- `GET /v1/runs/{run_id}`
+- `GET /v1/runs/{run_id}/events`
+- `POST /v1/runs/{run_id}/cancel`
+- `POST /v1/runs/{run_id}/resume`
+- `POST /v1/runs/{run_id}/review`
+- `GET /v1/models`
+- `GET /v1/routing`
+- `PUT /v1/routing`
+
+### image-service
+
+- `GET /v1/health`
+- `POST /v1/projects/{project_id}/image-prompts:generate`
+- `GET /v1/projects/{project_id}/shots`
+- `POST /v1/projects/{project_id}/shots:batch`
+- `POST /v1/projects/{project_id}/shots/{shot_id}:render`
+- `POST /v1/images:generate`
+- `POST /v1/projects/{project_id}/characters/{name}/turnaround`
+- `POST /v1/projects/{project_id}/characters/{name}/photo`
+- `POST /v1/projects/{project_id}/director:script`
+- `GET /v1/projects/{project_id}/director/script`
+- `POST /v1/projects/{project_id}/zhihu:publish`
+- `GET /v1/projects/{project_id}/zhihu/last-result`
+- `GET /v1/runs/{run_id}/events`
+- `POST /v1/runs/{run_id}/cancel`
+
+## 数据与安全
+
+- 不要提交真实 API Key。
+- `.env`、`custom_api_presets.json`、`custom_image_api_presets.json`、`config/.keyfile` 已被 `.gitignore` 忽略。
+- `.runtime/`、索引文件、缓存、项目运行时 checkpoint/run logs 不应提交。
+
+## 开发约定
+
+- 入口优先使用 `run_modern_app.py`。
+- v2 公共 schema 放在 `src/shared/domain/`。
+- 服务间错误使用 `CreativeError` envelope。
+- 长任务通过 `CreativeEvent` + SSE 暴露进度。
+- 新增后端能力应补充 `tests/v2/` 覆盖。
+
+## License
+
+MIT License. 使用生成内容时请遵守对应平台规则和当地法律法规。

@@ -51,13 +51,13 @@ class KbMixin:
 		threading.Thread(target=task, daemon=True).start()
 
 	def locate_existing_index(self) -> None:
-		"""If current index_dir is a parent, find first child that contains kb.index and switch to it."""
+		"""If current index_dir is a parent, find first child that contains kb.index or kb.faiss and switch to it."""
 		base = Path(self.index_dir.get())
 		if base.is_file():
 			base = base.parent
-		candidates = list(base.rglob("kb.index"))
+		candidates = list(base.rglob("kb.index")) + list(base.rglob("kb.faiss"))
 		if not candidates:
-			messagebox.showinfo("提示", "未在当前索引目录下找到任何 kb.index")
+			messagebox.showinfo("提示", "未在当前索引目录下找到任何 kb.index 或 kb.faiss")
 			return
 		chosen = candidates[0].parent
 		self.index_dir.set(str(chosen))

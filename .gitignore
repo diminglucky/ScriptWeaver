@@ -43,6 +43,9 @@ env/
 .DS_Store
 Thumbs.db
 
+# Local temporary files
+my_temp_dir/
+
 # Project specific
 backup/
 *.bak
@@ -64,6 +67,14 @@ index/
 projects/*/images/
 projects/*/characters/*.png
 projects/.last_project
+
+# v2 微服务运行期产物
+.runtime/
+projects/*/checkpoints.sqlite
+projects/*/checkpoints.sqlite-*
+projects/*/runs/
+projects/*/chapters/*.json.tmp
+projects/*/storybible.json.tmp
 
 # 测试脚本（临时文件）
 测试*.py
