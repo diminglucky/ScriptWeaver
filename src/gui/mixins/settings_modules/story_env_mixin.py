@@ -28,6 +28,7 @@ class SettingsStoryEnvMixin:
 
     _BOOL_MODE_KEYS = {
         "story_quality_review_enabled",
+        "story_auto_polish_enabled",
         "story_global_overview_enabled",
         "story_overview_before_generate",
         "story_preview_before_apply",
@@ -51,6 +52,12 @@ class SettingsStoryEnvMixin:
             except Exception:
                 quality_review_enabled = True
             set_key(str(env_path), "STORY_QUALITY_REVIEW", "1" if quality_review_enabled else "0")
+        if hasattr(self, "story_auto_polish_enabled"):
+            try:
+                auto_polish_enabled = bool(self.story_auto_polish_enabled.get())
+            except Exception:
+                auto_polish_enabled = True
+            set_key(str(env_path), "STORY_AUTO_POLISH", "1" if auto_polish_enabled else "0")
         if hasattr(self, "story_quality_min_avg"):
             try:
                 quality_min_avg_value = float(self.story_quality_min_avg.get())
@@ -414,6 +421,10 @@ class SettingsStoryEnvMixin:
             quality_review_raw = (os.getenv("STORY_QUALITY_REVIEW", "") or "").strip().lower()
             if quality_review_raw:
                 self.story_quality_review_enabled.set(self._parse_bool_env(quality_review_raw, default=True))
+        if hasattr(self, "story_auto_polish_enabled"):
+            auto_polish_raw = (os.getenv("STORY_AUTO_POLISH", "") or "").strip().lower()
+            if auto_polish_raw:
+                self.story_auto_polish_enabled.set(self._parse_bool_env(auto_polish_raw, default=True))
         if hasattr(self, "story_quality_min_avg"):
             quality_min_avg_raw = (os.getenv("STORY_QUALITY_MIN_AVG", "") or "").strip()
             if quality_min_avg_raw:

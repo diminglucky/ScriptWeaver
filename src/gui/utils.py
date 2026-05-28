@@ -56,12 +56,18 @@ def parse_outline_sections(outline: str) -> list[dict[str, str]]:
 		if chars_match:
 			chars = int(chars_match.group(1))
 			title = re.sub(r"\s*\(\d+字\)", "", title).strip()
+		event_promise = ""
+		for sep in (" | ", "｜", "|"):
+			if sep in title:
+				title, event_promise = [part.strip() for part in title.split(sep, 1)]
+				break
 
 		sections.append(
 			{
 				"num": num,
 				"title": title.strip(),
 				"chars": chars,
+				"event_promise": event_promise,
 			}
 		)
 

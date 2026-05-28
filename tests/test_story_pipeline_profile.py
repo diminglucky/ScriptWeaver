@@ -23,6 +23,8 @@ class StoryPipelineProfileTests(unittest.TestCase):
     def test_default_profile_builders_return_expected_keywords(self):
         story_emotion = build_emotion_arc_guidelines(stage="story")
         self.assertIn("情绪", story_emotion)
+        self.assertIn("压力递增", story_emotion)
+        self.assertIn("不可逆选择", story_emotion)
 
         review_prompt = build_quality_review_prompt(
             requirement="职场逆袭",
@@ -33,10 +35,15 @@ class StoryPipelineProfileTests(unittest.TestCase):
         self.assertIn("仅返回 JSON", review_prompt)
         self.assertIn("realism", review_prompt)
         self.assertIn("continuity", review_prompt)
+        self.assertIn("escalation", review_prompt)
+        self.assertIn("hook_density", review_prompt)
+        self.assertIn("不可逆事件", review_prompt)
         self.assertIn("章节标题：被迫站队", review_prompt)
 
         transition_rules = build_section_transition_guidelines()
         self.assertIn("承接", transition_rules)
+        self.assertIn("接力升级", transition_rules)
+        self.assertIn("禁止空降", transition_rules)
 
         memory_prompt = build_memory_ledger_prompt(
             section_title="反转时刻",
@@ -44,6 +51,8 @@ class StoryPipelineProfileTests(unittest.TestCase):
         )
         self.assertIn("记忆账本", memory_prompt)
         self.assertIn("summary", memory_prompt)
+        self.assertIn("unresolved_hooks", memory_prompt)
+        self.assertIn("不可逆事件", memory_prompt)
 
         polish_prompt = build_polish_prompt(
             section_title="反转时刻",
@@ -58,6 +67,8 @@ class StoryPipelineProfileTests(unittest.TestCase):
         self.assertIn("连贯性资料", polish_prompt)
         self.assertIn("上章收束句", polish_prompt)
         self.assertIn("记忆账本", polish_prompt)
+        self.assertIn("危机升级", polish_prompt)
+        self.assertIn("钩子接力", polish_prompt)
 
     def test_custom_profile_file_overrides_prompt_sections(self):
         custom = {

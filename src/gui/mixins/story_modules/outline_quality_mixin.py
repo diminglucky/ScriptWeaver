@@ -197,8 +197,8 @@ class OutlineQualityMixin:
         return default_enabled
 
     def _is_auto_polish_enabled(self) -> bool:
-        """自动精修是否开启。默认关闭，通过 STORY_AUTO_POLISH=1 开启。"""
-        raw = str(os.getenv("STORY_AUTO_POLISH", "0") or "0").strip().lower()
+        """自动精修是否开启。默认开启，通过 STORY_AUTO_POLISH=0 关闭。"""
+        raw = str(os.getenv("STORY_AUTO_POLISH", "1") or "1").strip().lower()
         default_enabled = raw in {"1", "true", "yes", "on"}
         val = getattr(self, "story_auto_polish_enabled", None)
         if hasattr(val, "get"):
@@ -271,7 +271,10 @@ class OutlineQualityMixin:
                 "issues": ["内容为空"],
                 "key_fix": "先生成有效正文。",
             }
-        preview = section_content[-1800:]
+        if len(section_content) > 2800:
+            preview = section_content[:700] + "\n…（中间省略）…\n" + section_content[-2000:]
+        else:
+            preview = section_content
         prompt = build_quality_review_prompt(
             requirement=requirement,
             category=category,
@@ -287,11 +290,12 @@ class OutlineQualityMixin:
         except Exception as exc:
             logger.debug("quality review failed: %s", exc)
             return {
-                "scores": {"realism": 7.0, "detail": 7.0, "coherence": 7.0, "continuity": 7.0, "naturalness": 7.0},
-                "avg_score": 7.0,
+                "scores": {"realism": 5.0, "detail": 5.0, "coherence": 5.0, "continuity": 5.0,
+                            "escalation": 5.0, "hook_density": 5.0, "naturalness": 5.0},
+                "avg_score": 5.0,
                 "strengths": [],
-                "issues": ["质量评审不可用，跳过自动改写"],
-                "key_fix": "",
+                "issues": ["质量评审不可用，触发保守精修"],
+                "key_fix": "增强危机升级与钩子密度",
             }
         return parse_quality_review(raw)
 

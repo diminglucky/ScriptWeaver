@@ -22,6 +22,8 @@ class StoryQualityTests(unittest.TestCase):
         )
         review = parse_quality_review(raw)
         self.assertAlmostEqual(review["scores"]["realism"], 7.8)
+        self.assertIn("escalation", review["scores"])
+        self.assertIn("hook_density", review["scores"])
         self.assertEqual(review["issues"][0], "细节偏少")
         self.assertTrue(review["avg_score"] > 0)
 
@@ -32,8 +34,13 @@ class StoryQualityTests(unittest.TestCase):
         review_bad = parse_quality_review(
             '{"scores":{"realism":7.0,"detail":6.2,"coherence":7.8,"naturalness":7.1},"issues":["细节不足"]}'
         )
+        review_flat = parse_quality_review(
+            '{"scores":{"realism":8.0,"detail":8.0,"coherence":8.0,"continuity":8.0,'
+            '"escalation":5.9,"hook_density":8.0,"naturalness":8.0},"issues":["高潮不足"]}'
+        )
         self.assertFalse(should_polish(review_ok, min_avg_score=7.0, min_dimension_score=6.8))
         self.assertTrue(should_polish(review_bad, min_avg_score=7.2, min_dimension_score=6.8))
+        self.assertTrue(should_polish(review_flat, min_avg_score=7.0, min_dimension_score=6.8))
 
     def test_memory_entry_and_format_context(self):
         parsed = parse_memory_entry(

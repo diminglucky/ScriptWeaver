@@ -63,6 +63,76 @@ class StoryPromptContextMixin:
             return ""
         return format_memory_context(rows, max_entries=max_items)
 
+    def _build_compressed_story_state(self, section_index: int, previous_content: str = "") -> str:
+        """Build a compact state brief so later chapters know what already happened."""
+        try:
+            idx = int(section_index)
+        except Exception:
+            idx = 0
+        rows = [x for x in self._get_story_memory_ledger() if int(x.get("chapter_index", -1)) < idx]
+        lines: list[str] = []
+        if rows:
+            recent = rows[-min(5, len(rows)) :]
+            facts: list[str] = []
+            relations: list[str] = []
+            hooks: list[str] = []
+            shifts: list[str] = []
+            for row in recent:
+                title = str(row.get("chapter_title", "") or "").strip()
+                prefix = f"《{title}》" if title else "上一章"
+                summary = str(row.get("summary", "") or "").strip()
+                if summary:
+                    facts.append(f"{prefix}{summary[:90]}")
+                for item in row.get("plot_points", []) if isinstance(row.get("plot_points", []), list) else []:
+                    text = str(item or "").strip()
+                    if text:
+                        facts.append(text[:70])
+                for item in row.get("relation_changes", []) if isinstance(row.get("relation_changes", []), list) else []:
+                    text = str(item or "").strip()
+                    if text:
+                        relations.append(text[:70])
+                for item in row.get("unresolved_hooks", []) if isinstance(row.get("unresolved_hooks", []), list) else []:
+                    text = str(item or "").strip()
+                    if text:
+                        hooks.append(text[:80])
+                shift = str(row.get("state_shift", "") or "").strip()
+                if shift:
+                    shifts.append(shift[:60])
+            if facts:
+                lines.append("【已发生事实（不得改写）】")
+                lines.extend(f"- {x}" for x in facts[-8:])
+            if relations:
+                lines.append("【人物关系/立场现状】")
+                lines.extend(f"- {x}" for x in relations[-5:])
+            if hooks:
+                lines.append("【未回收钩子（本章优先处理并升级）】")
+                lines.extend(f"- {x}" for x in hooks[-5:])
+            if shifts:
+                lines.append("【主角当前状态】")
+                lines.extend(f"- {x}" for x in shifts[-3:])
+        tail = extract_last_sentence(previous_content or "", max_chars=260)
+        if tail:
+            lines.append("【最新收束句】")
+            lines.append(f"- {tail}")
+        if not lines:
+            return ""
+        lines.append("【压缩上下文使用规则】")
+        lines.append("- 本章必须遵守以上事实、关系和未回收钩子，不得重置人物状态。")
+        lines.append("- 本章必须至少回收一个旧钩子，并制造一个更高风险的新钩子。")
+        return "\n".join(lines).strip()
+
+    def _build_story_skill_pack(self) -> str:
+        """Return built-in writing skills used as a compact strategy pack."""
+        return (
+            "【写作 Skills（必须执行）】\n"
+            "- 危机阶梯：每章用“目标受阻 → 反击 → 反击有代价/失败 → 新威胁”推进。\n"
+            "- 钩子接力：每章先兑现上章一个钩子，再抛出更危险、更具体的新钩子。\n"
+            "- 反转合法性：反转必须能从前文细节、人物动机或规则推出，禁止空降设定。\n"
+            "- 场景压迫：高潮不靠喊口号，用时间限制、空间封闭、证据消失、关系背叛制造压力。\n"
+            "- 不可逆代价：每章至少让主角失去信息优势、关系信任、安全位置或选择余地之一。\n"
+            "- 逻辑锁链：任何新行动都必须回应上一章结果，不能跳过后果直接进入新事件。"
+        )
+
     def _build_section_transition_context(self, section_index: int, previous_content: str) -> str:
         """Build compact cross-chapter continuity brief for current section."""
         try:
@@ -124,6 +194,8 @@ class StoryPromptContextMixin:
                 scores = last_report.get("scores", {}) if isinstance(last_report.get("scores", {}), dict) else {}
                 realism = float(scores.get("realism", 0.0) or 0.0)
                 detail = float(scores.get("detail", 0.0) or 0.0)
+                escalation = float(scores.get("escalation", 0.0) or 0.0)
+                hook_density = float(scores.get("hook_density", 0.0) or 0.0)
                 issue = ""
                 issues = last_report.get("issues", [])
                 if isinstance(issues, list) and issues:
@@ -132,6 +204,7 @@ class StoryPromptContextMixin:
                 title = str(last_report.get("chapter_title", "") or "").strip()
                 self.story_quality_summary_var.set(
                     f"质量评审：{title or '最近章节'} | 平均{avg:.1f} | 真实{realism:.1f} 细节{detail:.1f}"
+                    f" 高潮{escalation:.1f} 钩子{hook_density:.1f}"
                     f"{' | 修复: ' + (key_fix or issue) if (key_fix or issue) else ''}"
                 )
             else:
@@ -177,8 +250,10 @@ class StoryPromptContextMixin:
             "旁白式总结，让事件本身说话。\n"
             "6. 节奏控制：紧张场景用短句、快切；情感场景放慢节奏，加入环境细节和内心独白。\n"
             "7. 每段话推进一个信息点，禁止原地踏步或重复已知信息。"
+            "\n8. 高潮密度：每章至少两次节奏高点，且后一个高点必须比前一个代价更大。"
+            "\n9. 上下文一致：后文必须继承前文事实、关系、伤害、承诺、伏笔和人物心理状态。"
         )
-        return base_system_prompt.rstrip() + craft_rules
+        return base_system_prompt.rstrip() + craft_rules + "\n\n" + self._build_story_skill_pack()
 
     def _format_story_rules(self, rules):
         items = []

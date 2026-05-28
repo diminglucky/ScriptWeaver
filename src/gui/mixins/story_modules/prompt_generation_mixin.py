@@ -223,7 +223,9 @@ class StoryPromptGenerationMixin:
         min_chars = int(target_chars_per_section * 0.85)
         max_chars = int(target_chars_per_section * 1.15)
         section_title = section["title"]
-        section_items = "\n".join(f"  - {item}" for item in section["items"]) if section["items"] else ""
+        event_promise = str(section.get("event_promise", "") or "").strip()
+        raw_items = section.get("items") or []
+        section_items = "\n".join(f"  - {item}" for item in raw_items) if raw_items else ""
         context_hint = ""
         prev_window = min(3200, max(1200, int(target_chars_per_section * 1.2)))
         if section_index == 0:
@@ -259,6 +261,17 @@ class StoryPromptGenerationMixin:
                 f"{memory_context}\n"
                 "- 必须保持人物状态、关系变化、未回收伏笔的一致性。"
             )
+        compressed_state = ""
+        if hasattr(self, "_build_compressed_story_state"):
+            try:
+                compressed_state = str(
+                    self._build_compressed_story_state(section_index, previous_content)
+                    or ""
+                ).strip()
+            except Exception:
+                compressed_state = ""
+        if compressed_state:
+            context_hint += f"\n\n【压缩故事状态（强约束）】\n{compressed_state}"
         section_intro = get_section_intro_text(section_no=section_index + 1, total_sections=total_sections)
         section_writing_spec = get_section_writing_spec_text()
         section_reminder = get_section_reminder_text(min_chars=min_chars)
@@ -298,12 +311,13 @@ class StoryPromptGenerationMixin:
             f"【本节要求】\n"
             f"1. **字数**：必须写足 {min_chars}-{max_chars} 字，目标 {target_chars_per_section} 字\n"
             f"2. **章节主题**：{section_title}\n"
-            f"3. **要点**：\n{section_items if section_items else '  根据标题自由发挥'}\n"
-            f"4. **模版**：{template_label}\n"
-            f"5. **种类（最终）**：{effective_category}\n"
-            f"6. **种类（界面）**：{category}\n"
+            f"3. **本章不可逆事件承诺**：{event_promise if event_promise else '必须在本章设计一个会改变后续选择空间的不可逆事件'}\n"
+            f"4. **要点**：\n{section_items if section_items else '  根据标题自由发挥'}\n"
+            f"5. **模版**：{template_label}\n"
+            f"6. **种类（最终）**：{effective_category}\n"
+            f"7. **种类（界面）**：{category}\n"
             f"{alignment_block}\n"
-            f"7. **风格**：{style_value}\n\n"
+            f"8. **风格**：{style_value}\n\n"
             f"【模版规则】\n{section_rules}\n\n"
             f"{creativity_part}"
             f"【上下文】\n{context_hint}\n\n"

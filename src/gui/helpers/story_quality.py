@@ -13,6 +13,8 @@ QUALITY_DIM_KEYS = (
     "detail",
     "coherence",
     "continuity",
+    "escalation",
+    "hook_density",
     "naturalness",
 )
 
@@ -73,6 +75,8 @@ def parse_quality_review(raw: str) -> dict[str, Any]:
         "detail": _clip_score(scores_raw.get("detail", payload.get("detail", 7.0))),
         "coherence": _clip_score(scores_raw.get("coherence", payload.get("coherence", 7.0))),
         "continuity": _clip_score(scores_raw.get("continuity", payload.get("continuity", 7.0))),
+        "escalation": _clip_score(scores_raw.get("escalation", payload.get("escalation", 7.0))),
+        "hook_density": _clip_score(scores_raw.get("hook_density", payload.get("hook_density", 7.0))),
         "naturalness": _clip_score(scores_raw.get("naturalness", payload.get("naturalness", 7.0))),
     }
     avg_score = round(sum(scores.values()) / float(len(scores)), 2)

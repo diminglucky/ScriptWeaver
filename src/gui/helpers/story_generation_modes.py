@@ -24,6 +24,7 @@ STORY_GENERATION_MODES: dict[str, dict[str, object]] = {
         "description": "开启核心一致性与预览流程，在质量和速度之间平衡。",
         "settings": {
             "story_quality_review_enabled": True,
+            "story_auto_polish_enabled": True,
             "story_global_overview_enabled": True,
             "story_overview_before_generate": True,
             "story_preview_before_apply": True,
@@ -38,6 +39,7 @@ STORY_GENERATION_MODES: dict[str, dict[str, object]] = {
         "description": "强化目录对齐和质检门槛，生成更慢但一致性更高。",
         "settings": {
             "story_quality_review_enabled": True,
+            "story_auto_polish_enabled": True,
             "story_global_overview_enabled": True,
             "story_overview_before_generate": True,
             "story_preview_before_apply": True,

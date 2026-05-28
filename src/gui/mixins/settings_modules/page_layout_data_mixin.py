@@ -103,6 +103,8 @@ class SettingsPageLayoutDataMixin:
             self.story_creativity_mode = tk.StringVar(value=DEFAULT_STORY_CREATIVITY_MODE)
         if not hasattr(self, "story_quality_review_enabled"):
             self.story_quality_review_enabled = tk.BooleanVar(value=True)
+        if not hasattr(self, "story_auto_polish_enabled"):
+            self.story_auto_polish_enabled = tk.BooleanVar(value=True)
         if not hasattr(self, "story_quality_min_avg"):
             self.story_quality_min_avg = tk.DoubleVar(value=7.4)
         if not hasattr(self, "story_quality_min_dim"):

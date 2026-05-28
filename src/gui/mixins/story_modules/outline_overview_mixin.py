@@ -918,6 +918,7 @@ class OutlineOverviewMixin:
         """生成用于正文写作前确认的章节总览。"""
         detail_level = self._get_story_overview_detail_level()
         title = str(section.get("title", "") or "").strip()
+        event_promise = str(section.get("event_promise", "") or "").strip()
         points = [str(item).strip() for item in (section.get("items") or []) if str(item).strip()]
         points_text = "\n".join(f"- {item}" for item in points[:8]) if points else "- 无明确要点，请围绕章节标题补齐。"
         context_chunks: list[str] = []
@@ -949,6 +950,7 @@ class OutlineOverviewMixin:
             "4) 禁止 Markdown 标题、禁止额外解释。\n\n"
             f"章节位置：第 {section_index+1}/{total_sections} 章\n"
             f"章节标题：{title or '未命名章节'}\n"
+            f"本章不可逆事件承诺：{event_promise if event_promise else '无明确承诺，请在总览中补一个会改变后续选择空间的不可逆事件'}\n"
             f"创作需求：{requirement}\n"
             f"题材：{category}\n"
             f"章节要点：\n{points_text}\n\n"

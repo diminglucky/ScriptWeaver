@@ -447,6 +447,9 @@ class ModernApp(
         self.story_quality_review_enabled = tk.BooleanVar(
             value=self._read_env_bool("STORY_QUALITY_REVIEW", True)
         )
+        self.story_auto_polish_enabled = tk.BooleanVar(
+            value=self._read_env_bool("STORY_AUTO_POLISH", True)
+        )
         self.story_quality_min_avg = tk.DoubleVar(
             value=self._read_env_float("STORY_QUALITY_MIN_AVG", 7.4, 1.0, 10.0)
         )
