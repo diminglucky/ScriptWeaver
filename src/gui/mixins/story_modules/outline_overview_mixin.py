@@ -264,22 +264,41 @@ class OutlineOverviewMixin:
     def _build_section_overview_detail_constraints(detail_level: str) -> tuple[str, int]:
         if detail_level == "brief":
             return (
-                "输出 5-7 条短句（每条 18-42 字）。\n"
-                "每条聚焦一个动作或冲突，不要空泛总结。",
-                1000,
+                "输出“本章场景执行卡”，使用固定标签：\n"
+                "【承接点】1句，写清从前文哪一个动作/情绪继续。\n"
+                "【本章目标】1句，必须是人物能行动的具体目标。\n"
+                "【场景链】3段，每段格式为“场景N：目标/阻力/行动/结果/新问题”。\n"
+                "【不可逆代价】1句，写清本章结束后失去什么或局面如何改变。\n"
+                "【人物状态变化】1句，写清核心人物从什么状态变成什么状态。\n"
+                "【新钩子】1句，提出下一章必须回应的问题。\n"
+                "【连续性禁区】1句，列出本章不得违背的人设/时间线/已发生事实。",
+                1200,
             )
         if detail_level == "rich":
             return (
-                "输出 10-14 条短句（每条 24-65 字）。\n"
-                "必须覆盖：场景锚点、人物目标、障碍来源、关键动作、对话张力、心理波动、细节意象、结尾钩子。\n"
-                "至少给出 2 个\u201c可直接写入正文\u201d的关键句（动作或台词），以保证落地写作。",
-                1700,
+                "输出“本章场景执行卡”，使用固定标签：\n"
+                "【承接点】2句，写清从前文哪一个动作/情绪/未解问题继续。\n"
+                "【本章目标】2句，必须包含外部目标与隐性情感目标。\n"
+                "【场景链】5段，每段格式为“场景N：目标/阻力/行动/结果/新问题”，每段必须有地点或动作细节。\n"
+                "【反转或失败】2句，写清中段如何打破人物预期。\n"
+                "【不可逆代价】2句，写清本章结束后失去什么、暴露什么或关系如何改变。\n"
+                "【人物状态变化】2句，写清核心人物的情绪、立场、关系位移。\n"
+                "【新钩子】2句，提出下一章必须回应的问题，且必须由本章结果触发。\n"
+                "【连续性禁区】2句，列出本章不得违背的人设/时间线/已发生事实。\n"
+                "【可落地细节】给出2个可直接写入正文的动作或台词方向。",
+                1900,
             )
         return (
-            "输出 8-12 条短句（每条 22-55 字）。\n"
-            "必须覆盖：开场场景、核心冲突、动作推进、情绪变化、结尾钩子。\n"
-            "至少给出 1 个可直接落地的动作句或台词句。",
-            1400,
+            "输出“本章场景执行卡”，使用固定标签：\n"
+            "【承接点】1-2句，写清从前文哪一个动作/情绪/未解问题继续。\n"
+            "【本章目标】1-2句，必须是人物能行动的具体目标。\n"
+            "【场景链】4段，每段格式为“场景N：目标/阻力/行动/结果/新问题”，每段都要产生新信息、阻力或代价。\n"
+            "【反转或失败】1句，写清中段如何打破人物预期。\n"
+            "【不可逆代价】1-2句，写清本章结束后失去什么、暴露什么或关系如何改变。\n"
+            "【人物状态变化】1-2句，写清核心人物的情绪、立场、关系位移。\n"
+            "【新钩子】1句，提出下一章必须回应的问题，且必须由本章结果触发。\n"
+            "【连续性禁区】1句，列出本章不得违背的人设/时间线/已发生事实。",
+            1600,
         )
 
     def _rewrite_story_global_overview_if_too_generic(
@@ -346,16 +365,18 @@ class OutlineOverviewMixin:
             core_points.append("补充本章核心推进动作")
         title = section_title or "未命名章节"
         return (
-            f"1. 开场承接前文“{prev_tail}”，在{category or '当前题材'}场域迅速落地《{title}》的第一冲突。\n"
-            f"2. 主角本章目标明确化：围绕“{requirement or '核心需求'}”做一次高风险尝试并暴露代价。\n"
-            f"3. 关键推进点A：{core_points[0]}，用动作与对话推动，而不是旁白解释。\n"
-            f"4. 关键推进点B：{core_points[1]}，制造角色关系的试探或对抗。\n"
-            f"5. 关键推进点C：{core_points[2]}，给出新信息或新证据，改变读者预期。\n"
-            f"6. 关键推进点D：{core_points[3]}，让人物做出不可逆选择，强化人物弧线。\n"
-            "7. 情绪轨迹：从克制试探转向正面碰撞，再落到带余震的短暂平静。\n"
-            "8. 细节锚点：至少写入一个空间细节、一个身体动作细节、一个声音或气味细节。\n"
-            "9. 结尾钩子：抛出下一章必须回应的问题，且与本章核心冲突直接相关。\n"
-            "10. 一致性提醒：本章不改人设、不改规则，所有转折都由前文线索触发。"
+            f"【承接点】从前文“{prev_tail}”后的即时动作/情绪继续，不跳时空。\n"
+            f"【本章目标】主角围绕“{requirement or '核心需求'}”在《{title}》里做一次可见的高风险尝试。\n"
+            f"【场景链】\n"
+            f"场景1：目标/把前章余波落到{category or '当前题材'}场景里；阻力/信息不完整；行动/主角主动试探；结果/第一处矛盾显形；新问题/谁在隐瞒关键原因。\n"
+            f"场景2：目标/推进“{core_points[0]}”；阻力/对方回避或反制；行动/用动作与对话逼近真相；结果/关系出现裂缝；新问题/主角是否误判。\n"
+            f"场景3：目标/推进“{core_points[1]}”；阻力/旧线索被推翻；行动/主角改用更冒险的方法；结果/获得新证据或新敌意；新问题/代价开始落到本人身上。\n"
+            f"场景4：目标/推进“{core_points[2]}”；阻力/“{core_points[3]}”带来阻断；行动/主角做出不可回头的选择；结果/局面被改写；新问题/下一章必须处理后果。\n"
+            "【反转或失败】中段至少一次让主角的原计划失败，失败原因来自前文线索而不是巧合。\n"
+            "【不可逆代价】本章结束后必须失去一种安全感、关系信任、证据优势或选择空间。\n"
+            "【人物状态变化】核心人物从克制试探转向正面碰撞，结尾保留带余震的短暂平静。\n"
+            "【新钩子】抛出下一章必须回应的问题，且这个问题由本章最后的选择直接触发。\n"
+            "【连续性禁区】不改人设、不改规则、不重写已发生事实，所有转折都由前文线索触发。"
         )
 
     def _strip_html_from_error(self, text: str) -> str:
@@ -915,7 +936,7 @@ class OutlineOverviewMixin:
         category: str,
         previous_content: str,
     ) -> str:
-        """生成用于正文写作前确认的章节总览。"""
+        """生成用于正文写作前确认的章节场景执行卡。"""
         detail_level = self._get_story_overview_detail_level()
         title = str(section.get("title", "") or "").strip()
         event_promise = str(section.get("event_promise", "") or "").strip()
@@ -933,6 +954,14 @@ class OutlineOverviewMixin:
         prev_tail = extract_last_sentence(previous_content or "", max_chars=260)
         if not prev_tail:
             prev_tail = "无前文章节，可直接起笔建立场景。"
+        state_contract = ""
+        if hasattr(self, "_build_story_state_contract"):
+            try:
+                state_contract = str(
+                    self._build_story_state_contract(section_index, previous_content) or ""
+                ).strip()
+            except Exception:
+                state_contract = ""
 
         try:
             temp = float(self.temperature.get())
@@ -942,12 +971,14 @@ class OutlineOverviewMixin:
         detail_constraints, max_tokens = self._build_section_overview_detail_constraints(detail_level)
 
         prompt = (
-            "你是中文小说策划编辑。请先输出“本章总览草案”，供作者确认后再写正文。\n"
+            "你是中文小说策划编辑。请先输出“本章场景执行卡”，供作者确认后再写正文。\n"
             "输出要求：\n"
-            "1) 仅输出总览内容，不写正文段落；\n"
+            "1) 仅输出场景执行卡，不写正文段落，不写纯摘要；\n"
             f"2) {detail_constraints}\n"
             "3) 必须与章节标题、主题需求、前文衔接一致，不得与既有设定冲突；\n"
-            "4) 禁止 Markdown 标题、禁止额外解释。\n\n"
+            "4) 场景链必须按因果推进：上一场结果要制造下一场阻力或新问题；\n"
+            "5) 【连续性禁区】必须引用故事状态合同里的事实、关系、时间线或未回收钩子；\n"
+            "6) 禁止 Markdown 标题、禁止额外解释。\n\n"
             f"章节位置：第 {section_index+1}/{total_sections} 章\n"
             f"章节标题：{title or '未命名章节'}\n"
             f"本章不可逆事件承诺：{event_promise if event_promise else '无明确承诺，请在总览中补一个会改变后续选择空间的不可逆事件'}\n"
@@ -955,6 +986,7 @@ class OutlineOverviewMixin:
             f"题材：{category}\n"
             f"章节要点：\n{points_text}\n\n"
             f"前文收束句：{prev_tail}\n\n"
+            f"故事状态合同：\n{state_contract if state_contract else '无'}\n\n"
             f"参考资料摘录：\n{context_text}\n"
         )
         drafted, error = self._chat_with_retry_and_token_fallback(
@@ -975,7 +1007,13 @@ class OutlineOverviewMixin:
             )
         if not drafted:
             return ""
-        drafted = drafted.replace("【本章总览】", "").replace("本章总览：", "").strip()
+        drafted = (
+            drafted.replace("【本章总览】", "")
+            .replace("本章总览：", "")
+            .replace("【本章场景执行卡】", "")
+            .replace("本章场景执行卡：", "")
+            .strip()
+        )
         drafted = strip_duplicate_lines(drafted)
         return drafted
 
@@ -992,7 +1030,7 @@ class OutlineOverviewMixin:
         current_overview: str,
         feedback: str,
     ) -> str:
-        """根据用户意见重生成章节总览。"""
+        """根据用户意见重生成章节场景执行卡。"""
         detail_level = self._get_story_overview_detail_level()
         current = str(current_overview or "").strip()
         if not current:
@@ -1002,6 +1040,14 @@ class OutlineOverviewMixin:
         prev_tail = extract_last_sentence(previous_content or "", max_chars=260)
         if not prev_tail:
             prev_tail = "无前文章节，可直接起笔建立场景。"
+        state_contract = ""
+        if hasattr(self, "_build_story_state_contract"):
+            try:
+                state_contract = str(
+                    self._build_story_state_contract(section_index, previous_content) or ""
+                ).strip()
+            except Exception:
+                state_contract = ""
 
         try:
             temp = float(self.temperature.get())
@@ -1011,16 +1057,19 @@ class OutlineOverviewMixin:
         detail_constraints, regen_max_tokens = self._build_section_overview_detail_constraints(detail_level)
 
         prompt = (
-            "你是中文小说策划编辑。请根据用户意见重写“章节总览草案”。\n"
+            "你是中文小说策划编辑。请根据用户意见重写“本章场景执行卡”。\n"
             "要求：\n"
             "1) 保持章节主线与设定一致；\n"
             f"2) {detail_constraints}\n"
-            "3) 只输出重写后的总览，不要解释。\n\n"
+            "3) 场景链必须按因果推进：上一场结果要制造下一场阻力或新问题；\n"
+            "4) 【连续性禁区】必须引用故事状态合同里的事实、关系、时间线或未回收钩子；\n"
+            "5) 只输出重写后的场景执行卡，不要解释。\n\n"
             f"章节位置：第 {section_index+1}/{total_sections} 章\n"
             f"章节标题：{section_title}\n"
             f"创作需求：{requirement}\n"
             f"题材：{category}\n"
             f"前文收束句：{prev_tail}\n"
+            f"故事状态合同：\n{state_contract if state_contract else '无'}\n"
             f"用户意见：{user_feedback if user_feedback else '未提供意见，请给出一个明显不同但同质量的新版本。'}\n\n"
             f"当前总览：\n{current}\n"
         )
@@ -1072,14 +1121,14 @@ class OutlineOverviewMixin:
         return show_story_feedback_dialog(
             self,
             title=f"章节总览确认 - 第 {section_index + 1}/{total_sections} 章",
-            header_text=f"《{section_title}》总览草案",
-            subtitle_text="先确认总览，再开始本章正文生成。你可以写意见并反复重生成。",
+            header_text=f"《{section_title}》场景执行卡",
+            subtitle_text="先确认场景执行卡，再开始本章正文生成。你可以写意见并反复重生成。",
             initial_content=initial_overview,
-            default_status="可反复重生成总览，满意后再进入正文。",
+            default_status="可反复重生成执行卡，满意后再进入正文。",
             geometry="960x720",
-            accept_label="✅ 采用总览并开始生成正文",
+            accept_label="✅ 采用执行卡并开始生成正文",
             discard_label="❌ 取消本章生成",
-            regen_label="🔄 重生成总览（可多次）",
+            regen_label="🔄 重生成执行卡（可多次）",
             editor_readonly=False,
             regenerate_fn=_regen,
         )
@@ -1123,15 +1172,15 @@ class OutlineOverviewMixin:
         outline_text: str,
         sections: list[dict],
     ) -> list[dict]:
-        """一次 API 调用，批量生成所有章节的详细写作蓝图（每章 ~500 字）。
+        """一次 API 调用，批量生成所有章节的场景执行卡（每章 ~500 字）。
 
-        蓝图比"总览"详细得多，包含：
-        - 场景走向（在哪里、什么时间、什么氛围）
-        - 核心事件的具体经过（谁做了什么、说了什么）
-        - 人物情绪轨迹（从什么状态到什么状态）
-        - 关键对话的方向（不写原文，写对话要传递的信息）
-        - 与上一章的衔接点
-        - 章末悬念/钩子
+        执行卡用于约束正文生成，包含：
+        - 与上一章的即时承接点
+        - 本章人物可行动目标
+        - 3-5 个因果相连的场景推进节点
+        - 中段反转/失败、不可逆代价
+        - 人物状态变化、章末新钩子
+        - 连续性禁区
         """
         n = len(sections)
         if n == 0:
@@ -1162,30 +1211,38 @@ class OutlineOverviewMixin:
         chars_per_chapter = max(400, min(600, 3500 // n))
 
         prompt = (
-            "你是中文长篇小说的策划总编。请根据目录和创作需求，一次性输出所有章节的**详细写作蓝图**。\n\n"
-            "每章蓝图必须包含以下内容（缺一不可）：\n"
-            "1. 【场景设定】本章发生在什么地方、什么时间、什么氛围（天气/光线/环境声）\n"
-            "2. 【核心事件】本章的主要事件具体经过——谁做了什么、遇到了什么、发现了什么\n"
-            "3. 【人物动态】出场角色各自的情绪起点→终点，关键动作和内心变化\n"
-            "4. 【对话方向】本章需要出现的关键对话（不写原文，写对话要传递的信息和冲突点）\n"
-            "5. 【承接上章】本章开头如何衔接上一章的结尾（第1章写如何开篇破题）\n"
-            "6. 【章末钩子】本章结尾留什么悬念/疑问/转折，驱动读者看下一章\n"
-            "7. 【伏笔线索】本章需要埋下或回收的伏笔（标注：埋伏笔→第N章回收 / 回收→来自第N章）\n\n"
+            "你是中文长篇小说的策划总编。请根据目录和创作需求，一次性输出所有章节的**场景执行卡**。\n\n"
+            "每章执行卡必须包含以下固定标签（缺一不可）：\n"
+            "1. 【承接点】本章开头从上一章哪个动作、情绪、未解问题继续（第1章写如何开篇破题）\n"
+            "2. 【本章目标】人物在本章要完成的可见行动目标，不能只是“成长/反思/推进关系”\n"
+            "3. 【场景链】3-5个场景，每个场景必须使用“场景N：目标/阻力/行动/结果/新问题”的格式\n"
+            "4. 【反转或失败】中段至少一次打破人物预期，失败原因必须来自前文线索或人物选择\n"
+            "5. 【不可逆代价】本章结束后失去什么、暴露什么、关系如何改变或选择空间如何收窄\n"
+            "6. 【人物状态变化】核心人物的情绪、立场、关系从哪里移动到哪里\n"
+            "7. 【新钩子】下一章必须回应的问题，必须由本章结果触发\n"
+            "8. 【伏笔线索】本章需要埋下或回收的伏笔（标注：埋伏笔→第N章回收 / 回收→来自第N章）\n"
+            "9. 【连续性禁区】本章不得违背的人设、时间线、地点状态、已发生事实\n\n"
             "硬性要求：\n"
-            f"- 每章蓝图 {chars_per_chapter}-{chars_per_chapter + 150} 字，必须写具体事件，禁止笼统表述\n"
-            "- 蓝图之间必须因果相连，后面章节的事件必须在前面有铺垫\n"
+            f"- 每章执行卡 {chars_per_chapter}-{chars_per_chapter + 150} 字，必须写具体事件，禁止笼统表述\n"
+            "- 场景链之间必须因果相连：上一场结果制造下一场阻力或新问题\n"
+            "- 章节之间必须因果相连，后面章节的事件必须在前面有铺垫\n"
             "- 最后一章必须收束所有主线和伏笔\n"
             "- 人物性格/立场的变化必须跨章连续，不能突变\n"
             f"- 用 === 第N章 === 作为分隔符\n\n"
             "输出格式（严格遵循）：\n"
             "=== 第1章 ===\n"
-            "【场景设定】...\n"
-            "【核心事件】...\n"
-            "【人物动态】...\n"
-            "【对话方向】...\n"
-            "【承接上章】...\n"
-            "【章末钩子】...\n"
-            "【伏笔线索】...\n\n"
+            "【承接点】...\n"
+            "【本章目标】...\n"
+            "【场景链】\n"
+            "场景1：目标/...；阻力/...；行动/...；结果/...；新问题/...\n"
+            "场景2：目标/...；阻力/...；行动/...；结果/...；新问题/...\n"
+            "场景3：目标/...；阻力/...；行动/...；结果/...；新问题/...\n"
+            "【反转或失败】...\n"
+            "【不可逆代价】...\n"
+            "【人物状态变化】...\n"
+            "【新钩子】...\n"
+            "【伏笔线索】...\n"
+            "【连续性禁区】...\n\n"
             "=== 第2章 ===\n"
             "...\n\n"
             f"{overview_block}"

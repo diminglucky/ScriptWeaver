@@ -306,11 +306,22 @@ class StoryTemplateHeadlessTests(unittest.TestCase):
             category="都市",
             style_part="快节奏",
             target_chars_per_section=1000,
+            section_overview_plan=(
+                "【承接点】从会议室沉默继续。\n"
+                "【本章目标】当众证明证据被调包。\n"
+                "【场景链】\n"
+                "场景1：目标/开口质询；阻力/上司反咬；行动/展示编号；结果/众人动摇；新问题/谁提前换袋。"
+            ),
         )
         self.assertIn("当前模版：都市逆袭爽文", outline_prompt)
         self.assertIn("**模版**：都市逆袭爽文", full_prompt)
         self.assertIn("【模版规则】", section_prompt)
         self.assertIn("都市逆袭爽文", section_prompt)
+        self.assertIn("【本章剧情合同（硬约束）】", section_prompt)
+        self.assertIn("因果推进", section_prompt)
+        self.assertIn("【本章场景执行卡（必须逐项兑现）】", section_prompt)
+        self.assertIn("正文必须按【场景链】的因果顺序推进", section_prompt)
+        self.assertIn("不能写成静态说明", section_prompt)
         self.assertIn("【跨章衔接一致性】", section_prompt)
         self.assertIn("【创新引擎（blend）】", full_prompt)
         self.assertIn("跨模版融合", full_prompt)

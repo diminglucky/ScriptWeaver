@@ -221,12 +221,12 @@ class OutlineSectionGenerateMixin:
         previous_content: str,
         requirement: str,
         category: str,
-        include_memory: bool = False,
-    ) -> tuple[str, str, "dict | None", "dict | None"]:
-        """并行执行末尾修复、衔接修复、质量评审、记忆提取，减少串行等待。
+        section_overview_plan: str = "",
+    ) -> tuple[str, str]:
+        """并行执行末尾修复、衔接修复，减少串行等待。
 
         Returns:
-            (tail_patch, transition_result, review, memory_entry)
+            (tail_patch, transition_result)
         """
         fast = hasattr(self, '_is_story_fast_mode') and self._is_story_fast_mode()
         quality_enabled = (not fast) and self._is_story_quality_review_enabled()
@@ -234,13 +234,13 @@ class OutlineSectionGenerateMixin:
         # 末尾截断修复始终开启（不受快速模式/质量评审开关影响）
         need_tail = not self._is_section_tail_complete(section_content)
         need_transition = quality_enabled and section_index > 0
-        include_memory = include_memory and quality_enabled
 
-        tasks_needed = sum([need_tail, need_transition, quality_enabled, include_memory])
+        tasks_needed = sum([need_tail, need_transition])
         if tasks_needed == 0:
-            return "", section_content, None, None
+            return "", section_content
 
-        with ThreadPoolExecutor(max_workers=max(1, tasks_needed)) as pool:
+        pool = ThreadPoolExecutor(max_workers=max(1, tasks_needed))
+        try:
             ft_tail = pool.submit(
                 self._repair_section_tail_if_needed,
                 client, section_title, section_content,
@@ -255,21 +255,6 @@ class OutlineSectionGenerateMixin:
                 section_content=section_content,
             ) if need_transition else None
 
-            ft_review = pool.submit(
-                self._review_section_quality,
-                client, section_title, section_content,
-                requirement, category,
-            ) if quality_enabled else None
-
-            # 优化③：记忆提取也并行执行
-            ft_memory = pool.submit(
-                self._extract_memory_entry,
-                client,
-                section_index=section_index,
-                section_title=section_title,
-                section_content=section_content,
-            ) if include_memory else None
-
             _REPAIR_TIMEOUT = 45  # 单个后处理任务最多等 45 秒
 
             def _safe_result(ft, default, label: str = ""):
@@ -283,10 +268,90 @@ class OutlineSectionGenerateMixin:
 
             tail_patch = _safe_result(ft_tail, "", "tail_repair")
             transition_result = _safe_result(ft_transition, section_content, "transition_repair")
-            review = _safe_result(ft_review, None, "quality_review")
-            memory_entry = _safe_result(ft_memory, None, "memory_extract")
 
-        return tail_patch, transition_result, review, memory_entry
+            return tail_patch, transition_result
+        finally:
+            pool.shutdown(wait=False, cancel_futures=True)
+
+    def _post_stream_quality_review(
+        self,
+        *,
+        client,
+        section_content: str,
+        section_title: str,
+        section_index: int,
+        previous_content: str,
+        requirement: str,
+        category: str,
+        section_overview_plan: str = "",
+    ) -> "dict | None":
+        """Run quality review against the repaired section text."""
+        fast = hasattr(self, '_is_story_fast_mode') and self._is_story_fast_mode()
+        quality_enabled = (not fast) and self._is_story_quality_review_enabled()
+        if not quality_enabled:
+            return None
+
+        pool = ThreadPoolExecutor(max_workers=1)
+        try:
+            ft_review = pool.submit(
+                self._review_section_quality,
+                client, section_title, section_content,
+                requirement, category,
+                section_index, previous_content, section_overview_plan,
+            )
+
+            _REPAIR_TIMEOUT = 45
+
+            def _safe_result(ft, default, label: str = ""):
+                if ft is None:
+                    return default
+                try:
+                    return ft.result(timeout=_REPAIR_TIMEOUT)
+                except Exception as exc:
+                    logger.warning("post-stream %s timed out or failed: %s", label, str(exc)[:60])
+                    return default
+
+            review = _safe_result(ft_review, None, "quality_review")
+            return review
+        finally:
+            pool.shutdown(wait=False, cancel_futures=True)
+
+    def _is_story_memory_ledger_enabled(self) -> bool:
+        fast = hasattr(self, '_is_story_fast_mode') and self._is_story_fast_mode()
+        return not fast
+
+    def _extract_final_memory_entry(
+        self,
+        *,
+        client,
+        section_index: int,
+        section_title: str,
+        section_content: str,
+        include_memory: bool = False,
+    ) -> "dict | None":
+        """Extract memory only from the final accepted section text."""
+        if not include_memory or not self._is_story_memory_ledger_enabled():
+            return None
+
+        pool = ThreadPoolExecutor(max_workers=1)
+        try:
+            ft_memory = pool.submit(
+                self._extract_memory_entry,
+                client,
+                section_index=section_index,
+                section_title=section_title,
+                section_content=section_content,
+            )
+
+            _REPAIR_TIMEOUT = 45
+
+            try:
+                return ft_memory.result(timeout=_REPAIR_TIMEOUT)
+            except Exception as exc:
+                logger.warning("post-stream memory_extract timed out or failed: %s", str(exc)[:60])
+                return None
+        finally:
+            pool.shutdown(wait=False, cancel_futures=True)
 
     @staticmethod
     def _merge_post_stream_repairs(
@@ -381,9 +446,9 @@ class OutlineSectionGenerateMixin:
                 target_per_section=target_per_section,
             )
 
-            # 并行执行：末尾修复 + 衔接修复 + 质量评审 + 记忆提取
+            # 先并行执行文本修复；质量评审基于修复后的正文。
             original_content = section_content
-            tail_patch, transition_result, review, memory_entry = self._parallel_post_stream_repairs(
+            tail_patch, transition_result = self._parallel_post_stream_repairs(
                 client=client,
                 section_content=section_content,
                 section_title=section.get("title", ""),
@@ -391,7 +456,7 @@ class OutlineSectionGenerateMixin:
                 previous_content=accumulated_content,
                 requirement=requirement,
                 category=category,
-                include_memory=not fast,
+                section_overview_plan=section_overview_plan,
             )
             section_content = self._merge_post_stream_repairs(
                 section_content, tail_patch, transition_result,
@@ -400,6 +465,16 @@ class OutlineSectionGenerateMixin:
                 self._ui(self.output.delete, section_start_pos, "end-1c")
                 self._ui(self.output.insert, END, section_content)
                 self._ui(self.output.see, END)
+            review = self._post_stream_quality_review(
+                client=client,
+                section_content=section_content,
+                section_title=section.get("title", ""),
+                section_index=idx,
+                previous_content=accumulated_content,
+                requirement=requirement,
+                category=category,
+                section_overview_plan=section_overview_plan,
+            )
 
             # 质量评审结果 → 自动精修（优化④由环境变量控制）
             if review is not None:
@@ -409,7 +484,27 @@ class OutlineSectionGenerateMixin:
                     needs_polish = should_polish(review, min_avg_score=min_avg, min_dimension_score=min_dim)
                     if not needs_polish and self._needs_continuity_polish(review, idx):
                         needs_polish = True
-                    if needs_polish:
+                    needs_rewrite = self._needs_structural_rewrite(review, idx)
+                    rewrite_applied = False
+                    if needs_rewrite:
+                        polished = self._rewrite_section_structure(
+                            client,
+                            section.get("title", ""),
+                            section_content,
+                            review,
+                            target_per_section,
+                            section_index=idx,
+                            previous_content=accumulated_content,
+                            section_overview_plan=section_overview_plan,
+                            event_promise=str(section.get("event_promise", "") or ""),
+                        )
+                        if polished and polished != section_content:
+                            self._ui(self.output.delete, section_start_pos, "end-1c")
+                            self._ui(self.output.insert, END, polished)
+                            self._ui(self.output.see, END)
+                            section_content = polished
+                            rewrite_applied = True
+                    if needs_polish and not rewrite_applied:
                         polished = self._polish_section_text(
                             client,
                             section.get("title", ""),
@@ -455,7 +550,13 @@ class OutlineSectionGenerateMixin:
                 stopped_by_preview = True
                 break
 
-            # 记忆账本已在并行池中提取完毕
+            memory_entry = self._extract_final_memory_entry(
+                client=client,
+                section_index=idx,
+                section_title=section.get("title", ""),
+                section_content=section_content,
+                include_memory=not fast,
+            )
             if memory_entry:
                 self._update_story_memory_ledger(idx, section.get("title", ""), memory_entry)
             if hasattr(self, "_update_story_diagnostics_panel"):
@@ -569,10 +670,10 @@ class OutlineSectionGenerateMixin:
                 target_per_section=target_per_section,
             )
 
-            # 并行执行：末尾修复 + 衔接修复 + 质量评审 + 记忆提取
+            # 先并行执行文本修复；质量评审基于修复后的正文。
             fast = hasattr(self, '_is_story_fast_mode') and self._is_story_fast_mode()
             original_content = section_content
-            tail_patch, transition_result, review, memory_entry = self._parallel_post_stream_repairs(
+            tail_patch, transition_result = self._parallel_post_stream_repairs(
                 client=client,
                 section_content=section_content,
                 section_title=section.get("title", ""),
@@ -580,7 +681,7 @@ class OutlineSectionGenerateMixin:
                 previous_content=self.generated_content,
                 requirement=query,
                 category=self.category.get(),
-                include_memory=not fast,
+                section_overview_plan=section_overview_plan,
             )
             section_content = self._merge_post_stream_repairs(
                 section_content, tail_patch, transition_result,
@@ -589,6 +690,16 @@ class OutlineSectionGenerateMixin:
                 self._ui(self.output.delete, section_start_pos, "end-1c")
                 self._ui(self.output.insert, END, section_content)
                 self._ui(self.output.see, END)
+            review = self._post_stream_quality_review(
+                client=client,
+                section_content=section_content,
+                section_title=section.get("title", ""),
+                section_index=section_index,
+                previous_content=self.generated_content,
+                requirement=query,
+                category=self.category.get(),
+                section_overview_plan=section_overview_plan,
+            )
 
             # 质量评审结果 → 自动精修（优化④由环境变量控制）
             if review is not None:
@@ -597,7 +708,27 @@ class OutlineSectionGenerateMixin:
                     needs_polish = should_polish(review, min_avg_score=min_avg, min_dimension_score=min_dim)
                     if not needs_polish and self._needs_continuity_polish(review, section_index):
                         needs_polish = True
-                    if needs_polish:
+                    needs_rewrite = self._needs_structural_rewrite(review, section_index)
+                    rewrite_applied = False
+                    if needs_rewrite:
+                        polished = self._rewrite_section_structure(
+                            client,
+                            section.get("title", ""),
+                            section_content,
+                            review,
+                            target_per_section,
+                            section_index=section_index,
+                            previous_content=self.generated_content,
+                            section_overview_plan=section_overview_plan,
+                            event_promise=str(section.get("event_promise", "") or ""),
+                        )
+                        if polished and polished != section_content:
+                            self._ui(self.output.delete, section_start_pos, "end-1c")
+                            self._ui(self.output.insert, END, polished)
+                            self._ui(self.output.see, END)
+                            section_content = polished
+                            rewrite_applied = True
+                    if needs_polish and not rewrite_applied:
                         polished = self._polish_section_text(
                             client,
                             section.get("title", ""),
@@ -654,7 +785,13 @@ class OutlineSectionGenerateMixin:
             if action in {"append", "replace"}:
                 if review is not None:
                     self._update_chapter_quality_report(section_index, section.get("title", ""), review)
-                # 记忆账本已在并行池中提取完毕
+                memory_entry = self._extract_final_memory_entry(
+                    client=client,
+                    section_index=section_index,
+                    section_title=section.get("title", ""),
+                    section_content=section_content,
+                    include_memory=not fast,
+                )
                 if memory_entry:
                     self._update_story_memory_ledger(section_index, section.get("title", ""), memory_entry)
                 if hasattr(self, "_update_story_diagnostics_panel"):

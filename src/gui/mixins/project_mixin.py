@@ -131,12 +131,21 @@ class ProjectMixin:
 			relation_changes = item.get("relation_changes", [])
 			unresolved_hooks = item.get("unresolved_hooks", [])
 			state_shift = str(item.get("state_shift", "") or "").strip()
+			character_states = item.get("character_states", [])
+			timeline_events = item.get("timeline_events", [])
+			open_threads = item.get("open_threads", [])
 			if not isinstance(plot_points, list):
 				plot_points = []
 			if not isinstance(relation_changes, list):
 				relation_changes = []
 			if not isinstance(unresolved_hooks, list):
 				unresolved_hooks = []
+			if not isinstance(character_states, list):
+				character_states = []
+			if not isinstance(timeline_events, list):
+				timeline_events = []
+			if not isinstance(open_threads, list):
+				open_threads = []
 			rows.append(
 				{
 					"chapter_index": max(0, chapter_index),
@@ -146,6 +155,9 @@ class ProjectMixin:
 					"relation_changes": [str(x).strip() for x in relation_changes if str(x).strip()],
 					"unresolved_hooks": [str(x).strip() for x in unresolved_hooks if str(x).strip()],
 					"state_shift": state_shift,
+					"character_states": [str(x).strip() for x in character_states if str(x).strip()],
+					"timeline_events": [str(x).strip() for x in timeline_events if str(x).strip()],
+					"open_threads": [str(x).strip() for x in open_threads if str(x).strip()],
 				}
 			)
 		return rows

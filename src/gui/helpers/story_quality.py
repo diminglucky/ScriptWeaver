@@ -133,6 +133,9 @@ def parse_memory_entry(raw: str) -> dict[str, Any]:
     relation_changes = _ensure_str_list(payload.get("relation_changes"), max_items=3)
     unresolved_hooks = _ensure_str_list(payload.get("unresolved_hooks"), max_items=3)
     state_shift = str(payload.get("state_shift", "") or "").strip()
+    character_states = _ensure_str_list(payload.get("character_states"), max_items=5)
+    timeline_events = _ensure_str_list(payload.get("timeline_events"), max_items=5)
+    open_threads = _ensure_str_list(payload.get("open_threads"), max_items=5)
 
     return {
         "summary": summary,
@@ -140,6 +143,9 @@ def parse_memory_entry(raw: str) -> dict[str, Any]:
         "relation_changes": relation_changes,
         "unresolved_hooks": unresolved_hooks,
         "state_shift": state_shift,
+        "character_states": character_states,
+        "timeline_events": timeline_events,
+        "open_threads": open_threads,
     }
 
 
@@ -152,6 +158,9 @@ def normalize_memory_entry(entry: dict[str, Any], *, chapter_index: int, chapter
     relation_changes = _ensure_str_list(entry.get("relation_changes"), max_items=3)
     unresolved_hooks = _ensure_str_list(entry.get("unresolved_hooks"), max_items=3)
     state_shift = str(entry.get("state_shift", "") or "").strip()
+    character_states = _ensure_str_list(entry.get("character_states"), max_items=5)
+    timeline_events = _ensure_str_list(entry.get("timeline_events"), max_items=5)
+    open_threads = _ensure_str_list(entry.get("open_threads"), max_items=5)
 
     return {
         "chapter_index": max(0, int(chapter_index)),
@@ -161,6 +170,9 @@ def normalize_memory_entry(entry: dict[str, Any], *, chapter_index: int, chapter
         "relation_changes": relation_changes,
         "unresolved_hooks": unresolved_hooks,
         "state_shift": state_shift,
+        "character_states": character_states,
+        "timeline_events": timeline_events,
+        "open_threads": open_threads,
     }
 
 
@@ -185,6 +197,15 @@ def format_memory_context(entries: list[dict[str, Any]], max_entries: int = 3) -
         unresolved = row.get("unresolved_hooks", [])
         if isinstance(unresolved, list) and unresolved:
             lines.append(f"  未回收伏笔：{'；'.join(str(x) for x in unresolved[:2])}")
+        character_states = row.get("character_states", [])
+        if isinstance(character_states, list) and character_states:
+            lines.append(f"  人物状态：{'；'.join(str(x) for x in character_states[:2])}")
+        timeline_events = row.get("timeline_events", [])
+        if isinstance(timeline_events, list) and timeline_events:
+            lines.append(f"  时间线：{'；'.join(str(x) for x in timeline_events[:2])}")
+        open_threads = row.get("open_threads", [])
+        if isinstance(open_threads, list) and open_threads:
+            lines.append(f"  待处理线索：{'；'.join(str(x) for x in open_threads[:2])}")
     return "\n".join(lines).strip()
 
 

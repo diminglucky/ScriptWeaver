@@ -6,6 +6,7 @@ from ...helpers.story_creativity import build_story_creativity_block
 from ...helpers.story_quality import extract_last_sentence
 from ...helpers.story_pipeline_profile import (
     build_emotion_arc_guidelines,
+    build_plot_contract_guidelines,
     build_section_transition_guidelines,
 )
 from ...helpers.story_prompt_profile import (
@@ -203,6 +204,7 @@ class StoryPromptGenerationMixin:
         section_rules = self._format_story_rules(template.get("section_rules", []))
         writing_guardrails = build_non_ai_writing_guardrails()
         emotion_guardrails = build_emotion_arc_guidelines(stage="section")
+        plot_contract = build_plot_contract_guidelines()
         transition_guardrails = build_section_transition_guidelines()
         creativity_mode = self._get_story_creativity_mode()
         creativity_rules = build_story_creativity_block(
@@ -271,7 +273,11 @@ class StoryPromptGenerationMixin:
             except Exception:
                 compressed_state = ""
         if compressed_state:
-            context_hint += f"\n\n【压缩故事状态（强约束）】\n{compressed_state}"
+            context_hint += (
+                "\n\n【故事状态合同（强约束）】\n"
+                f"{compressed_state}\n"
+                "- 若场景执行卡或章节要点与本合同冲突，以本合同和上章实际结尾为准。"
+            )
         section_intro = get_section_intro_text(section_no=section_index + 1, total_sections=total_sections)
         section_writing_spec = get_section_writing_spec_text()
         section_reminder = get_section_reminder_text(min_chars=min_chars)
@@ -302,9 +308,11 @@ class StoryPromptGenerationMixin:
                         f"{actual_tail}"
                     )
             overview_plan_part = (
-                "【已确认章节总览（必须遵循）】\n"
+                "【本章场景执行卡（必须逐项兑现）】\n"
                 f"{str(section_overview_plan).strip()}"
                 f"{actual_tail_note}\n\n"
+                "执行要求：正文必须按【场景链】的因果顺序推进，但不要输出执行卡标签；"
+                "每个场景都要产生新信息、阻力、选择或代价，不能写成静态说明。\n\n"
             )
         return (
             f"{section_intro}\n\n"
@@ -323,6 +331,7 @@ class StoryPromptGenerationMixin:
             f"【上下文】\n{context_hint}\n\n"
             "【写作规范】\n"
             f"{section_writing_spec}\n\n"
+            f"【本章剧情合同（硬约束）】\n{plot_contract}\n\n"
             f"【跨章衔接一致性】\n{transition_guardrails}\n\n"
             f"【去模板腔与专业度】\n{writing_guardrails}\n\n"
             f"【情感弧线与真人感】\n{emotion_guardrails}\n\n"

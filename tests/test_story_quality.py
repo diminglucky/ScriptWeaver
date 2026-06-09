@@ -45,12 +45,20 @@ class StoryQualityTests(unittest.TestCase):
     def test_memory_entry_and_format_context(self):
         parsed = parse_memory_entry(
             '{"summary":"主角暴露身份后反制成功","plot_points":["被围攻","反制"],'
-            '"relation_changes":["与上司决裂"],"unresolved_hooks":["幕后黑手是谁"],"state_shift":"被动转主动"}'
+            '"relation_changes":["与上司决裂"],"unresolved_hooks":["幕后黑手是谁"],"state_shift":"被动转主动",'
+            '"character_states":["主角：公开身份/知道上司撒谎/手臂受伤/无法退场"],'
+            '"timeline_events":["晚八点会议室身份暴露"],"open_threads":["录音原件还在谁手里"]}'
         )
         entry = normalize_memory_entry(parsed, chapter_index=1, chapter_title="身份暴露")
         text = format_memory_context([entry], max_entries=2)
         self.assertIn("第2章", text)
         self.assertIn("未回收伏笔", text)
+        self.assertIn("人物状态", text)
+        self.assertIn("主角：公开身份", text)
+        self.assertIn("时间线", text)
+        self.assertIn("晚八点会议室", text)
+        self.assertIn("待处理线索", text)
+        self.assertIn("录音原件", text)
 
     def test_strip_duplicate_lines(self):
         text = "第一句。\n第二句。\n第二句。\n\n第三句。"

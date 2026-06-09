@@ -109,6 +109,9 @@ class ProjectMixinRestoreTests(unittest.TestCase):
                     "relation_changes": ["关系变化A"],
                     "unresolved_hooks": ["伏笔A"],
                     "state_shift": "情绪转折A",
+                    "character_states": ["主角：怀疑同桌/知道匿名信存在/手受伤/不能报警"],
+                    "timeline_events": ["晚自习后在走廊收到匿名信"],
+                    "open_threads": ["匿名信来源未确认"],
                 }
             ],
             "chapter_quality_reports": [
@@ -136,6 +139,9 @@ class ProjectMixinRestoreTests(unittest.TestCase):
         self.assertTrue(obj.generated_content.startswith("【第 1/2 章：旧标题A】"))
         self.assertEqual(len(obj.story_memory_ledger), 1)
         self.assertEqual(obj.story_memory_ledger[0]["summary"], "第一章摘要")
+        self.assertEqual(obj.story_memory_ledger[0]["character_states"][0], "主角：怀疑同桌/知道匿名信存在/手受伤/不能报警")
+        self.assertEqual(obj.story_memory_ledger[0]["timeline_events"][0], "晚自习后在走廊收到匿名信")
+        self.assertEqual(obj.story_memory_ledger[0]["open_threads"][0], "匿名信来源未确认")
         self.assertEqual(len(obj.chapter_quality_reports), 1)
         self.assertEqual(obj.chapter_quality_reports[0]["key_fix"], "补细节")
         self.assertEqual(obj.selector_update_count, 1)

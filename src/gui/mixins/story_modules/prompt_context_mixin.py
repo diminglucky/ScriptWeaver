@@ -53,23 +53,39 @@ class StoryPromptContextMixin:
             return []
         return [x for x in rows if isinstance(x, dict)]
 
-    def _build_story_memory_context(self, section_index: int, max_items: int = 3) -> str:
+    def _get_story_memory_rows_before(self, section_index: int) -> list[dict]:
         try:
             idx = int(section_index)
         except Exception:
             idx = 0
-        rows = [x for x in self._get_story_memory_ledger() if int(x.get("chapter_index", -1)) < idx]
+        rows: list[dict] = []
+        for row in self._get_story_memory_ledger():
+            try:
+                chapter_index = int(row.get("chapter_index", -1))
+            except Exception:
+                continue
+            if chapter_index < idx:
+                rows.append(row)
+        return rows
+
+    def _build_story_memory_context(self, section_index: int, max_items: int = 3) -> str:
+        rows = self._get_story_memory_rows_before(section_index)
         if not rows:
             return ""
         return format_memory_context(rows, max_entries=max_items)
 
     def _build_compressed_story_state(self, section_index: int, previous_content: str = "") -> str:
         """Build a compact state brief so later chapters know what already happened."""
+        state_contract = self._build_story_state_contract(section_index, previous_content)
+        if state_contract:
+            return state_contract
+
+        # Legacy fallback for callers that only have raw previous content and no ledger yet.
         try:
             idx = int(section_index)
         except Exception:
             idx = 0
-        rows = [x for x in self._get_story_memory_ledger() if int(x.get("chapter_index", -1)) < idx]
+        rows = self._get_story_memory_rows_before(idx)
         lines: list[str] = []
         if rows:
             recent = rows[-min(5, len(rows)) :]
@@ -121,6 +137,101 @@ class StoryPromptContextMixin:
         lines.append("- 本章必须至少回收一个旧钩子，并制造一个更高风险的新钩子。")
         return "\n".join(lines).strip()
 
+    def _build_story_state_contract(self, section_index: int, previous_content: str = "") -> str:
+        """Build hard continuity constraints from the memory ledger for current chapter."""
+        try:
+            idx = int(section_index)
+        except Exception:
+            idx = 0
+        rows = self._get_story_memory_rows_before(idx)
+        tail = extract_last_sentence(previous_content or "", max_chars=260)
+        if not rows and not tail:
+            return ""
+
+        recent = rows[-min(6, len(rows)) :] if rows else []
+        facts: list[str] = []
+        relations: list[str] = []
+        hooks: list[str] = []
+        states: list[str] = []
+        timeline: list[str] = []
+        for row in recent:
+            try:
+                chapter_no = int(row.get("chapter_index", 0)) + 1
+            except Exception:
+                chapter_no = 0
+            title = str(row.get("chapter_title", "") or "").strip()
+            prefix = f"第{chapter_no}章《{title}》" if chapter_no else (f"《{title}》" if title else "前章")
+            summary = str(row.get("summary", "") or "").strip()
+            if summary:
+                facts.append(f"{prefix}：{summary[:100]}")
+                timeline.append(f"{prefix}后，相关后果仍然有效。")
+            plot_points = row.get("plot_points", [])
+            if isinstance(plot_points, list):
+                for item in plot_points[:4]:
+                    text = str(item or "").strip()
+                    if text:
+                        facts.append(f"{prefix}事实：{text[:90]}")
+            relation_changes = row.get("relation_changes", [])
+            if isinstance(relation_changes, list):
+                for item in relation_changes[:3]:
+                    text = str(item or "").strip()
+                    if text:
+                        relations.append(f"{prefix}关系：{text[:90]}")
+            character_states = row.get("character_states", [])
+            if isinstance(character_states, list):
+                for item in character_states[:5]:
+                    text = str(item or "").strip()
+                    if text:
+                        states.append(f"{prefix}人物：{text[:100]}")
+            unresolved_hooks = row.get("unresolved_hooks", [])
+            if isinstance(unresolved_hooks, list):
+                for item in unresolved_hooks[:3]:
+                    text = str(item or "").strip()
+                    if text:
+                        hooks.append(f"{prefix}未解：{text[:100]}")
+            open_threads = row.get("open_threads", [])
+            if isinstance(open_threads, list):
+                for item in open_threads[:5]:
+                    text = str(item or "").strip()
+                    if text:
+                        hooks.append(f"{prefix}待处理：{text[:100]}")
+            timeline_events = row.get("timeline_events", [])
+            if isinstance(timeline_events, list):
+                for item in timeline_events[:5]:
+                    text = str(item or "").strip()
+                    if text:
+                        timeline.append(f"{prefix}时间线：{text[:110]}")
+            shift = str(row.get("state_shift", "") or "").strip()
+            if shift:
+                states.append(f"{prefix}状态：{shift[:80]}")
+
+        lines: list[str] = []
+        if tail:
+            lines.append("【即时承接点】")
+            lines.append(f"- 本章第一场必须接住：{tail}")
+        if facts:
+            lines.append("【事实锁定（不得改写/遗忘）】")
+            lines.extend(f"- {x}" for x in facts[-10:])
+        if relations:
+            lines.append("【人物关系与立场锁定】")
+            lines.extend(f"- {x}" for x in relations[-8:])
+        if states:
+            lines.append("【人物当前状态锁定】")
+            lines.extend(f"- {x}" for x in states[-5:])
+        if hooks:
+            lines.append("【未回收钩子队列】")
+            lines.extend(f"- {x}" for x in hooks[-8:])
+        if timeline:
+            lines.append("【时间线约束】")
+            lines.extend(f"- {x}" for x in timeline[-4:])
+
+        lines.append("【本章连续性硬规则】")
+        lines.append("- 不得改写已发生事实，不得让关系/立场无因复原。")
+        lines.append("- 本章至少处理一个未回收钩子；若暂不回收，必须让它造成新的阻力或代价。")
+        lines.append("- 新反转必须从上述事实、人物状态或钩子中推出，禁止空降解释。")
+        lines.append("- 章末新钩子必须改变下一章行动方案。")
+        return "\n".join(lines).strip()
+
     def _build_story_skill_pack(self) -> str:
         """Return built-in writing skills used as a compact strategy pack."""
         return (
@@ -147,7 +258,7 @@ class StoryPromptContextMixin:
         if tail_sentence:
             lines.append(f"- 上章收束句：{tail_sentence}")
 
-        prev_rows = [x for x in self._get_story_memory_ledger() if int(x.get("chapter_index", -1)) < idx]
+        prev_rows = self._get_story_memory_rows_before(idx)
         if prev_rows:
             last = prev_rows[-1]
             summary = str(last.get("summary", "") or "").strip()

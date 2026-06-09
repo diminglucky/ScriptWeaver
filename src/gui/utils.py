@@ -11,6 +11,9 @@ from src.utils.text import (
 )
 
 
+_CHARS_RE = re.compile(r"[（(]\s*(\d+)\s*字\s*[）)]")
+
+
 def sanitize(s: str) -> str:
 	"""Normalize API input text."""
 	return _sanitize(s)
@@ -31,7 +34,7 @@ def estimate_chars_from_outline(outline: str) -> int:
 	lines = [ln.strip() for ln in outline.splitlines() if ln.strip()]
 	sections = []
 	for line in lines:
-		match = re.search(r"\((\d+)字\)", line)
+		match = _CHARS_RE.search(line)
 		if match:
 			sections.append(int(match.group(1)))
 
@@ -52,10 +55,10 @@ def parse_outline_sections(outline: str) -> list[dict[str, str]]:
 			continue
 		num, title = match.groups()
 		chars = 1000
-		chars_match = re.search(r"\((\d+)字\)", title)
+		chars_match = _CHARS_RE.search(title)
 		if chars_match:
 			chars = int(chars_match.group(1))
-			title = re.sub(r"\s*\(\d+字\)", "", title).strip()
+			title = _CHARS_RE.sub("", title).strip()
 		event_promise = ""
 		for sep in (" | ", "｜", "|"):
 			if sep in title:

@@ -12,7 +12,9 @@ from src.gui.helpers.story_pipeline_profile import (
     build_memory_ledger_prompt,
     build_polish_prompt,
     build_quality_review_prompt,
+    build_structure_rewrite_prompt,
     get_polish_fallback_fix,
+    get_structure_rewrite_fallback_fix,
 )
 from src.gui.helpers.story_quality import (
     extract_first_sentence,
@@ -262,7 +264,57 @@ class OutlineQualityMixin:
             continuity_score = 10.0
         return continuity_score < self._get_story_continuity_polish_threshold()
 
-    def _review_section_quality(self, client, section_title: str, section_content: str, requirement: str, category: str) -> dict:
+    def _needs_structural_rewrite(self, review: dict, section_index: int) -> bool:
+        """Detect issues that polishing cannot fix well enough."""
+        if not isinstance(review, dict):
+            return False
+        scores = review.get("scores", {})
+        if not isinstance(scores, dict):
+            scores = {}
+
+        def _score(key: str, default: float = 10.0) -> float:
+            try:
+                return float(scores.get(key, default))
+            except Exception:
+                return default
+
+        if _score("escalation") < 7.4 or _score("hook_density") < 7.4:
+            return True
+        if section_index > 0 and _score("continuity") < self._get_story_continuity_polish_threshold():
+            return True
+
+        issue_text = "；".join(str(x) for x in review.get("issues", []) if str(x).strip())
+        issue_text += "；" + str(review.get("key_fix", "") or "")
+        markers = (
+            "无冲突",
+            "冲突弱",
+            "平淡",
+            "铺垫",
+            "解释",
+            "流水账",
+            "钩子",
+            "悬念",
+            "不可逆",
+            "代价",
+            "升级",
+            "衔接",
+            "连续性",
+            "重复",
+            "停滞",
+        )
+        return any(marker in issue_text for marker in markers)
+
+    def _review_section_quality(
+        self,
+        client,
+        section_title: str,
+        section_content: str,
+        requirement: str,
+        category: str,
+        section_index: int = 0,
+        previous_content: str = "",
+        section_overview_plan: str = "",
+    ) -> dict:
         if not section_content.strip():
             return {
                 "scores": {"realism": 1.0, "detail": 1.0, "coherence": 1.0, "continuity": 1.0, "naturalness": 1.0},
@@ -275,11 +327,21 @@ class OutlineQualityMixin:
             preview = section_content[:700] + "\n…（中间省略）…\n" + section_content[-2000:]
         else:
             preview = section_content
+        continuity_contract = ""
+        if hasattr(self, "_build_story_state_contract"):
+            try:
+                continuity_contract = str(
+                    self._build_story_state_contract(section_index, previous_content) or ""
+                ).strip()
+            except Exception:
+                continuity_contract = ""
         prompt = build_quality_review_prompt(
             requirement=requirement,
             category=category,
             section_title=section_title,
             preview=preview,
+            continuity_contract=continuity_contract,
+            scene_card_contract=section_overview_plan,
         )
         try:
             raw = client.chat(
@@ -344,6 +406,13 @@ class OutlineQualityMixin:
                         f"{memory_text}\n"
                         "- 保持人物状态、关系变化、未回收伏笔一致。"
                     )
+            if hasattr(self, "_build_story_state_contract"):
+                try:
+                    state_contract = str(self._build_story_state_contract(idx, previous_content) or "").strip()
+                except Exception:
+                    state_contract = ""
+                if state_contract:
+                    continuity_parts.append(f"【故事状态合同】\n{state_contract}")
             continuity_context = "\n\n".join(x for x in continuity_parts if x).strip()
             if len(continuity_context) > 900:
                 continuity_context = continuity_context[:900].rstrip()
@@ -372,6 +441,94 @@ class OutlineQualityMixin:
         rewritten = re.sub(r"^\s*【?第.*?章[：:】]\s*", "", rewritten)
         rewritten = strip_duplicate_lines(rewritten)
         if len(rewritten) < max(120, int(len(section_content) * 0.55)):
+            return section_content
+        return rewritten
+
+    def _rewrite_section_structure(
+        self,
+        client,
+        section_title: str,
+        section_content: str,
+        review: dict,
+        target_chars_per_section: int,
+        section_index: int = 0,
+        previous_content: str = "",
+        section_overview_plan: str = "",
+        event_promise: str = "",
+    ) -> str:
+        key_fix = str(review.get("key_fix", "") or "").strip()
+        issues = review.get("issues", [])
+        if not isinstance(issues, list):
+            issues = []
+        issue_text = "；".join(str(x) for x in issues[:4] if str(x).strip())
+        chars = len(section_content.strip())
+        target_low = max(260, int(target_chars_per_section * 0.82))
+        target_high = max(target_low, int(target_chars_per_section * 1.18))
+        previous_tail = ""
+        continuity_context = ""
+        try:
+            idx = int(section_index)
+        except Exception:
+            idx = 0
+        if idx > 0:
+            previous_tail = extract_last_sentence(previous_content or "", max_chars=260)
+            continuity_parts: list[str] = []
+            if hasattr(self, "_build_section_transition_context"):
+                try:
+                    transition_text = str(self._build_section_transition_context(idx, previous_content) or "").strip()
+                except Exception:
+                    transition_text = ""
+                if transition_text:
+                    continuity_parts.append(f"【衔接线索】\n{transition_text}")
+            if hasattr(self, "_build_story_memory_context"):
+                try:
+                    memory_text = str(self._build_story_memory_context(idx, max_items=4) or "").strip()
+                except Exception:
+                    memory_text = ""
+                if memory_text:
+                    continuity_parts.append(
+                        "【记忆账本】\n"
+                        f"{memory_text}\n"
+                        "- 保持人物状态、关系变化、未回收伏笔一致。"
+                    )
+            if hasattr(self, "_build_story_state_contract"):
+                try:
+                    state_contract = str(self._build_story_state_contract(idx, previous_content) or "").strip()
+                except Exception:
+                    state_contract = ""
+                if state_contract:
+                    continuity_parts.append(f"【故事状态合同】\n{state_contract}")
+            continuity_context = "\n\n".join(x for x in continuity_parts if x).strip()
+            if len(continuity_context) > 1200:
+                continuity_context = continuity_context[:1200].rstrip()
+
+        prompt = build_structure_rewrite_prompt(
+            section_title=section_title,
+            section_content=section_content,
+            fix_goal=key_fix or issue_text or get_structure_rewrite_fallback_fix(),
+            target_low=target_low,
+            target_high=target_high,
+            current_chars=chars,
+            previous_tail=previous_tail,
+            continuity_context=continuity_context,
+            section_overview_plan=section_overview_plan,
+            event_promise=event_promise,
+        )
+        try:
+            rewritten = client.chat(
+                [{"role": "user", "content": prompt}],
+                temperature=0.5,
+                max_tokens=max(1400, int(target_chars_per_section * 2.8)),
+            ).strip()
+        except Exception as exc:
+            logger.debug("section structural rewrite failed: %s", exc)
+            return section_content
+
+        if not rewritten:
+            return section_content
+        rewritten = re.sub(r"^\s*【?第.*?章[：:】]\s*", "", rewritten)
+        rewritten = strip_duplicate_lines(rewritten)
+        if len(rewritten) < max(160, int(len(section_content) * 0.6)):
             return section_content
         return rewritten
 

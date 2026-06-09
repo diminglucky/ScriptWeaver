@@ -17,6 +17,9 @@ KB_SUPPORTED_EXTENSIONS = (
 )
 
 
+_OUTLINE_CHARS_RE = re.compile(r"[（(]\s*(\d+)\s*字\s*[）)]")
+
+
 def discover_text_files(root: str | os.PathLike[str]) -> List[Path]:
 	"""Recursively discover KB source files supported by ingest."""
 	root_path = Path(root)
@@ -112,7 +115,6 @@ def split_by_length(text: str, max_chars: int = 800, overlap: int = 120) -> List
 		chunks.append("".join(current).strip())
 	# Filter tiny chunks
 	return [c for c in chunks if len(c) > 20]
-
 
 def sanitize(s: str) -> str:
 	"""清理字符串中的特殊字符和前缀"""
@@ -285,7 +287,7 @@ def estimate_chars_from_outline(outline: str) -> int:
 	sections = []
 	for line in lines:
 		# 匹配：1. XXX (1000字) 或 一、XXX (1000字)
-		match = re.search(r'\((\d+)字\)', line)
+		match = _OUTLINE_CHARS_RE.search(line)
 		if match:
 			sections.append(int(match.group(1)))
 	
@@ -309,11 +311,11 @@ def parse_outline_sections(outline: str) -> list[dict[str, str]]:
 			
 			# 提取字数（如果有）
 			chars = 1000  # 默认字数
-			chars_match = re.search(r'\((\d+)字\)', title)
+			chars_match = _OUTLINE_CHARS_RE.search(title)
 			if chars_match:
 				chars = int(chars_match.group(1))
 				# 去掉字数标注
-				title = re.sub(r'\s*\(\d+字\)', '', title).strip()
+				title = _OUTLINE_CHARS_RE.sub('', title).strip()
 			
 			sections.append({
 				'num': num,
