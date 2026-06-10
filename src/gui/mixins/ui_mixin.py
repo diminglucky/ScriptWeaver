@@ -13,17 +13,54 @@ from ..theme import Theme
 class UiMixin:
     """UI helpers and page bootstrap."""
 
+    def _is_output_widget_call(self, func, method_name: str) -> bool:
+        widget = getattr(func, "__self__", None)
+        if widget is None or widget is not getattr(self, "output", None):
+            return False
+        return getattr(func, "__name__", "") == method_name
+
+    def _is_output_at_bottom(self) -> bool:
+        output = getattr(self, "output", None)
+        if output is None or not hasattr(output, "yview"):
+            return True
+        try:
+            return float(output.yview()[1]) >= 0.995
+        except Exception:
+            return True
+
+    def _output_see_end_if_following(self) -> None:
+        output = getattr(self, "output", None)
+        if output is None or not hasattr(output, "see"):
+            return
+        should_follow = bool(getattr(self, "_output_follow_after_insert", False))
+        self._output_follow_after_insert = False
+        if should_follow or self._is_output_at_bottom():
+            output.see(END)
+
+    def _output_insert_preserving_scroll(self, index, text) -> None:
+        self._output_follow_after_insert = self._is_output_at_bottom()
+        self.output.insert(index, text)
+
+    def _call_with_output_scroll_guard(self, func, *args, **kwargs):
+        if self._is_output_widget_call(func, "insert"):
+            self._output_follow_after_insert = self._is_output_at_bottom()
+            return func(*args, **kwargs)
+        if self._is_output_widget_call(func, "see") and args and str(args[0]).lower() == "end":
+            self._output_see_end_if_following()
+            return None
+        return func(*args, **kwargs)
+
     def _ui(self, func, *args, **kwargs):
         """Run callable on Tk main thread, returning the result."""
         if threading.current_thread() is threading.main_thread():
-            return func(*args, **kwargs)
+            return self._call_with_output_scroll_guard(func, *args, **kwargs)
 
         done = threading.Event()
         state = {"result": None, "error": None}
 
         def runner():
             try:
-                state["result"] = func(*args, **kwargs)
+                state["result"] = self._call_with_output_scroll_guard(func, *args, **kwargs)
             except Exception as e:  # pragma: no cover - UI callback surface
                 state["error"] = e
             finally:

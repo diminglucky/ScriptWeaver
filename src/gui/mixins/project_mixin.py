@@ -254,6 +254,65 @@ class ProjectMixin:
 				self._update_story_diagnostics_panel()
 			except Exception as e:
 				logger.debug("_update_story_diagnostics_panel failed: %s", e)
+
+	def _reset_story_workspace_for_project(self) -> None:
+		"""Clear project-scoped story state before starting a fresh project."""
+		for widget_name in ("output", "prompt_text"):
+			widget = getattr(self, widget_name, None)
+			if widget is not None and hasattr(widget, "delete"):
+				try:
+					widget.delete("1.0", END)
+				except Exception as e:
+					logger.debug("clear %s failed: %s", widget_name, e)
+
+		if hasattr(self, "category") and hasattr(self.category, "set"):
+			try:
+				self.category.set("")
+			except Exception as e:
+				logger.debug("clear category failed: %s", e)
+		if hasattr(self, "style") and hasattr(self.style, "set"):
+			try:
+				self.style.set("")
+			except Exception as e:
+				logger.debug("clear style failed: %s", e)
+
+		self.current_outline = None
+		self.parsed_sections = []
+		self.generated_content = ""
+		self.story_global_overview_text = ""
+		self.story_global_overview_signature = ""
+		self.story_memory_ledger = []
+		self.chapter_quality_reports = []
+
+		if hasattr(self, "_invalidate_chapter_blueprints"):
+			try:
+				self._invalidate_chapter_blueprints()
+			except Exception as e:
+				logger.debug("_invalidate_chapter_blueprints failed: %s", e)
+		else:
+			self.chapter_blueprints = []
+			self._chapter_blueprints_outline_sig = ""
+
+		if hasattr(self, "_update_section_selector"):
+			try:
+				self._update_section_selector()
+			except Exception as e:
+				logger.debug("_update_section_selector failed: %s", e)
+		if hasattr(self, "current_section_index") and hasattr(self.current_section_index, "set"):
+			try:
+				self.current_section_index.set(0)
+			except Exception as e:
+				logger.debug("current_section_index reset failed: %s", e)
+		if hasattr(self, "story_quality_summary_var"):
+			try:
+				self.story_quality_summary_var.set("质量评审：未开始")
+			except Exception as e:
+				logger.debug("story_quality_summary_var reset failed: %s", e)
+		if hasattr(self, "story_memory_summary_var"):
+			try:
+				self.story_memory_summary_var.set("记忆账本：暂无章节记忆")
+			except Exception as e:
+				logger.debug("story_memory_summary_var reset failed: %s", e)
 	
 	def _refresh_project_list(self) -> None:
 		"""刷新项目列表"""
@@ -443,8 +502,7 @@ class ProjectMixin:
 			self.current_project = self.project_manager.create_project(project_name.strip())
 			self.lbl_current_project.config(text=f"当前项目: {project_name}", fg="#4CAF50")
 			self.btn_save_story.config(state=NORMAL)
-			self.story_global_overview_text = ""
-			self.story_global_overview_signature = ""
+			self._reset_story_workspace_for_project()
 			
 			# 创建人物照片文件夹
 			self._ensure_project_characters_dir()

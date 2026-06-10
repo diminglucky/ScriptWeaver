@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import re
 import threading
+import hashlib
 from tkinter import END, messagebox
 from typing import Optional
 
@@ -90,6 +91,64 @@ class SettingsRoutingProviderMixin:
         route = self.model_routing.get(task_key, {}) if isinstance(self.model_routing, dict) else {}
         return route if isinstance(route, dict) else {}
 
+    @staticmethod
+    def _story_env_provider_name(provider: str) -> str:
+        provider = str(provider or "").strip()
+        if not provider:
+            return ""
+        if any(ord(c) > 127 for c in provider):
+            return f"CUSTOM_{hashlib.md5(provider.encode()).hexdigest()[:8]}"
+        return provider.replace(" ", "_").replace("(", "").replace(")", "").replace("-", "_")
+
+    def _get_provider_config(self, provider: str) -> dict:
+        if hasattr(self, "api_providers") and provider in self.api_providers:
+            return self.api_providers.get(provider, {}) or {}
+        if hasattr(self, "api_presets") and provider in self.api_presets:
+            return self.api_presets.get(provider, {}) or {}
+        return {}
+
+    def _apply_story_env_fallbacks(self, provider: str, key: str, base_url: str, model: str = "") -> tuple[str, str, str]:
+        safe_name = self._story_env_provider_name(provider)
+        if safe_name:
+            if not key:
+                key = os.getenv(f"STORY_{safe_name}_KEY", "").strip()
+            if not base_url:
+                base_url = os.getenv(f"STORY_{safe_name}_BASE_URL", "").strip()
+            if not model:
+                model = os.getenv(f"STORY_{safe_name}_MODEL", "").strip()
+
+        if provider == "DeepSeek":
+            if not key:
+                key = os.getenv("DEEPSEEK_API_KEY", "").strip()
+            if not base_url:
+                base_url = os.getenv("DEEPSEEK_BASE_URL", "").strip()
+            if not model:
+                model = os.getenv("DEEPSEEK_MODEL", "").strip()
+        return key, base_url, model
+
+    def _find_configured_story_provider(self, provider: str, fallback_provider: Optional[str]) -> tuple[str, dict, str, str]:
+        candidates = []
+        for raw in (
+            fallback_provider,
+            self.settings_api_provider.get().strip() if hasattr(self, "settings_api_provider") else "",
+            self.api_preset.get().strip() if hasattr(self, "api_preset") else "",
+            os.getenv("STORY_STORY_GEN_API", "").strip(),
+            os.getenv("API_PRESET", "").strip(),
+            "DeepSeek",
+        ):
+            name = str(raw or "").strip()
+            if name and name != provider and name not in candidates:
+                candidates.append(name)
+
+        for name in candidates:
+            cfg = self._get_provider_config(name)
+            key = str(cfg.get("key", "") or "").strip()
+            base_url = str(cfg.get("base_url", "") or "").strip()
+            key, base_url, _env_model = self._apply_story_env_fallbacks(name, key, base_url, "")
+            if key:
+                return name, cfg, key, base_url
+        return provider, {}, "", ""
+
     def _resolve_task_api(self, task_key: str, fallback_provider: Optional[str] = None, fallback_model: Optional[str] = None) -> dict:
         """解析任务应使用的 API 配置（provider/key/base_url/model）"""
         self._ensure_model_routing_loaded()
@@ -105,24 +164,26 @@ class SettingsRoutingProviderMixin:
         if not provider:
             provider = "DeepSeek"
 
-        provider_cfg = {}
-        if hasattr(self, "api_providers") and provider in self.api_providers:
-            provider_cfg = self.api_providers.get(provider, {}) or {}
-        elif hasattr(self, "api_presets") and provider in self.api_presets:
-            provider_cfg = self.api_presets.get(provider, {}) or {}
+        provider_cfg = self._get_provider_config(provider)
 
         key = str(provider_cfg.get("key", "") or "").strip()
         base_url = str(provider_cfg.get("base_url", "") or "").strip()
+        env_model = ""
+        key, base_url, env_model = self._apply_story_env_fallbacks(provider, key, base_url, "")
+        route_provider = provider
 
-        # Backward compatibility: allow legacy DeepSeek env vars when routing key is empty.
-        if provider == "DeepSeek":
-            if not key:
-                key = os.getenv("DEEPSEEK_API_KEY", "").strip()
-            if not base_url:
-                base_url = os.getenv("DEEPSEEK_BASE_URL", "").strip()
+        # If an advanced route points to an unconfigured provider, prefer the
+        # currently selected story provider so "Save API config" is enough.
+        if not key:
+            alt_provider, alt_cfg, alt_key, alt_base_url = self._find_configured_story_provider(provider, fallback_provider)
+            if alt_key:
+                provider = alt_provider
+                provider_cfg = alt_cfg
+                key = alt_key
+                base_url = alt_base_url
 
         route_model = ""
-        if isinstance(route, dict):
+        if provider == route_provider and isinstance(route, dict):
             route_model = str(route.get("model", "") or "").strip()
         if hasattr(self, "_strip_model_label"):
             route_model = self._strip_model_label(route_model)
@@ -140,8 +201,8 @@ class SettingsRoutingProviderMixin:
                 model = self._strip_model_label(first_model) if hasattr(self, "_strip_model_label") else first_model
         if not model:
             model = self._strip_model_label((fallback_model or "").strip()) if hasattr(self, "_strip_model_label") else (fallback_model or "").strip()
-        if not model and provider == "DeepSeek":
-            model = os.getenv("DEEPSEEK_MODEL", "").strip()
+        if not model:
+            model = env_model
         if not model:
             model = "deepseek-chat"
 

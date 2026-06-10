@@ -1118,8 +1118,12 @@ class OutlineSectionGenerateMixin:
                     buffer_text = ""
                     last_flush = now
                     def _update():
-                        self.output.insert(END, text_to_insert)
-                        self.output.see(END)
+                        if hasattr(self, "_output_insert_preserving_scroll"):
+                            self._output_insert_preserving_scroll(END, text_to_insert)
+                            self._output_see_end_if_following()
+                        else:
+                            self.output.insert(END, text_to_insert)
+                            self.output.see(END)
                     self._ui(_update)
 
             try:

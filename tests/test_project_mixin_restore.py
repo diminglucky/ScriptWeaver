@@ -26,6 +26,14 @@ class _Var:
         self._value = value
 
 
+class _Text:
+    def __init__(self, value=""):
+        self.value = value
+
+    def delete(self, start, end):
+        self.value = ""
+
+
 class _DummyRestore(ProjectMixin):
     def __init__(self):
         self.current_outline = None
@@ -53,6 +61,37 @@ class _DummyRestore(ProjectMixin):
             if title:
                 sections.append({"title": title, "items": []})
         return sections
+
+
+class _DummyReset(ProjectMixin):
+    def __init__(self):
+        self.output = _Text("old story")
+        self.prompt_text = _Text("old prompt")
+        self.category = _Var("悬疑")
+        self.style = _Var("情感起伏")
+        self.current_outline = "1. old"
+        self.parsed_sections = [{"title": "old", "items": []}]
+        self.generated_content = "old generated"
+        self.story_global_overview_text = "old overview"
+        self.story_global_overview_signature = "old sig"
+        self.story_memory_ledger = [{"summary": "old"}]
+        self.chapter_quality_reports = [{"avg_score": 8}]
+        self.chapter_blueprints = [{"blueprint": "old"}]
+        self._chapter_blueprints_outline_sig = "old outline sig"
+        self.section_selector = _Selector()
+        self.current_section_index = _Var(3)
+        self.story_quality_summary_var = _Var("质量评审：旧")
+        self.story_memory_summary_var = _Var("记忆账本：旧")
+        self.selector_update_count = 0
+        self.invalidated_blueprints = False
+
+    def _update_section_selector(self):
+        self.selector_update_count += 1
+
+    def _invalidate_chapter_blueprints(self):
+        self.invalidated_blueprints = True
+        self.chapter_blueprints = []
+        self._chapter_blueprints_outline_sig = ""
 
 
 class _ProjectManagerStartupStub:
@@ -84,6 +123,30 @@ class _DummyStartup(ProjectMixin):
 
 
 class ProjectMixinRestoreTests(unittest.TestCase):
+    def test_reset_story_workspace_clears_project_scoped_state(self):
+        obj = _DummyReset()
+
+        obj._reset_story_workspace_for_project()
+
+        self.assertEqual(obj.output.value, "")
+        self.assertEqual(obj.prompt_text.value, "")
+        self.assertEqual(obj.category.get(), "")
+        self.assertEqual(obj.style.get(), "")
+        self.assertIsNone(obj.current_outline)
+        self.assertEqual(obj.parsed_sections, [])
+        self.assertEqual(obj.generated_content, "")
+        self.assertEqual(obj.story_global_overview_text, "")
+        self.assertEqual(obj.story_global_overview_signature, "")
+        self.assertEqual(obj.story_memory_ledger, [])
+        self.assertEqual(obj.chapter_quality_reports, [])
+        self.assertTrue(obj.invalidated_blueprints)
+        self.assertEqual(obj.chapter_blueprints, [])
+        self.assertEqual(obj._chapter_blueprints_outline_sig, "")
+        self.assertEqual(obj.current_section_index.get(), 0)
+        self.assertEqual(obj.story_quality_summary_var.get(), "质量评审：未开始")
+        self.assertEqual(obj.story_memory_summary_var.get(), "记忆账本：暂无章节记忆")
+        self.assertEqual(obj.selector_update_count, 1)
+
     def test_restore_prefers_saved_outline_and_section_index(self):
         obj = _DummyRestore()
         story = (

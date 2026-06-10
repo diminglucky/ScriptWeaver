@@ -14,12 +14,18 @@ from __future__ import annotations
 import logging
 import threading
 import tkinter as tk
+import tkinter.font as tkfont
 from tkinter import messagebox, scrolledtext
 from typing import Callable, Optional
 
 from src.utils.text import sanitize as _sanitize
 
 logger = logging.getLogger(__name__)
+
+
+def _font(family: str, size: int, weight: str = "normal") -> tkfont.Font:
+    """Use an explicit CJK-capable font so Text line metrics stay readable."""
+    return tkfont.Font(family=family, size=size, weight=weight)
 
 
 def show_story_feedback_dialog(
@@ -65,6 +71,14 @@ def show_story_feedback_dialog(
     dialog.title(title)
     dialog.geometry(geometry)
     dialog.minsize(*min_size)
+    dialog.configure(bg="#f5f5f5")
+
+    ui_font = "Microsoft YaHei UI"
+    title_font = _font(ui_font, 13, "bold")
+    subtitle_font = _font(ui_font, 10)
+    body_font = _font(ui_font, 11)
+    feedback_font = _font(ui_font, 10)
+    label_font = _font(ui_font, 10, "bold")
 
     # --- header ---
     header = tk.Frame(dialog, bg="#f5f5f5")
@@ -74,7 +88,7 @@ def show_story_feedback_dialog(
         text=header_text,
         bg="#f5f5f5",
         fg="#1f2937",
-        font=("", 13, "bold"),
+        font=title_font,
         anchor="w",
     ).pack(fill="x")
     tk.Label(
@@ -82,6 +96,7 @@ def show_story_feedback_dialog(
         text=subtitle_text,
         bg="#f5f5f5",
         fg="#4b5563",
+        font=subtitle_font,
         anchor="w",
     ).pack(fill="x", pady=(4, 0))
 
@@ -89,11 +104,16 @@ def show_story_feedback_dialog(
     editor = scrolledtext.ScrolledText(
         dialog,
         wrap="word",
-        font=("", 12),
+        font=body_font,
         bg="#ffffff",
         fg="#111827",
         insertbackground="#111827",
         relief=tk.FLAT,
+        padx=12,
+        pady=10,
+        spacing1=4,
+        spacing2=2,
+        spacing3=8,
     )
     editor.pack(fill="both", expand=True, padx=12, pady=(0, 8))
     editor.insert("1.0", result["content"])
@@ -110,18 +130,23 @@ def show_story_feedback_dialog(
             text="修改意见：",
             bg="#f5f5f5",
             fg="#1f2937",
-            font=("", 10, "bold"),
+            font=label_font,
             anchor="w",
         ).pack(anchor="w", pady=(0, 4))
         feedback_box = scrolledtext.ScrolledText(
             feedback_frame,
             wrap="word",
             height=4,
-            font=("", 11),
+            font=feedback_font,
             bg="#ffffff",
             fg="#111827",
             insertbackground="#111827",
             relief=tk.FLAT,
+            padx=10,
+            pady=8,
+            spacing1=2,
+            spacing2=1,
+            spacing3=5,
         )
         feedback_box.pack(fill="x")
 
@@ -132,6 +157,7 @@ def show_story_feedback_dialog(
         textvariable=status_var,
         bg="#f5f5f5",
         fg="#4b5563",
+        font=subtitle_font,
         anchor="w",
     ).pack(fill="x", padx=12, pady=(0, 8))
 

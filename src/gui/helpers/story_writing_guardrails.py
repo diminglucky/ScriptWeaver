@@ -46,8 +46,8 @@ DEFAULT_STORY_GUARDRAILS: dict[str, Any] = {
         ],
     },
     "article_title": {
-        "min_len": 12,
-        "max_len": 20,
+        "min_len": 14,
+        "max_len": 30,
     },
 }
 

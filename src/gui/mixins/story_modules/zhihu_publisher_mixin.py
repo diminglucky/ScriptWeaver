@@ -16,6 +16,7 @@ from src.gui.helpers.story_writing_guardrails import (
     get_non_ai_banned_phrases,
     normalize_article_title,
 )
+from src.gui.helpers.zhihu_title_rules import build_zhihu_title_prompt
 from src.utils.story_extractor import StoryExtractor
 from src.utils.text import sanitize as _sanitize
 
@@ -194,7 +195,7 @@ class ZhihuPublisherMixin:
                     base_url=_sanitize(api_config.get("base_url", "")),
                     model=_sanitize(api_config.get("model", "")),
                 )
-                summary = story_text[:500]
+                summary = story_text[:1200]
                 article_title_min_len, article_title_max_len = get_article_title_limits()
                 banned_phrase_preview = " / ".join(get_non_ai_banned_phrases()[:4]) or "总的来说 / 不难发现"
                 prompt = f"""请为以下故事生成一个吸引点击的知乎标题。
@@ -210,7 +211,13 @@ class ZhihuPublisherMixin:
 {summary}
 
 请直接输出标题："""
-                title = client.chat([{"role": "user", "content": prompt}], temperature=0.7).strip()
+                prompt = build_zhihu_title_prompt(
+                    story_summary=summary,
+                    min_len=article_title_min_len,
+                    max_len=article_title_max_len,
+                    banned_phrase_preview=banned_phrase_preview,
+                )
+                title = client.chat([{"role": "user", "content": prompt}], temperature=0.85).strip()
                 title = normalize_article_title(
                     title,
                     min_len=article_title_min_len,

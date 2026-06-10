@@ -488,16 +488,27 @@ class StoryUIBuilderMixin(StoryPromptBuilderMixin):
 		style.configure(
 			'Chapter.TCombobox',
 			foreground=Theme.TEXT_PRIMARY,
-			fieldbackground=Theme.SURFACE,
-			background=Theme.SURFACE,
+			fieldbackground=Theme.BG_TERTIARY,
+			background=Theme.BG_TERTIARY,
+			arrowcolor=Theme.TEXT_SECONDARY,
 			borderwidth=0,
 			relief='flat'
 		)
 		style.map(
 			'Chapter.TCombobox',
-			fieldbackground=[('readonly', Theme.SURFACE)],
-			selectbackground=[('readonly', Theme.SURFACE)],
-			selectforeground=[('readonly', Theme.TEXT_PRIMARY)]
+			fieldbackground=[
+				('readonly', Theme.BG_TERTIARY),
+				('disabled', Theme.BG_SECONDARY),
+				('!disabled', Theme.BG_TERTIARY),
+			],
+			background=[
+				('readonly', Theme.BG_TERTIARY),
+				('disabled', Theme.BG_SECONDARY),
+				('!disabled', Theme.BG_TERTIARY),
+			],
+			selectbackground=[('readonly', Theme.PRIMARY), ('!readonly', Theme.PRIMARY)],
+			selectforeground=[('readonly', Theme.TEXT_PRIMARY), ('!readonly', Theme.TEXT_PRIMARY)],
+			arrowcolor=[('disabled', Theme.TEXT_DISABLED), ('!disabled', Theme.TEXT_SECONDARY)]
 		)
 		
 		chapter_frame = tk.Frame(self.story_tab_create, bg="#2b2b2b")

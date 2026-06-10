@@ -25,6 +25,11 @@ from ...helpers.story_writing_guardrails import (
     build_outline_title_guardrails,
     get_chapter_title_limits,
 )
+from ...helpers.story_texture_rules import build_story_texture_rules
+from ...helpers.zhihu_hook_rules import (
+    build_zhihu_hook_opening_rules,
+    build_zhihu_section_opening_rules,
+)
 
 
 class StoryPromptGenerationMixin:
@@ -132,6 +137,7 @@ class StoryPromptGenerationMixin:
         story_rules = self._format_story_rules(template.get("story_rules", []))
         writing_guardrails = build_non_ai_writing_guardrails()
         emotion_guardrails = build_emotion_arc_guidelines(stage="story")
+        texture_guardrails = build_story_texture_rules(stage="story")
         creativity_mode = self._get_story_creativity_mode()
         creativity_rules = build_story_creativity_block(
             creativity_mode,
@@ -152,6 +158,7 @@ class StoryPromptGenerationMixin:
         max_chars = int(target * 1.1)
         story_intro = get_story_intro_text()
         story_writing_spec = get_story_writing_spec_text()
+        zhihu_hook_rules = build_zhihu_hook_opening_rules(first_section=True)
         story_reminder = get_story_reminder_text(min_chars=min_chars)
         return (
             f"{story_intro}\n\n"
@@ -169,10 +176,14 @@ class StoryPromptGenerationMixin:
             f"{creativity_part}"
             "【写作规范】\n"
             f"{story_writing_spec}\n\n"
+            "【知乎强钩子开头】\n"
+            f"{zhihu_hook_rules}\n\n"
             "【去模板腔与专业度】\n"
             f"{writing_guardrails}\n\n"
             "【情感弧线与真人感】\n"
             f"{emotion_guardrails}\n\n"
+            "【真实细腻与吸引力】\n"
+            f"{texture_guardrails}\n\n"
             f"{global_overview_part}"
             "【特别提醒】\n"
             f"{story_reminder}\n"
@@ -204,6 +215,7 @@ class StoryPromptGenerationMixin:
         section_rules = self._format_story_rules(template.get("section_rules", []))
         writing_guardrails = build_non_ai_writing_guardrails()
         emotion_guardrails = build_emotion_arc_guidelines(stage="section")
+        texture_guardrails = build_story_texture_rules(stage="section")
         plot_contract = build_plot_contract_guidelines()
         transition_guardrails = build_section_transition_guidelines()
         creativity_mode = self._get_story_creativity_mode()
@@ -280,6 +292,7 @@ class StoryPromptGenerationMixin:
             )
         section_intro = get_section_intro_text(section_no=section_index + 1, total_sections=total_sections)
         section_writing_spec = get_section_writing_spec_text()
+        section_hook_rules = build_zhihu_section_opening_rules(section_index=section_index)
         section_reminder = get_section_reminder_text(min_chars=min_chars)
         global_overview = ""
         if hasattr(self, "_get_story_global_overview_text"):
@@ -331,10 +344,13 @@ class StoryPromptGenerationMixin:
             f"【上下文】\n{context_hint}\n\n"
             "【写作规范】\n"
             f"{section_writing_spec}\n\n"
+            "【知乎强钩子开头】\n"
+            f"{section_hook_rules}\n\n"
             f"【本章剧情合同（硬约束）】\n{plot_contract}\n\n"
             f"【跨章衔接一致性】\n{transition_guardrails}\n\n"
             f"【去模板腔与专业度】\n{writing_guardrails}\n\n"
             f"【情感弧线与真人感】\n{emotion_guardrails}\n\n"
+            f"【真实细腻与吸引力】\n{texture_guardrails}\n\n"
             f"{global_overview_part}"
             f"{overview_plan_part}"
             "【特别提醒】\n"

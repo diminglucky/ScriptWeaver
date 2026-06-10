@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 import logging
 import tkinter as tk
+from tkinter import font as tkfont
 from tkinter import ttk
 
 from .theme import Theme, theme_manager
@@ -20,14 +21,53 @@ class ModernUiMixin:
         self.ttk_style = ttk.Style()
         self.ttk_style.theme_use('clam')
 
+        self._configure_default_fonts()
+        self._configure_root_options()
         self._configure_notebook_styles()
         self._configure_frame_styles()
+        self._configure_label_styles()
         self._configure_labelframe_styles()
         self._configure_button_styles()
         self._configure_entry_styles()
         self._configure_combobox_styles()
+        self._configure_chapter_combobox_style()
         self._configure_spinbox_styles()
+        self._configure_checkbutton_styles()
+        self._configure_treeview_styles()
+        self._configure_scrollbar_styles()
+        self._configure_progressbar_styles()
         self._configure_combobox_listbox_colors()
+
+    def _configure_default_fonts(self) -> None:
+        """Use crisp Windows-native fonts for all Tk defaults."""
+        defaults = {
+            "TkDefaultFont": (Theme.FONT_FAMILY, Theme.FONT_SIZE_NORMAL),
+            "TkTextFont": (Theme.FONT_FAMILY, Theme.FONT_SIZE_NORMAL),
+            "TkFixedFont": (Theme.FONT_FAMILY_MONO, Theme.FONT_SIZE_NORMAL),
+            "TkMenuFont": (Theme.FONT_FAMILY, Theme.FONT_SIZE_NORMAL),
+            "TkHeadingFont": (Theme.FONT_FAMILY, Theme.FONT_SIZE_MEDIUM, "bold"),
+            "TkCaptionFont": (Theme.FONT_FAMILY, Theme.FONT_SIZE_SMALL),
+            "TkSmallCaptionFont": (Theme.FONT_FAMILY, Theme.FONT_SIZE_SMALL),
+            "TkIconFont": (Theme.FONT_FAMILY, Theme.FONT_SIZE_SMALL),
+            "TkTooltipFont": (Theme.FONT_FAMILY, Theme.FONT_SIZE_SMALL),
+        }
+        for name, value in defaults.items():
+            try:
+                font = tkfont.nametofont(name)
+                font.configure(family=value[0], size=value[1])
+                if len(value) > 2:
+                    font.configure(weight=value[2])
+            except Exception as exc:
+                logger.debug("configure font %s failed: %s", name, exc)
+
+    def _configure_root_options(self) -> None:
+        """Keep plain Tk widgets and popup lists aligned with the active theme."""
+        self.option_add("*Font", (Theme.FONT_FAMILY, Theme.FONT_SIZE_NORMAL))
+        self.option_add("*Background", Theme.BG_SECONDARY)
+        self.option_add("*Foreground", Theme.TEXT_PRIMARY)
+        self.option_add("*selectBackground", Theme.PRIMARY)
+        self.option_add("*selectForeground", Theme.TEXT_PRIMARY)
+        self.option_add("*insertBackground", Theme.TEXT_PRIMARY)
 
     def _configure_notebook_styles(self) -> None:
         """配置 Notebook 样式。"""
@@ -75,6 +115,15 @@ class ModernUiMixin:
             "TFrame",
             background=Theme.BG_SECONDARY,
             borderwidth=0
+        )
+
+    def _configure_label_styles(self) -> None:
+        """Configure base ttk label text."""
+        self.ttk_style.configure(
+            "TLabel",
+            background=Theme.BG_SECONDARY,
+            foreground=Theme.TEXT_PRIMARY,
+            font=(Theme.FONT_FAMILY, Theme.FONT_SIZE_NORMAL),
         )
 
     def _configure_labelframe_styles(self) -> None:
@@ -125,9 +174,13 @@ class ModernUiMixin:
         self.ttk_style.configure(
             "TEntry",
             fieldbackground=Theme.BG_TERTIARY,
+            background=Theme.BG_TERTIARY,
             foreground=Theme.TEXT_PRIMARY,
             borderwidth=1,
-            insertcolor=Theme.TEXT_PRIMARY
+            insertcolor=Theme.TEXT_PRIMARY,
+            selectbackground=Theme.PRIMARY,
+            selectforeground=Theme.TEXT_PRIMARY,
+            font=(Theme.FONT_FAMILY, Theme.FONT_SIZE_NORMAL),
         )
         self.ttk_style.map(
             "TEntry",
@@ -143,10 +196,48 @@ class ModernUiMixin:
             background=Theme.BG_TERTIARY,
             foreground=Theme.TEXT_PRIMARY,
             borderwidth=1,
-            arrowcolor=Theme.TEXT_SECONDARY
+            arrowcolor=Theme.TEXT_SECONDARY,
+            selectbackground=Theme.PRIMARY,
+            selectforeground=Theme.TEXT_PRIMARY,
+            font=(Theme.FONT_FAMILY, Theme.FONT_SIZE_NORMAL),
         )
         self.ttk_style.map(
             "TCombobox",
+            fieldbackground=[
+                ("readonly", Theme.BG_TERTIARY),
+                ("disabled", Theme.BG_SECONDARY),
+                ("!disabled", Theme.BG_TERTIARY),
+            ],
+            background=[
+                ("readonly", Theme.BG_TERTIARY),
+                ("disabled", Theme.BG_SECONDARY),
+                ("!disabled", Theme.BG_TERTIARY),
+            ],
+            foreground=[
+                ("readonly", Theme.TEXT_PRIMARY),
+                ("disabled", Theme.TEXT_DISABLED),
+                ("!disabled", Theme.TEXT_PRIMARY),
+            ],
+            selectbackground=[("readonly", Theme.PRIMARY), ("!readonly", Theme.PRIMARY)],
+            selectforeground=[("readonly", Theme.TEXT_PRIMARY), ("!readonly", Theme.TEXT_PRIMARY)],
+            arrowcolor=[("disabled", Theme.TEXT_DISABLED), ("!disabled", Theme.TEXT_SECONDARY)],
+        )
+
+    def _configure_chapter_combobox_style(self) -> None:
+        """Keep the story section selector in sync with the active theme."""
+        self.ttk_style.configure(
+            "Chapter.TCombobox",
+            fieldbackground=Theme.BG_TERTIARY,
+            background=Theme.BG_TERTIARY,
+            foreground=Theme.TEXT_PRIMARY,
+            borderwidth=1,
+            arrowcolor=Theme.TEXT_SECONDARY,
+            selectbackground=Theme.PRIMARY,
+            selectforeground=Theme.TEXT_PRIMARY,
+            font=(Theme.FONT_FAMILY, Theme.FONT_SIZE_NORMAL),
+        )
+        self.ttk_style.map(
+            "Chapter.TCombobox",
             fieldbackground=[
                 ("readonly", Theme.BG_TERTIARY),
                 ("disabled", Theme.BG_SECONDARY),
@@ -176,6 +267,9 @@ class ModernUiMixin:
             foreground=Theme.TEXT_PRIMARY,
             borderwidth=1,
             arrowcolor=Theme.TEXT_SECONDARY,
+            selectbackground=Theme.PRIMARY,
+            selectforeground=Theme.TEXT_PRIMARY,
+            font=(Theme.FONT_FAMILY, Theme.FONT_SIZE_NORMAL),
         )
         self.ttk_style.map(
             "TSpinbox",
@@ -184,12 +278,92 @@ class ModernUiMixin:
             arrowcolor=[("disabled", Theme.TEXT_DISABLED), ("!disabled", Theme.TEXT_SECONDARY)],
         )
 
+    def _configure_checkbutton_styles(self) -> None:
+        """Configure checkbox/radio colors for the active theme."""
+        for style_name in ("TCheckbutton", "TRadiobutton"):
+            self.ttk_style.configure(
+                style_name,
+                background=Theme.BG_SECONDARY,
+                foreground=Theme.TEXT_PRIMARY,
+                font=(Theme.FONT_FAMILY, Theme.FONT_SIZE_NORMAL),
+                indicatorcolor=Theme.SURFACE,
+                focuscolor=Theme.BG_SECONDARY,
+            )
+            self.ttk_style.map(
+                style_name,
+                background=[("active", Theme.BG_SECONDARY), ("!active", Theme.BG_SECONDARY)],
+                foreground=[("disabled", Theme.TEXT_DISABLED), ("!disabled", Theme.TEXT_PRIMARY)],
+                indicatorcolor=[
+                    ("selected", Theme.PRIMARY),
+                    ("active", Theme.SURFACE_LIGHT),
+                    ("!selected", Theme.SURFACE),
+                ],
+            )
+
+    def _configure_treeview_styles(self) -> None:
+        """Configure table widgets so they do not keep system colors."""
+        self.ttk_style.configure(
+            "Treeview",
+            background=Theme.SURFACE,
+            fieldbackground=Theme.SURFACE,
+            foreground=Theme.TEXT_PRIMARY,
+            borderwidth=0,
+            rowheight=30,
+            font=(Theme.FONT_FAMILY, Theme.FONT_SIZE_NORMAL),
+        )
+        self.ttk_style.configure(
+            "Treeview.Heading",
+            background=Theme.BG_TERTIARY,
+            foreground=Theme.TEXT_PRIMARY,
+            relief="flat",
+            font=(Theme.FONT_FAMILY, Theme.FONT_SIZE_NORMAL, "bold"),
+        )
+        self.ttk_style.map(
+            "Treeview",
+            background=[("selected", Theme.PRIMARY)],
+            foreground=[("selected", Theme.TEXT_PRIMARY)],
+        )
+        self.ttk_style.map(
+            "Treeview.Heading",
+            background=[("active", Theme.BG_HOVER), ("!active", Theme.BG_TERTIARY)],
+            foreground=[("active", Theme.TEXT_PRIMARY), ("!active", Theme.TEXT_PRIMARY)],
+        )
+
+    def _configure_scrollbar_styles(self) -> None:
+        """Configure ttk scrollbars with active theme colors."""
+        self.ttk_style.configure(
+            "TScrollbar",
+            background=Theme.BG_TERTIARY,
+            troughcolor=Theme.BG_SECONDARY,
+            bordercolor=Theme.BG_SECONDARY,
+            arrowcolor=Theme.TEXT_SECONDARY,
+            relief="flat",
+            borderwidth=0,
+        )
+        self.ttk_style.map(
+            "TScrollbar",
+            background=[("active", Theme.BG_HOVER), ("!active", Theme.BG_TERTIARY)],
+            arrowcolor=[("disabled", Theme.TEXT_DISABLED), ("!disabled", Theme.TEXT_SECONDARY)],
+        )
+
+    def _configure_progressbar_styles(self) -> None:
+        """Configure progress bars used by modal generators."""
+        self.ttk_style.configure(
+            "Horizontal.TProgressbar",
+            background=Theme.PRIMARY,
+            troughcolor=Theme.BG_TERTIARY,
+            bordercolor=Theme.BG_TERTIARY,
+            lightcolor=Theme.PRIMARY,
+            darkcolor=Theme.PRIMARY_DARK,
+        )
+
     def _configure_combobox_listbox_colors(self) -> None:
         """配置 Combobox 下拉列表颜色。"""
         self.option_add("*TCombobox*Listbox*Background", Theme.BG_TERTIARY)
         self.option_add("*TCombobox*Listbox*Foreground", Theme.TEXT_PRIMARY)
         self.option_add("*TCombobox*Listbox*selectBackground", Theme.PRIMARY)
         self.option_add("*TCombobox*Listbox*selectForeground", Theme.TEXT_PRIMARY)
+        self.option_add("*TCombobox*Listbox*Font", (Theme.FONT_FAMILY, Theme.FONT_SIZE_NORMAL))
     
     def _create_modern_header(self):
         """创建现代化顶部标题栏 - 专业设计"""
@@ -377,6 +551,7 @@ class ModernUiMixin:
     def _apply_modern_theme(self):
         """将现代化主题应用到已创建的组件"""
         # 应用到主notebook
+        self._apply_theme_to_root_chrome()
         if hasattr(self, 'notebook'):
             self.notebook.configure(style="TNotebook")
             # 添加边距，让选项卡更有呼吸感
@@ -390,6 +565,13 @@ class ModernUiMixin:
         # 优化内部notebook（story_notebook等）
         if hasattr(self, 'story_notebook'):
             self.story_notebook.configure(style="TNotebook")
+
+    def _apply_theme_to_root_chrome(self) -> None:
+        """Recolor header/status widgets that live outside the main notebook."""
+        for child in self.winfo_children():
+            if child is getattr(self, "notebook", None):
+                continue
+            self._apply_theme_to_children(child)
     
     def _apply_theme_to_children(self, widget):
         """递归应用主题到所有子组件"""
@@ -416,13 +598,80 @@ class ModernUiMixin:
             "TLabelframe",
         ]
 
+    @staticmethod
+    def _is_theme_neutral_bg(value) -> bool:
+        return str(value or "").strip() in {
+            "",
+            "SystemButtonFace",
+            "SystemWindow",
+            "white",
+            "black",
+            "#ffffff",
+            "#FFFFFF",
+            "#000000",
+            "#1e1e1e",
+            "#2b2b2b",
+            "#2a2a2a",
+            "#242424",
+            "#0E1318",
+            "#141B22",
+            "#1B2430",
+            "#232E3B",
+            "#2C3A49",
+            "#131A20",
+            "#171F26",
+            "#1F2833",
+            "#10161C",
+            "#253241",
+            "#2E3B4A",
+            "#1C2630",
+            "#1E2A37",
+            "#243140",
+            "#F8FAFC",
+            "#F1F5F9",
+            "#E2E8F0",
+            "#CBD5E1",
+            "#F5F3EE",
+            "#EEE9E2",
+            "#E6DFD7",
+            "#DAD3C9",
+        }
+
+    @staticmethod
+    def _is_theme_neutral_fg(value) -> bool:
+        return str(value or "").strip() in {
+            "",
+            "SystemButtonText",
+            "SystemWindowText",
+            "white",
+            "black",
+            "#ffffff",
+            "#FFFFFF",
+            "#000000",
+            "#d4d4d4",
+            "#D4D4D4",
+            "#b3b3b3",
+        }
+
+    @staticmethod
+    def _theme_parent_bg(widget, fallback):
+        try:
+            parent = widget.master
+            if parent is not None:
+                bg = parent.cget("bg")
+                if bg:
+                    return bg
+        except Exception:
+            pass
+        return fallback
+
     def _apply_theme_to_child_widgets(self, widget) -> None:
         for child in widget.winfo_children():
             self._apply_theme_to_children(child)
 
     def _apply_theme_to_single_widget(self, widget, widget_class: str) -> None:
         if widget_class == "Frame":
-            widget.configure(bg=Theme.BG_SECONDARY)
+            widget.configure(bg=self._theme_parent_bg(widget, Theme.BG_SECONDARY))
             return
         if widget_class == "Label":
             self._apply_theme_to_label(widget)
@@ -441,21 +690,24 @@ class ModernUiMixin:
             return
         if widget_class == "Button":
             self._apply_theme_to_button(widget)
+            return
+        if widget_class in {"Checkbutton", "Radiobutton"}:
+            self._apply_theme_to_toggle(widget)
 
     def _apply_theme_to_label(self, widget) -> None:
         current_bg = widget.cget("bg")
-        if current_bg in ["#2b2b2b", "#1e1e1e", "SystemButtonFace", ""]:
-            widget.configure(bg=Theme.BG_SECONDARY)
+        if self._is_theme_neutral_bg(current_bg):
+            widget.configure(bg=self._theme_parent_bg(widget, Theme.BG_SECONDARY))
         try:
             current_fg = widget.cget("fg")
-            if current_fg in ["#ffffff", "#FFFFFF", "#d4d4d4", "#D4D4D4", "black", "white", ""]:
+            if self._is_theme_neutral_fg(current_fg):
                 widget.configure(fg=Theme.TEXT_PRIMARY)
         except Exception as e:
             logger.debug("label fg sync skipped: %s", e)
 
     def _apply_theme_to_text(self, widget) -> None:
         current_bg = widget.cget("bg")
-        if current_bg in ["#000000", "#1e1e1e", "#2b2b2b"]:
+        if self._is_theme_neutral_bg(current_bg):
             text_bg = Theme.SURFACE_DARK if theme_manager.is_dark else Theme.SURFACE
             widget.configure(
                 bg=text_bg,
@@ -463,11 +715,12 @@ class ModernUiMixin:
                 insertbackground=Theme.TEXT_PRIMARY,
                 selectbackground=Theme.PRIMARY,
                 selectforeground=Theme.TEXT_PRIMARY,
+                font=(Theme.FONT_FAMILY, Theme.FONT_SIZE_NORMAL),
             )
 
     def _apply_theme_to_entry(self, widget) -> None:
         current_bg = widget.cget("bg")
-        if current_bg in ["#000000", "#1e1e1e", "#2b2b2b"]:
+        if self._is_theme_neutral_bg(current_bg):
             entry_bg = Theme.BG_TERTIARY if theme_manager.is_dark else Theme.SURFACE_LIGHT
             widget.configure(
                 bg=entry_bg,
@@ -475,21 +728,23 @@ class ModernUiMixin:
                 insertbackground=Theme.TEXT_PRIMARY,
                 selectbackground=Theme.PRIMARY,
                 selectforeground=Theme.TEXT_PRIMARY,
+                font=(Theme.FONT_FAMILY, Theme.FONT_SIZE_NORMAL),
             )
 
     def _apply_theme_to_canvas(self, widget) -> None:
         current_bg = widget.cget("bg")
-        if current_bg in ["#000000", "#1e1e1e", "#2b2b2b"]:
-            widget.configure(bg=Theme.BG_SECONDARY)
+        if self._is_theme_neutral_bg(current_bg):
+            widget.configure(bg=self._theme_parent_bg(widget, Theme.BG_SECONDARY))
 
     def _apply_theme_to_listbox(self, widget) -> None:
         current_bg = widget.cget("bg")
-        if current_bg in ["#000000", "#1e1e1e", "#2b2b2b"]:
+        if self._is_theme_neutral_bg(current_bg):
             widget.configure(
                 bg=Theme.SURFACE if not theme_manager.is_dark else Theme.BG_TERTIARY,
                 fg=Theme.TEXT_PRIMARY,
                 selectbackground=Theme.PRIMARY,
                 selectforeground=Theme.TEXT_PRIMARY,
+                font=(Theme.FONT_FAMILY, Theme.FONT_SIZE_NORMAL),
             )
 
     def _apply_theme_to_button(self, widget) -> None:
@@ -497,23 +752,33 @@ class ModernUiMixin:
         current_fg = widget.cget("fg")
         active_bg = widget.cget("activebackground")
         active_fg = widget.cget("activeforeground")
-        if current_bg in ["#000000", "#1e1e1e", "#2b2b2b", "SystemButtonFace", ""]:
+        if self._is_theme_neutral_bg(current_bg):
+            button_bg = Theme.PRIMARY_DARK if theme_manager.is_dark else Theme.SURFACE
+            button_active_bg = Theme.PRIMARY if theme_manager.is_dark else Theme.BG_HOVER
             widget.configure(
-                bg=Theme.PRIMARY_DARK,
+                bg=button_bg,
                 fg=Theme.TEXT_PRIMARY,
-                activebackground=Theme.PRIMARY,
+                activebackground=button_active_bg,
                 activeforeground=Theme.TEXT_PRIMARY,
+                font=(Theme.FONT_FAMILY, Theme.FONT_SIZE_NORMAL),
                 relief="flat",
                 bd=0,
             )
             return
-        if active_bg in ["SystemButtonFace", "", None, "#ffffff", "#FFFFFF", "white"]:
+        if self._is_theme_neutral_bg(active_bg):
             widget.configure(activebackground=current_bg)
-        if active_fg in ["SystemButtonText", "", None] or (
-            active_bg in ["#ffffff", "#FFFFFF", "white"]
-            and active_fg in ["white", "#ffffff", "#FFFFFF"]
-        ):
+        if self._is_theme_neutral_fg(active_fg):
             widget.configure(activeforeground=current_fg or Theme.TEXT_PRIMARY)
+
+    def _apply_theme_to_toggle(self, widget) -> None:
+        widget.configure(
+            bg=self._theme_parent_bg(widget, Theme.BG_SECONDARY),
+            fg=Theme.TEXT_PRIMARY,
+            activebackground=self._theme_parent_bg(widget, Theme.BG_SECONDARY),
+            activeforeground=Theme.TEXT_PRIMARY,
+            selectcolor=Theme.SURFACE,
+            font=(Theme.FONT_FAMILY, Theme.FONT_SIZE_NORMAL),
+        )
     
     def _create_modern_status_bar(self):
         """创建现代化底部状态栏 - 专业设计"""

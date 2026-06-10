@@ -54,6 +54,41 @@ class SettingsMixinResolveTaskApiTests(unittest.TestCase):
 
         self.assertEqual(resolved["key"], "provider-key")
 
+    def test_unconfigured_route_falls_back_to_selected_provider(self):
+        self.obj.model_routing = {
+            "story_generate": {"provider": "Custom", "model": "custom-model"},
+        }
+        self.obj.api_providers = {
+            "Custom": {"key": "", "base_url": "", "models": ["custom-model"]},
+            "DeepSeek": {"key": "deepseek-key", "base_url": "https://api.deepseek.com", "model": "deepseek-chat"},
+        }
+        self.obj.api_presets = {
+            "DeepSeek": {"key": "deepseek-key", "base_url": "https://api.deepseek.com", "model": "deepseek-chat"},
+        }
+
+        resolved = self.obj._resolve_task_api("story_generate", fallback_provider="DeepSeek")
+
+        self.assertEqual(resolved["provider"], "DeepSeek")
+        self.assertEqual(resolved["key"], "deepseek-key")
+        self.assertEqual(resolved["base_url"], "https://api.deepseek.com")
+        self.assertEqual(resolved["model"], "deepseek-chat")
+
+    def test_story_provider_env_fallback(self):
+        self.obj.api_providers["DeepSeek"] = {"key": "", "base_url": "", "model": ""}
+        os.environ["STORY_DeepSeek_KEY"] = "story-env-key"
+        os.environ["STORY_DeepSeek_BASE_URL"] = "https://story-env.example"
+        os.environ["STORY_DeepSeek_MODEL"] = "story-env-model"
+        try:
+            resolved = self.obj._resolve_task_api("story_generate", fallback_provider="DeepSeek")
+        finally:
+            os.environ.pop("STORY_DeepSeek_KEY", None)
+            os.environ.pop("STORY_DeepSeek_BASE_URL", None)
+            os.environ.pop("STORY_DeepSeek_MODEL", None)
+
+        self.assertEqual(resolved["key"], "story-env-key")
+        self.assertEqual(resolved["base_url"], "https://story-env.example")
+        self.assertEqual(resolved["model"], "story-env-model")
+
 
 if __name__ == "__main__":
     unittest.main()

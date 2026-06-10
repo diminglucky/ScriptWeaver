@@ -64,8 +64,8 @@ class DarkTheme(ThemeColors):
     DIVIDER_LIGHT = "#243140"
     
     # 字体配置（静态）
-    FONT_FAMILY = "Avenir Next, Futura, PingFang SC, Source Han Sans SC, Microsoft YaHei"
-    FONT_FAMILY_MONO = "JetBrains Mono, SF Mono, Monaco, Consolas, Courier New"
+    FONT_FAMILY = "Microsoft YaHei UI"
+    FONT_FAMILY_MONO = "Consolas"
     
     # 字体大小
     FONT_SIZE_TINY = 10
@@ -124,38 +124,38 @@ class LightTheme(ThemeColors):
     INFO = "#2F7E7F"
     
     # 背景色
-    BG_PRIMARY = "#F5F3EE"
-    BG_SECONDARY = "#EEE9E2"
-    BG_TERTIARY = "#E6DFD7"
-    BG_HOVER = "#DAD3C9"
-    BG_SELECTED = "#D7E6E5"
+    BG_PRIMARY = "#F8FAFC"
+    BG_SECONDARY = "#F1F5F9"
+    BG_TERTIARY = "#E2E8F0"
+    BG_HOVER = "#CBD5E1"
+    BG_SELECTED = "#D9EDEA"
     BG_CARD = "#FFFFFF"
     
     # 表面色
     SURFACE = "#FFFFFF"
-    SURFACE_LIGHT = "#F9F7F3"
-    SURFACE_DARK = "#E6DFD7"
+    SURFACE_LIGHT = "#F8FAFC"
+    SURFACE_DARK = "#E2E8F0"
     SURFACE_GLASS = "rgba(255, 255, 255, 0.9)"
     
     # 文本色
-    TEXT_PRIMARY = "#1D262F"
-    TEXT_SECONDARY = "#5B6B7A"
-    TEXT_DISABLED = "#8A97A5"
-    TEXT_HINT = "#8A97A5"
+    TEXT_PRIMARY = "#0F172A"
+    TEXT_SECONDARY = "#475569"
+    TEXT_DISABLED = "#94A3B8"
+    TEXT_HINT = "#64748B"
     
     # 边框色
-    BORDER = "#D4CCC2"
-    BORDER_LIGHT = "#E6DFD7"
+    BORDER = "#CBD5E1"
+    BORDER_LIGHT = "#E2E8F0"
     BORDER_FOCUS = "#2F7E7F"
-    BORDER_SUBTLE = "#E6DFD7"
+    BORDER_SUBTLE = "#E2E8F0"
     
     # 分隔线
-    DIVIDER = "#E1DAD1"
-    DIVIDER_LIGHT = "#EEE9E2"
+    DIVIDER = "#E2E8F0"
+    DIVIDER_LIGHT = "#F1F5F9"
 
     # 字体配置（与深色主题保持一致）
-    FONT_FAMILY = "Avenir Next, Futura, PingFang SC, Source Han Sans SC, Microsoft YaHei"
-    FONT_FAMILY_MONO = "JetBrains Mono, SF Mono, Monaco, Consolas, Courier New"
+    FONT_FAMILY = "Microsoft YaHei UI"
+    FONT_FAMILY_MONO = "Consolas"
 
     # 字体大小
     FONT_SIZE_TINY = 10
@@ -380,8 +380,8 @@ class Theme:
     def DIVIDER_LIGHT(self): return self._get().DIVIDER_LIGHT
     
     # 字体配置（静态）
-    FONT_FAMILY = "SF Pro Display, PingFang SC, Microsoft YaHei, Segoe UI, Arial"
-    FONT_FAMILY_MONO = "SF Mono, Monaco, Consolas, Courier New"
+    FONT_FAMILY = "Microsoft YaHei UI"
+    FONT_FAMILY_MONO = "Consolas"
     
     # 字体大小
     FONT_SIZE_TINY = 10

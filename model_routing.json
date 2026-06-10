@@ -1,11 +1,11 @@
 {
   "story_outline": {
-    "provider": "Custom",
-    "model": "deepseek-v3.2-thinking"
+    "provider": "DeepSeek",
+    "model": "deepseek-chat"
   },
   "story_generate": {
-    "provider": "Custom",
-    "model": "deepseek-v3.2-thinking"
+    "provider": "DeepSeek",
+    "model": "deepseek-chat"
   },
   "character_extract": {
     "provider": "Custom",
