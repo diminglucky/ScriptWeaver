@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from ...helpers.deep_horror_rules import build_deep_horror_rules
 from ...helpers.story_creativity import build_story_creativity_block
 from ...helpers.story_quality import extract_last_sentence
 from ...helpers.story_pipeline_profile import (
@@ -52,6 +53,19 @@ class StoryPromptGenerationMixin:
         template_label = template.get("label", "默认模版")
         outline_focus = template.get("outline_focus", "围绕主题构建起承转合")
         outline_rules = self._format_story_rules(template.get("outline_rules", []))
+        deep_horror_guardrails = build_deep_horror_rules(
+            stage="outline",
+            requirement=requirement,
+            category=effective_category,
+            style_hint=style_part,
+            template_label=template_label,
+            template_key=template.get("key", ""),
+        )
+        deep_horror_part = (
+            f"【深层惊悚与反套路恐怖】\n{deep_horror_guardrails}\n\n"
+            if deep_horror_guardrails
+            else ""
+        )
         outline_guardrails = build_outline_title_guardrails()
         creativity_mode = self._get_story_creativity_mode()
         creativity_rules = build_story_creativity_block(
@@ -94,6 +108,7 @@ class StoryPromptGenerationMixin:
             f"- 当前模版：{template_label}\n"
             f"- 模版导向：{outline_focus}\n"
             f"{outline_rules}\n\n"
+            f"{deep_horror_part}"
             "【标题质量约束】\n"
             f"{outline_guardrails}\n\n"
             f"{creativity_part}"
@@ -138,6 +153,19 @@ class StoryPromptGenerationMixin:
         writing_guardrails = build_non_ai_writing_guardrails()
         emotion_guardrails = build_emotion_arc_guidelines(stage="story")
         texture_guardrails = build_story_texture_rules(stage="story")
+        deep_horror_guardrails = build_deep_horror_rules(
+            stage="story",
+            requirement=requirement,
+            category=effective_category,
+            style_hint=style_part,
+            template_label=template_label,
+            template_key=template.get("key", ""),
+        )
+        deep_horror_part = (
+            f"【深层惊悚与反套路恐怖】\n{deep_horror_guardrails}\n\n"
+            if deep_horror_guardrails
+            else ""
+        )
         creativity_mode = self._get_story_creativity_mode()
         creativity_rules = build_story_creativity_block(
             creativity_mode,
@@ -184,6 +212,7 @@ class StoryPromptGenerationMixin:
             f"{emotion_guardrails}\n\n"
             "【真实细腻与吸引力】\n"
             f"{texture_guardrails}\n\n"
+            f"{deep_horror_part}"
             f"{global_overview_part}"
             "【特别提醒】\n"
             f"{story_reminder}\n"
@@ -216,6 +245,19 @@ class StoryPromptGenerationMixin:
         writing_guardrails = build_non_ai_writing_guardrails()
         emotion_guardrails = build_emotion_arc_guidelines(stage="section")
         texture_guardrails = build_story_texture_rules(stage="section")
+        deep_horror_guardrails = build_deep_horror_rules(
+            stage="section",
+            requirement=requirement,
+            category=effective_category,
+            style_hint=style_part,
+            template_label=template_label,
+            template_key=template.get("key", ""),
+        )
+        deep_horror_part = (
+            f"【深层惊悚与反套路恐怖】\n{deep_horror_guardrails}\n\n"
+            if deep_horror_guardrails
+            else ""
+        )
         plot_contract = build_plot_contract_guidelines()
         transition_guardrails = build_section_transition_guidelines()
         creativity_mode = self._get_story_creativity_mode()
@@ -351,6 +393,7 @@ class StoryPromptGenerationMixin:
             f"【去模板腔与专业度】\n{writing_guardrails}\n\n"
             f"【情感弧线与真人感】\n{emotion_guardrails}\n\n"
             f"【真实细腻与吸引力】\n{texture_guardrails}\n\n"
+            f"{deep_horror_part}"
             f"{global_overview_part}"
             f"{overview_plan_part}"
             "【特别提醒】\n"

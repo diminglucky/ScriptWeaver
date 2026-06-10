@@ -5,25 +5,18 @@ from __future__ import annotations
 import os
 import re
 
+from ...helpers.story_category_signals import (
+    get_story_category_signals,
+    infer_story_category,
+    normalize_story_category_label,
+    score_story_category,
+)
+
 from ...helpers.story_templates import (
     DEFAULT_STORY_TEMPLATE_STRATEGY,
     normalize_story_template_strategy,
 )
 from ...helpers.story_writing_guardrails import normalize_chapter_title
-
-
-_STORY_CATEGORY_HINT_KEYWORDS = {
-    "校园": ("校园", "学生", "班级", "宿舍", "老师", "考试", "大学", "高中", "中学", "校门", "社团"),
-    "职场": ("职场", "公司", "同事", "上司", "老板", "办公室", "项目", "KPI", "升职", "裁员", "开会"),
-    "悬疑": ("悬疑", "谜", "命案", "线索", "侦探", "凶手", "疑点", "真相", "反转"),
-    "科幻": ("科幻", "未来", "AI", "人工智能", "机器人", "太空", "时空", "实验室"),
-    "爱情": ("爱情", "恋爱", "告白", "前任", "暗恋", "分手", "心动"),
-    "成长": ("成长", "蜕变", "自我", "逆袭", "成熟", "和解"),
-    "亲情": ("亲情", "父亲", "母亲", "家人", "兄妹", "家庭"),
-    "社会观察": ("社会", "现实", "阶层", "制度", "舆论", "公共"),
-    "历史": ("历史", "朝代", "古代", "王朝", "战国", "明朝", "清朝"),
-    "奇幻": ("奇幻", "魔法", "精灵", "异界", "龙", "神话"),
-}
 
 _STORY_REQUIREMENT_ANCHOR_STOPWORDS = {
     "写一个",
@@ -85,36 +78,13 @@ class StoryPromptAlignmentMixin:
         return max(1, min(4, attempts))
 
     def _score_requirement_for_category(self, requirement: str, category: str) -> int:
-        text = str(requirement or "").strip()
-        if not text:
-            return 0
-        keywords = _STORY_CATEGORY_HINT_KEYWORDS.get(str(category or "").strip(), ())
-        score = 0
-        for keyword in keywords:
-            if keyword and keyword in text:
-                score += 2 if len(keyword) >= 2 else 1
-        return score
+        return score_story_category(requirement, normalize_story_category_label(category))
 
     def _infer_category_from_requirement(self, requirement: str) -> tuple[str, int]:
-        text = str(requirement or "").strip()
-        if not text:
-            return "", 0
-        best_category = ""
-        best_score = 0
-        for category, keywords in _STORY_CATEGORY_HINT_KEYWORDS.items():
-            score = 0
-            for keyword in keywords:
-                if keyword and keyword in text:
-                    score += 2 if len(keyword) >= 2 else 1
-                if score > best_score:
-                    best_score = score
-                    best_category = category
-        if best_score <= 0:
-            return "", 0
-        return best_category, best_score
+        return infer_story_category(requirement)
 
     def _resolve_effective_story_category(self, requirement: str, selected_category: str) -> tuple[str, str]:
-        selected = str(selected_category or "").strip()
+        selected = normalize_story_category_label(selected_category)
         detected, detected_score = self._infer_category_from_requirement(requirement)
         selected_score = self._score_requirement_for_category(requirement, selected) if selected else 0
         if detected and selected and detected != selected:
@@ -227,7 +197,7 @@ class StoryPromptAlignmentMixin:
         missing_anchors = [a for a in anchors if a and a not in joined]
         must_hits = [a for a in must_tokens if a and a in joined]
         missing_tokens = [a for a in must_tokens if a and a not in joined]
-        category_keywords = _STORY_CATEGORY_HINT_KEYWORDS.get(effective_category, ())
+        category_keywords = get_story_category_signals(effective_category)
         category_hits = [k for k in category_keywords if k and len(k) >= 2 and k in joined]
         generic_count = sum(1 for t in titles if self._is_generic_outline_title(t))
         generic_ratio = (generic_count / len(titles)) if titles else 1.0
@@ -339,7 +309,7 @@ class StoryPromptAlignmentMixin:
                     _add_token(tail)
 
         if effective_category and len(tokens) < max_items:
-            for keyword in _STORY_CATEGORY_HINT_KEYWORDS.get(effective_category, ()):
+            for keyword in get_story_category_signals(effective_category):
                 if len(tokens) >= max_items:
                     break
                 if keyword == effective_category:

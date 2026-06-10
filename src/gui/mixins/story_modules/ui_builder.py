@@ -310,7 +310,7 @@ class StoryUIBuilderMixin(StoryPromptBuilderMixin):
 			row1_left,
 			textvariable=self.category,
 			width=12,
-			values=("爱情", "悬疑", "职场", "科幻", "成长", "亲情", "社会观察", "校园", "历史", "奇幻"),
+			values=("爱情", "悬疑", "惊悚", "恐怖", "心理惊悚", "职场", "科幻", "成长", "亲情", "社会观察", "校园", "历史", "奇幻"),
 			font=("", 12),
 		)
 		self.combo_category.pack(side=LEFT, padx=(0, 20))
