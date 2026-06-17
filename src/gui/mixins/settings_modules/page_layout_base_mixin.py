@@ -107,26 +107,55 @@ class SettingsPageLayoutBaseMixin:
             canvas.itemconfig(canvas_window, width=event.width)
         canvas.bind("<Configure>", _on_canvas_configure)
 
-        def _on_mousewheel(event):
-            if event.delta:
-                canvas.yview_scroll(int(-1 * event.delta), "units")
-            elif event.num == 4:
-                canvas.yview_scroll(-1, "units")
-            elif event.num == 5:
-                canvas.yview_scroll(1, "units")
+        def _event_inside_tab(event) -> bool:
+            try:
+                target = event.widget.winfo_containing(event.x_root, event.y_root)
+                while target is not None:
+                    if target is tab:
+                        return True
+                    target = target.master
+            except Exception:
+                return False
+            return False
 
-        def _bind_mousewheel_recursive(widget):
-            widget.bind("<MouseWheel>", _on_mousewheel)
-            widget.bind("<Button-4>", _on_mousewheel)
-            widget.bind("<Button-5>", _on_mousewheel)
-            for child in widget.winfo_children():
-                _bind_mousewheel_recursive(child)
+        def _should_keep_widget_scroll(event) -> bool:
+            try:
+                if isinstance(event.widget, (tk.Text, tk.Listbox)):
+                    first, last = event.widget.yview()
+                    scroll_up = getattr(event, "delta", 0) > 0 or getattr(event, "num", None) == 4
+                    scroll_down = getattr(event, "delta", 0) < 0 or getattr(event, "num", None) == 5
+                    return (first > 0.0 and scroll_up) or (last < 1.0 and scroll_down)
+            except Exception:
+                return False
+            return False
+
+        def _on_mousewheel(event):
+            if not _event_inside_tab(event) or _should_keep_widget_scroll(event):
+                return
+            delta = getattr(event, "delta", 0)
+            event_num = getattr(event, "num", None)
+            if delta:
+                step = -1 if delta > 0 else 1
+                canvas.yview_scroll(step * max(1, abs(delta) // 120), "units")
+            elif event_num == 4:
+                canvas.yview_scroll(-1, "units")
+            elif event_num == 5:
+                canvas.yview_scroll(1, "units")
+            return "break"
 
         canvas.pack(side="left", fill="both", expand=True)
         scrollbar.pack(side="right", fill="y")
 
         # 仅在当前设置页面容器内绑定滚轮，避免污染全局事件绑定。
-        _bind_mousewheel_recursive(tab)
+        canvas.bind("<MouseWheel>", _on_mousewheel, add="+")
+        canvas.bind("<Button-4>", _on_mousewheel, add="+")
+        canvas.bind("<Button-5>", _on_mousewheel, add="+")
+        inner.bind("<MouseWheel>", _on_mousewheel, add="+")
+        inner.bind("<Button-4>", _on_mousewheel, add="+")
+        inner.bind("<Button-5>", _on_mousewheel, add="+")
+        tab.bind_all("<MouseWheel>", _on_mousewheel, add="+")
+        tab.bind_all("<Button-4>", _on_mousewheel, add="+")
+        tab.bind_all("<Button-5>", _on_mousewheel, add="+")
 
         return inner
 
