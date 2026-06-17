@@ -1,1 +1,1 @@
-"""Image-API client adapters. See v2 plan §6.7."""
+﻿"""Image-API client adapters. See docs/technical_architecture.md.7."""

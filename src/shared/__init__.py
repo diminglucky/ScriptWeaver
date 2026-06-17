@@ -1,7 +1,7 @@
-"""ScriptWeaver v2 shared layer.
+"""ScriptWeaver shared layer.
 
-See docs/plans/2026-05-25-langchain-rag-novel-framework-v2.md §3 for design.
+See docs/technical_architecture.md for the current service and RAG design.
 
-Contains pure, runtime-state-free modules that all 3 services and the GUI
-share: domain models, config loaders, HTTP helpers.
+Contains pure, runtime-state-free modules shared by services and the GUI:
+domain models, config loaders, and HTTP helpers.
 """

@@ -1,1 +1,1 @@
-"""LangGraph workflows for novel + character + review. See v2 plan §5.5 / §5.6."""
+﻿"""LangGraph workflows for novel + character + review. See docs/technical_architecture.md.5 / 搂5.6."""

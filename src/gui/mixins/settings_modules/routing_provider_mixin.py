@@ -109,14 +109,6 @@ class SettingsRoutingProviderMixin:
 
     def _apply_story_env_fallbacks(self, provider: str, key: str, base_url: str, model: str = "") -> tuple[str, str, str]:
         safe_name = self._story_env_provider_name(provider)
-        if safe_name:
-            if not key:
-                key = os.getenv(f"STORY_{safe_name}_KEY", "").strip()
-            if not base_url:
-                base_url = os.getenv(f"STORY_{safe_name}_BASE_URL", "").strip()
-            if not model:
-                model = os.getenv(f"STORY_{safe_name}_MODEL", "").strip()
-
         if provider == "DeepSeek":
             if not key:
                 key = os.getenv("DEEPSEEK_API_KEY", "").strip()
@@ -124,6 +116,14 @@ class SettingsRoutingProviderMixin:
                 base_url = os.getenv("DEEPSEEK_BASE_URL", "").strip()
             if not model:
                 model = os.getenv("DEEPSEEK_MODEL", "").strip()
+
+        if safe_name:
+            if not key:
+                key = os.getenv(f"STORY_{safe_name}_KEY", "").strip()
+            if not base_url:
+                base_url = os.getenv(f"STORY_{safe_name}_BASE_URL", "").strip()
+            if not model:
+                model = os.getenv(f"STORY_{safe_name}_MODEL", "").strip()
         return key, base_url, model
 
     def _find_configured_story_provider(self, provider: str, fallback_provider: Optional[str]) -> tuple[str, dict, str, str]:

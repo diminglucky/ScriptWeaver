@@ -29,7 +29,7 @@ def ingest(
 	max_chars: int = typer.Option(800),
 	overlap: int = typer.Option(120),
 ):
-	"""从本地文本构建向量索引（FAISS）。"""
+	"""从本地文本构建 Chroma 向量索引。"""
 	cfg = IngestConfig(data_root=Path(data_root), index_dir=Path(index_dir), embedding_model_name=embedding_model, max_chars=max_chars, overlap=overlap)
 	KnowledgeBaseIngestor(cfg).build()
 

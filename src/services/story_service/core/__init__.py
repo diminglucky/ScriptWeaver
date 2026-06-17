@@ -1,1 +1,1 @@
-"""story-service core internals. See v2 plan §5.2."""
+﻿"""story-service core internals. See docs/technical_architecture.md.2."""

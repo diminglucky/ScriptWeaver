@@ -25,17 +25,20 @@ def _repo_root(monkeypatch, tmp_path: Path):
 class _FakeRegistry:
     def __init__(self):
         self.tasks: list[str] = []
+        self.prompts: list[dict] = []
 
     def chat_model(self, task: str):
         self.tasks.append(task)
-        return _FakeLLM(task)
+        return _FakeLLM(task, self.prompts)
 
 
 class _FakeLLM:
-    def __init__(self, task: str):
+    def __init__(self, task: str, prompts: list[dict]):
         self.task = task
+        self.prompts = prompts
 
     async def ainvoke(self, prompt):
+        self.prompts.append(prompt)
         if self.task == "story_bible":
             return json.dumps({
                 "requirement": prompt["state"]["requirement"],
@@ -58,6 +61,11 @@ class _FakeLLM:
             }, ensure_ascii=False)
         if self.task == "chapter":
             section = prompt["section"]
+            chapter_state = prompt["state"]
+            assert "chapter_contexts" in chapter_state
+            assert "chapter_context_text" in chapter_state
+            if chapter_state["chapter_contexts"]:
+                assert any(c.source.kb_type == "project_memory" for c in chapter_state["chapter_contexts"])
             return json.dumps({
                 "section_index": section["index"],
                 "title": section["title"],
@@ -108,7 +116,12 @@ def test_novel_graph_fake_llm_generates_and_persists_two_chapters(tmp_path: Path
     assert [ch.title for ch in state["chapters"]] == ["雨夜", "抉择"]
     assert "雨夜 正文" in state["final_text"]
     assert any(call[0] == "reference" for call in rag.search_calls)
+    assert any(call[0] == "project_memory" for call in rag.search_calls)
     assert len(rag.memory_entries) == 2
+    assert all("continuity" in entries[0]["tags"] for _, entries in rag.memory_entries)
+    chapter_prompts = [p for p in registry.prompts if p.get("task") == "chapter"]
+    assert chapter_prompts
+    assert "ctx project_memory" in chapter_prompts[0]["state"]["chapter_context_text"]
 
     store = ProjectStore("p1")
     assert store.load_storybible().theme == "代价"
@@ -122,6 +135,21 @@ def test_novel_graph_fallback_without_llm(tmp_path: Path):
     assert len(state["chapters"]) == 2
     assert state["story_bible"].characters[0].name == "主角"
     assert ProjectStore("p2").load_final_story()
+
+
+def test_novel_graph_use_rag_false_skips_chapter_retrieval(tmp_path: Path):
+    registry = _FakeRegistry()
+    rag = _FakeRag()
+    graph = build_novel_graph(registry=registry, prompts=None, rag_client=rag, project_id="p-no-rag")
+    state = asyncio.run(graph.ainvoke({
+        "request": {
+            "requirement": "no rag story",
+            "chapter_count": 1,
+            "use_rag": False,
+        }
+    }))
+    assert len(state["chapters"]) == 2
+    assert rag.search_calls == []
 
 
 def test_character_graph_fake_llm_uses_reference_and_memory_contexts():

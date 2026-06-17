@@ -1,8 +1,4 @@
-"""Dependency-injection providers for rag-service routes.
-
-The functions here are referenced by FastAPI routers via `Depends(...)`.
-They are stubs in the scaffold and must be wired during Phase 2.
-"""
+"""Dependency-injection providers for rag-service routes."""
 
 from __future__ import annotations
 
@@ -11,7 +7,7 @@ from functools import lru_cache
 
 @lru_cache(maxsize=1)
 def get_embedding_hub():
-    """Return the singleton EmbeddingHub. See v2 plan §4.5."""
+    """Return the singleton EmbeddingHub."""
     from src.services.rag_service.core.embedding_hub import EmbeddingHub
 
     return EmbeddingHub()
@@ -19,7 +15,7 @@ def get_embedding_hub():
 
 @lru_cache(maxsize=1)
 def get_index_hub():
-    """Return the singleton IndexHub managing all FAISS shards."""
+    """Return the singleton IndexHub managing Chroma shards."""
     from src.services.rag_service.core.index_hub import IndexHub
 
     return IndexHub()

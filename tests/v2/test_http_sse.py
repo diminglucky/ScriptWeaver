@@ -1,4 +1,4 @@
-"""SSE frame encoder. See v2 plan §7.5."""
+﻿"""SSE frame encoder. See docs/technical_architecture.md.5."""
 
 from __future__ import annotations
 

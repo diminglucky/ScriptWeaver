@@ -1,4 +1,4 @@
-"""X-Run-Id propagation. See v2 plan §8.2."""
+﻿"""X-Run-Id propagation. See docs/technical_architecture.md.2."""
 
 from __future__ import annotations
 

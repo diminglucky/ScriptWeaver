@@ -7,12 +7,8 @@ from unittest.mock import patch
 
 def _import_without_kb_backends(name, globals=None, locals=None, fromlist=(), level=0):
     if name in {
-        "faiss",
         "sentence_transformers",
-        "langchain",
-        "langchain_community",
-        "langchain_huggingface",
-        "langchain_text_splitters",
+        "chromadb",
     }:
         raise ImportError(f"simulated missing dependency: {name}")
     return _REAL_IMPORT(name, globals, locals, fromlist, level)
@@ -30,8 +26,8 @@ class KBOptionalDepsTests(unittest.TestCase):
                 ingest._load_kb_backends()
 
         msg = str(ctx.exception)
-        self.assertTrue(any(pkg in msg for pkg in ("faiss-cpu", "langchain-community")))
-        self.assertTrue(any(pkg in msg for pkg in ("sentence-transformers", "langchain-huggingface")))
+        self.assertIn("chromadb", msg)
+        self.assertIn("sentence-transformers", msg)
 
     def test_search_reports_missing_optional_deps(self):
         import src.kb.search as search
@@ -41,8 +37,8 @@ class KBOptionalDepsTests(unittest.TestCase):
                 search._load_kb_backends()
 
         msg = str(ctx.exception)
-        self.assertTrue(any(pkg in msg for pkg in ("faiss-cpu", "langchain-community")))
-        self.assertTrue(any(pkg in msg for pkg in ("sentence-transformers", "langchain-huggingface")))
+        self.assertIn("chromadb", msg)
+        self.assertIn("sentence-transformers", msg)
 
 
 if __name__ == "__main__":

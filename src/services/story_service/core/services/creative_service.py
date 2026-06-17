@@ -1,6 +1,6 @@
-"""High-level orchestration: build graph → run → emit events.
+﻿"""High-level orchestration: build graph 鈫?run 鈫?emit events.
 
-See v2 plan §5.2 / §5.10 / §8.4.
+See docs/technical_architecture.md.2 / 搂5.10 / 搂8.4.
 
 Workflows themselves are not built here; a *runner* callable is injected at
 construction time so this layer is fully testable without LangGraph. The
@@ -178,7 +178,7 @@ class CreativeService:
             self.bus.publish(CreativeEvent(
                 type="failed", run_id=ctx.run_id, payload=e.to_payload(),
             ))
-        except Exception as e:  # noqa: BLE001 — surface as failed event
+        except Exception as e:  # noqa: BLE001 鈥?surface as failed event
             if handle is not None:
                 handle.status = "failed"
                 handle.finished_at = time.time()

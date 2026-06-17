@@ -1,4 +1,4 @@
-"""ProjectPaths layout + ensure_dirs. See v2 plan §3.6."""
+﻿"""ProjectPaths layout + ensure_dirs. See docs/technical_architecture.md.6."""
 
 from __future__ import annotations
 

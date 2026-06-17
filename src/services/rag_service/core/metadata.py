@@ -1,4 +1,4 @@
-"""DocumentMeta + ChunkMeta. See v2 plan §4.2 / §4.4."""
+﻿"""DocumentMeta + ChunkMeta. See docs/technical_architecture.md.2 / 搂4.4."""
 
 from __future__ import annotations
 
@@ -25,6 +25,6 @@ class ChunkMeta:
 
 
 def compute_chunk_id(source_id: str, normalized_text: str) -> str:
-    """Stable chunk id per v2 plan §4.4: sha1(source_id ":" text[:512])[:16]."""
+    """Stable chunk id per the current architecture: sha1(source_id ":" text[:512])[:16]."""
     payload = f"{source_id}:{normalized_text[:512]}".encode("utf-8")
     return hashlib.sha1(payload).hexdigest()[:16]

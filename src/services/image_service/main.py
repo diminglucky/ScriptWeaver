@@ -1,4 +1,4 @@
-"""FastAPI app for image-service. See v2 plan §6, §7.4."""
+﻿"""FastAPI app for image-service. See docs/technical_architecture.md.4."""
 
 from __future__ import annotations
 

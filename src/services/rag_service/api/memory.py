@@ -1,4 +1,4 @@
-"""project_memory CRUD. See v2 plan §4.7 / §7.3."""
+﻿"""project_memory CRUD. See docs/technical_architecture.md.7 / 搂7.3."""
 
 from __future__ import annotations
 
@@ -55,7 +55,7 @@ async def write_memory(
 @router.get("/{project_id}/memory", response_model=MemoryListResponse)
 async def list_memory(project_id: str, hub=Depends(get_index_hub)) -> MemoryListResponse:
     shard = hub.shard("project_memory", project_id)
-    rows = shard.store.fetch_by_ordinals(list(range(len(shard))))
+    rows = shard.store.list_chunks()
     entries = [
         MemoryEntryOut(
             chunk_id=row["chunk_id"],
@@ -63,7 +63,7 @@ async def list_memory(project_id: str, hub=Depends(get_index_hub)) -> MemoryList
             text=row["text"],
             tags=row.get("tags") or [],
         )
-        for _, row in sorted(rows.items())
+        for row in rows
     ]
     return MemoryListResponse(entries=entries)
 
@@ -72,7 +72,7 @@ async def list_memory(project_id: str, hub=Depends(get_index_hub)) -> MemoryList
 async def clear_memory(project_id: str, hub=Depends(get_index_hub)) -> DeleteResponse:
     shard = hub.shard("project_memory", project_id)
     removed = 0
-    rows = shard.store.fetch_by_ordinals(list(range(len(shard))))
-    for source_id in sorted({row["source_id"] for row in rows.values()}):
+    rows = shard.store.list_chunks()
+    for source_id in sorted({row["source_id"] for row in rows}):
         removed += shard.delete_source(source_id)
     return DeleteResponse(removed=removed)

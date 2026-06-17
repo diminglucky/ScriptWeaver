@@ -1,6 +1,6 @@
-"""ServiceSupervisor: spawn + health-check + shutdown the 3 backend services.
+﻿"""ServiceSupervisor: spawn + health-check + shutdown the 3 backend services.
 
-See v2 plan §9.
+See docs/technical_architecture.md.
 """
 
 from __future__ import annotations
@@ -36,9 +36,9 @@ class ServiceSupervisor:
         self.service_token: str = secrets.token_urlsafe(32)
         self.ports: dict[str, int] = {}
 
-    # ── lifecycle ─────────────────────────────────────────────────────────
+    # 鈹€鈹€ lifecycle 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
     def start_all(self, *, dev_mode: bool = False) -> dict[str, str]:
-        """Spawn services in order (rag → story → image). Returns base_url map."""
+        """Spawn services in order (rag 鈫?story 鈫?image). Returns base_url map."""
         if self.processes:
             return {name: f"http://127.0.0.1:{port}" for name, port in self.ports.items()}
 
@@ -137,7 +137,7 @@ class ServiceSupervisor:
         port = self.ports.get(name) or self._free_port()
         self.ports[name] = port
 
-    # ── helpers ───────────────────────────────────────────────────────────
+    # 鈹€鈹€ helpers 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
     def health(self, name: str, *, timeout: float = 2.0) -> dict:
         if name not in _SERVICES:
             raise KeyError(name)

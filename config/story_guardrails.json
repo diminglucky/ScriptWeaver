@@ -29,6 +29,6 @@
   },
   "article_title": {
     "min_len": 14,
-    "max_len": 30
+    "max_len": 20
   }
 }

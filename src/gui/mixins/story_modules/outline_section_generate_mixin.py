@@ -165,7 +165,10 @@ class OutlineSectionGenerateMixin:
             # 带知识库检索
             need_build = False
             index_dir = Path(self.index_dir.get())
-            has_index = (index_dir / "kb.index").exists() or (index_dir / "kb.faiss").exists()
+            has_index = (
+                (index_dir / "v2" / "manifest.json").exists()
+                or any(index_dir.glob("v2/**/chroma"))
+            )
             if not has_index:
                 if messagebox.askyesno("提示", "未找到索引，是否现在构建？"):
                     need_build = True

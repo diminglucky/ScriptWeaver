@@ -1,6 +1,6 @@
-"""Singleton wrapper around the sentence-transformers model.
+﻿"""Singleton wrapper around the sentence-transformers model.
 
-See v2 plan §4.5. We delegate to `src.kb.model_cache.get_sentence_transformer`
+See docs/technical_architecture.md.5. We delegate to `src.kb.model_cache.get_sentence_transformer`
 so v1 and v2 share the same on-disk model cache.
 """
 

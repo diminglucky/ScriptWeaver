@@ -1,4 +1,4 @@
-"""Stable chunk_id hashing. See v2 plan §4.4."""
+﻿"""Stable chunk_id hashing. See docs/technical_architecture.md.4."""
 
 from __future__ import annotations
 
@@ -24,7 +24,7 @@ def test_chunk_id_differs_for_different_source():
 def test_chunk_id_truncates_long_text_consistently():
     long1 = "x" * 600
     long2 = "x" * 512 + "different-tail"
-    # Implementation truncates to first 512 chars → ids should match.
+    # Implementation truncates to first 512 chars 鈫?ids should match.
     assert compute_chunk_id("s", long1) == compute_chunk_id("s", long2)
 
 

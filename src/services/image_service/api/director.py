@@ -1,4 +1,4 @@
-"""Director script generation. See v2 plan §6.5 / §7.4."""
+"""Director script generation endpoints."""
 
 from __future__ import annotations
 
@@ -16,7 +16,7 @@ async def generate_script(project_id: str, body: dict, bus=Depends(get_event_bus
         script = {
             "project_id": project_id,
             "title": body.get("title") or project_id,
-            "beats": body.get("beats") or ["开场", "发展", "结尾"],
+            "beats": body.get("beats") or ["opening", "development", "ending"],
         }
         write_json(project_paths(project_id).director_dir / "script.json", script)
         return script

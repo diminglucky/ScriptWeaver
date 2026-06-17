@@ -23,6 +23,13 @@ from src.gui.mixins.story_modules.story_infra import log_print as print  # noqa:
 logger = logging.getLogger(__name__)
 
 
+def _has_rag_index(index_dir: Path) -> bool:
+	return (
+		(index_dir / "v2" / "manifest.json").exists()
+		or any(index_dir.glob("v2/**/chroma"))
+	)
+
+
 class StoryGeneratorMixin:
 	"""Story story_generator 功能"""
 
@@ -286,8 +293,8 @@ class StoryGeneratorMixin:
 			self._generate_model_only(query)
 			return
 		need_build = False
-		index_path = Path(self.index_dir.get()) / "kb.index"
-		if not index_path.exists():
+		index_path = Path(self.index_dir.get())
+		if not _has_rag_index(index_path):
 			if messagebox.askyesno("提示", "未找到索引，是否现在根据当前数据目录自动构建？"):
 				need_build = True
 			else:
@@ -390,8 +397,8 @@ class StoryGeneratorMixin:
 		else:
 			# 带知识库检索
 			need_build = False
-			index_path = Path(self.index_dir.get()) / "kb.index"
-			if not index_path.exists():
+			index_path = Path(self.index_dir.get())
+			if not _has_rag_index(index_path):
 				if messagebox.askyesno("提示", "未找到索引，是否现在构建？"):
 					need_build = True
 				else:

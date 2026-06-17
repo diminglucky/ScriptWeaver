@@ -1,6 +1,6 @@
-"""Pydantic v2 schemas shared by services, HTTP contracts, and persistence.
+﻿"""Pydantic v2 schemas shared by services, HTTP contracts, and persistence.
 
-Source of truth for v2 plan §3.2. Any change here must remain
+Source of truth for the current architecture Any change here must remain
 backwards compatible with `projects/<id>/storybible.json`,
 `projects/<id>/chapters/*.json`, and `projects/<id>/shots/shots.json`.
 """

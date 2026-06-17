@@ -1,4 +1,4 @@
-"""RunRegistry cancel + client-attach. See v2 plan §8.3."""
+﻿"""RunRegistry cancel + client-attach. See docs/technical_architecture.md.3."""
 
 from __future__ import annotations
 

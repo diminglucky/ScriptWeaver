@@ -1,10 +1,9 @@
-"""Tests for rag_service.core.index_hub: Shard + IndexHub end-to-end."""
+"""Tests for rag_service.core.index_hub: Chroma Shard + IndexHub end-to-end."""
 from __future__ import annotations
 
 import json
 from pathlib import Path
 
-import numpy as np
 import pytest
 
 from src.services.rag_service.core.index_hub import (
@@ -13,6 +12,9 @@ from src.services.rag_service.core.index_hub import (
     SCHEMA_VERSION,
     Shard,
 )
+
+
+pytest.importorskip("chromadb")
 
 
 def _v(*xs: float) -> list[float]:
@@ -55,14 +57,13 @@ def test_shard_persists_across_reopen(tmp_path: Path):
     sh2 = Shard(kb_type="reference", project_id=None, root=tmp_path)
     try:
         assert len(sh2) == 1
-        assert sh2.dim == 2
         hits = sh2.search([1, 0], top_k=1)
         assert hits and hits[0].chunk_id == "c1"
     finally:
         sh2.close()
 
 
-def test_shard_delete_source_compacts(tmp_path: Path):
+def test_shard_delete_source_removes_from_chroma_and_metadata(tmp_path: Path):
     sh = Shard(kb_type="reference", project_id=None, root=tmp_path)
     try:
         sh.upsert(
@@ -73,10 +74,8 @@ def test_shard_delete_source_compacts(tmp_path: Path):
         removed = sh.delete_source("s1")
         assert removed == 2
         assert len(sh) == 1
-        # Surviving chunk still searchable + its ordinal compacted to 0.
-        hits = sh.search([1, 1], top_k=1)
-        assert hits[0].chunk_id == "c3"
-        assert hits[0].ordinal == 0
+        hits = sh.search([1, 1], top_k=3)
+        assert [hit.chunk_id for hit in hits] == ["c3"]
     finally:
         sh.close()
 
@@ -115,6 +114,18 @@ def test_shard_zero_query_returns_empty(tmp_path: Path):
         sh.close()
 
 
+def test_shard_multiple_upserts_keep_distinct_ordinals(tmp_path: Path):
+    sh = Shard(kb_type="reference", project_id=None, root=tmp_path)
+    try:
+        sh.upsert(["c1"], [_v(1, 0)], [_meta("c1", "s1")])
+        sh.upsert(["c2"], [_v(0, 1)], [_meta("c2", "s2")])
+        rows = sh.store.list_chunks()
+        assert [row["chunk_id"] for row in rows] == ["c1", "c2"]
+        assert [row["ordinal"] for row in rows] == [0, 1]
+    finally:
+        sh.close()
+
+
 def test_index_hub_shard_isolation(tmp_path: Path):
     hub = IndexHub(index_root=tmp_path)
     try:
@@ -122,7 +133,6 @@ def test_index_hub_shard_isolation(tmp_path: Path):
         s_proj = hub.shard("project_memory", "proj-1")
         assert s_ref is hub.shard("reference")
         assert s_ref is not s_proj
-        # Layout reflects (kb_type, project_id_or_default).
         ref_path = tmp_path / "v2" / "reference" / DEFAULT_PROJECT_SEGMENT
         proj_path = tmp_path / "v2" / "project_memory" / "proj-1"
         assert ref_path.exists() and proj_path.exists()
@@ -138,10 +148,11 @@ def test_index_hub_manifest_write_and_read(tmp_path: Path):
         manifest = hub.write_manifest()
         assert manifest["schema_version"] == SCHEMA_VERSION
         assert manifest["embedding_model"] == "test-model"
+        assert manifest["vector_backend"] == "chroma"
+        assert manifest["shards"][0]["backend"] == "chroma"
         assert manifest["shards"][0]["count"] == 1
         on_disk = json.loads((tmp_path / "v2" / IndexHub.MANIFEST_FILE).read_text("utf-8"))
         assert on_disk == manifest
-        # manifest() reads back the same payload after write.
         assert hub.manifest() == manifest
     finally:
         hub.close()

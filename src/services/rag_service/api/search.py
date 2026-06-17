@@ -1,4 +1,4 @@
-"""POST /v1/kb/{kb_type}/search. See v2 plan §4.6 / §7.3."""
+﻿"""POST /v1/kb/{kb_type}/search. See docs/technical_architecture.md.6 / 搂7.3."""
 
 from __future__ import annotations
 

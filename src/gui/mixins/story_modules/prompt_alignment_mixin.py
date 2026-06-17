@@ -91,7 +91,7 @@ class StoryPromptAlignmentMixin:
             should_override = False
             if selected_score <= 0 and detected_score >= 2:
                 should_override = True
-            elif detected_score >= (selected_score + 3):
+            elif detected_score >= (selected_score + 4):
                 should_override = True
             if should_override:
                 return detected, f"检测到需求更偏“{detected}”（信号 {detected_score}>{selected_score}），已覆盖界面选择“{selected}”"

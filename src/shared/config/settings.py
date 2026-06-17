@@ -1,4 +1,4 @@
-"""Per-service runtime settings. See v2 plan §12.2.
+﻿"""Per-service runtime settings. See docs/technical_architecture.md.2.
 
 Uses `pydantic-settings` when available; falls back to a plain dataclass-like
 reader so the skeleton imports cleanly even before deps are installed.

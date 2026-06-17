@@ -1,17 +1,11 @@
-"""Chinese-friendly text splitters with overlap. See v2 plan §4.2.
-
-Produces `SplitChunk` instances that retain character offsets into the
-original document so we can re-attach citations later.
-"""
+"""Chinese-friendly paragraph-aware text splitters."""
 
 from __future__ import annotations
 
 import re
 from dataclasses import dataclass
 
-# Sentence terminators we are willing to break on. Order matters: the last
-# entry (newline) is the lowest-priority separator we accept.
-_TERMINATORS = "。！？!?.\n"
+_TERMINATORS = "。！？!?；;.\n"
 _SENTENCE_RE = re.compile(rf"[^{re.escape(_TERMINATORS)}]*[{re.escape(_TERMINATORS)}]+|[^{re.escape(_TERMINATORS)}]+$")
 
 
@@ -20,6 +14,21 @@ class SplitChunk:
     text: str
     start: int
     end: int
+
+
+def _iter_paragraphs(text: str) -> list[tuple[int, int, str]]:
+    """Return non-empty paragraphs with original offsets."""
+    paragraphs: list[tuple[int, int, str]] = []
+    for match in re.finditer(r"[^\r\n]+", text):
+        start, end = match.span()
+        raw = text[start:end]
+        body = raw.strip()
+        if not body:
+            continue
+        leading = len(raw) - len(raw.lstrip())
+        trailing = len(raw.rstrip())
+        paragraphs.append((start + leading, start + trailing, body))
+    return paragraphs
 
 
 def _iter_sentences(text: str) -> list[tuple[int, int, str]]:
@@ -33,14 +42,44 @@ def _iter_sentences(text: str) -> list[tuple[int, int, str]]:
     return out
 
 
-def split_text(text: str, *, chunk_size: int = 600, overlap: int = 80) -> list[SplitChunk]:
-    """Split ``text`` into ``SplitChunk`` instances.
+def _split_long_paragraph(start: int, paragraph: str, *, chunk_size: int) -> list[tuple[int, int, str]]:
+    """Split a paragraph by sentence only when the paragraph is too large."""
+    pieces: list[tuple[int, int, str]] = []
+    current_start: int | None = None
+    current_end = start
+    parts: list[str] = []
+    for sent_start, sent_end, sent in _iter_sentences(paragraph):
+        abs_start = start + sent_start
+        abs_end = start + sent_end
+        base_start = current_start if current_start is not None else abs_start
+        if parts and (current_end - base_start) + len(sent) > chunk_size:
+            body = "".join(parts).strip()
+            if body:
+                pieces.append((base_start, current_end, body))
+            current_start = abs_start
+            parts = []
+        if current_start is None:
+            current_start = abs_start
+        parts.append(sent)
+        current_end = abs_end
+    body = "".join(parts).strip()
+    if body and current_start is not None:
+        pieces.append((current_start, current_end, body))
+    return pieces
 
-    The splitter packs sentences greedily up to ``chunk_size`` characters,
-    then continues the next chunk with the trailing ``overlap`` characters of
-    the previous one preserved. Empty / whitespace-only text returns an
-    empty list. Chunks shorter than ~20 chars after stripping are dropped to
-    match the v1 behaviour and keep low-signal tails out of the index.
+
+def split_text(
+    text: str,
+    *,
+    chunk_size: int = 600,
+    overlap: int = 80,
+    overlap_paragraphs: int = 1,
+) -> list[SplitChunk]:
+    """Split ``text`` into paragraph-aware chunks.
+
+    Non-empty lines are treated as prose paragraphs. Paragraphs are packed up
+    to ``chunk_size`` and the next chunk carries ``overlap_paragraphs`` from
+    the previous chunk. Overlong paragraphs fall back to sentence splitting.
     """
     if not text or not text.strip():
         return []
@@ -48,44 +87,44 @@ def split_text(text: str, *, chunk_size: int = 600, overlap: int = 80) -> list[S
         raise ValueError("chunk_size must be positive")
     if overlap < 0 or overlap >= chunk_size:
         raise ValueError("overlap must satisfy 0 <= overlap < chunk_size")
+    if overlap_paragraphs < 0:
+        raise ValueError("overlap_paragraphs must be non-negative")
 
-    sentences = _iter_sentences(text)
-    if not sentences:
+    paragraphs = _iter_paragraphs(text)
+    if not paragraphs:
         return []
+    units: list[tuple[int, int, str]] = []
+    for start, end, paragraph in paragraphs:
+        if len(paragraph) > chunk_size:
+            units.extend(_split_long_paragraph(start, paragraph, chunk_size=chunk_size))
+        else:
+            units.append((start, end, paragraph))
 
     chunks: list[SplitChunk] = []
-    cur_start = sentences[0][0]
-    cur_end = cur_start
-    cur_text_parts: list[str] = []
+    cur_units: list[tuple[int, int, str]] = []
 
     def flush() -> None:
-        nonlocal cur_start, cur_end, cur_text_parts
-        body = "".join(cur_text_parts).strip()
+        nonlocal cur_units
+        if not cur_units:
+            return
+        body = "\n\n".join(unit[2].strip() for unit in cur_units).strip()
         if len(body) > 20:
-            chunks.append(SplitChunk(text=body, start=cur_start, end=cur_end))
-        cur_text_parts = []
+            chunks.append(SplitChunk(text=body, start=cur_units[0][0], end=cur_units[-1][1]))
+        cur_units = []
 
-    for s, e, sent in sentences:
-        sent_len = e - s
-        cur_len = cur_end - cur_start
-        if cur_len + sent_len > chunk_size and cur_text_parts:
+    for unit in units:
+        unit_len = len(unit[2])
+        current_len = len("\n\n".join(u[2] for u in cur_units)) if cur_units else 0
+        if cur_units and current_len + 2 + unit_len > chunk_size:
+            prev_units = cur_units[:]
             flush()
-            # Re-seed next chunk with overlap drawn from the *original* text
-            # so offsets stay aligned.
-            if overlap > 0:
-                back = min(overlap, cur_end - 0)
-                new_start = max(0, cur_end - back)
-                cur_start = new_start
-                cur_end = cur_end
-                cur_text_parts = [text[new_start:cur_end]]
-            else:
-                cur_start = s
-                cur_end = s
-                cur_text_parts = []
-        if not cur_text_parts:
-            cur_start = s
-        cur_text_parts.append(sent)
-        cur_end = e
+            if overlap_paragraphs:
+                cur_units = prev_units[-overlap_paragraphs:]
+            elif overlap > 0 and prev_units:
+                last = prev_units[-1]
+                fallback_start = max(last[0], last[1] - overlap)
+                cur_units = [(fallback_start, last[1], text[fallback_start:last[1]].strip())]
+        cur_units.append(unit)
 
     flush()
     return chunks

@@ -1,4 +1,4 @@
-"""DI providers for story-service routes. See v2 plan §5."""
+﻿"""DI providers for story-service routes. See docs/technical_architecture.md."""
 
 from __future__ import annotations
 

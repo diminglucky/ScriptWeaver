@@ -80,6 +80,18 @@ def test_fetch_by_ordinals(tmp_path: Path):
         assert out[0]["chunk_id"] == "c1"
 
 
+def test_fetch_source_returns_ordered_rows(tmp_path: Path):
+    with SqliteStore(tmp_path / "m.sqlite") as store:
+        store.upsert_chunks([
+            _row("c1", "s1", 0),
+            _row("c2", "s2", 1),
+            _row("c3", "s1", 2),
+        ])
+        rows = store.fetch_source("s1")
+        assert [row["chunk_id"] for row in rows] == ["c1", "c3"]
+        assert store.fetch_source("missing") == []
+
+
 def test_reassign_ordinals_handles_collisions(tmp_path: Path):
     with SqliteStore(tmp_path / "m.sqlite") as store:
         store.upsert_chunks([

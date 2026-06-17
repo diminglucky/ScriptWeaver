@@ -1,4 +1,4 @@
-"""Shared configuration loaders. See v2 plan §12."""
+﻿"""Shared configuration loaders. See docs/technical_architecture.md."""
 
 from .paths import RepoPaths, get_repo_paths
 from .keyfile import KeyVault, load_keyfile

@@ -1,4 +1,4 @@
-"""X-Run-Id contextvar propagation. See v2 plan §8.2."""
+﻿"""X-Run-Id contextvar propagation. See docs/technical_architecture.md.2."""
 
 from __future__ import annotations
 
@@ -38,7 +38,7 @@ def test_run_id_isolated_per_async_task():
             return current_run_id()
 
     async def main():
-        # contextvars are copied per task → no cross-talk.
+        # contextvars are copied per task 鈫?no cross-talk.
         results = await asyncio.gather(setter("A"), setter("B"), setter("C"))
         return results
 

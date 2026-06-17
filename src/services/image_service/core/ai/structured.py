@@ -1,6 +1,6 @@
-"""Re-export of structured-output helper from story-service.
+﻿"""Re-export of structured-output helper from story-service.
 
-See v2 plan §5.7 / §6.3.
+See docs/technical_architecture.md.7 / 搂6.3.
 """
 
 from __future__ import annotations

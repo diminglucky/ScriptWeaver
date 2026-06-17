@@ -1,4 +1,4 @@
-"""Run inspection + SSE + cancel + resume. See v2 plan §7.2 / §7.5 / §8.3."""
+﻿"""Run inspection + SSE + cancel + resume. See docs/technical_architecture.md.2 / 搂7.5 / 搂8.3."""
 
 from __future__ import annotations
 

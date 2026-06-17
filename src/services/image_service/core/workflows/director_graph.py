@@ -1,4 +1,4 @@
-"""director script generation graph. See v2 plan §6.5."""
+"""Director script generation graph."""
 
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ def build_director_graph(*, registry, prompts, story_client) -> Any:
             "script": {
                 "project_id": project_id,
                 "title": state.get("title") or project_id,
-                "beats": state.get("beats") or ["开场", "发展", "结尾"],
+                "beats": state.get("beats") or ["opening", "development", "ending"],
                 "story_excerpt": story_text[:500],
             }
         }

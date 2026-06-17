@@ -1,4 +1,4 @@
-"""RoutingConfig load + merge + resolve. See v2 plan §5.3 / §12.4."""
+﻿"""RoutingConfig load + merge + resolve. See docs/technical_architecture.md.3 / 搂12.4."""
 
 from __future__ import annotations
 

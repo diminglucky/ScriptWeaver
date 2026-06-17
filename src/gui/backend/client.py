@@ -1,6 +1,6 @@
-"""BackendClient: single GUI-facing facade over the 3 services.
+﻿"""BackendClient: single GUI-facing facade over the 3 services.
 
-See v2 plan §10.1.
+See docs/technical_architecture.md.1.
 """
 
 from __future__ import annotations

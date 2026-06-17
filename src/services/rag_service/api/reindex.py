@@ -1,4 +1,4 @@
-"""Admin endpoints for legacy index migration. See v2 plan §11.4."""
+"""Admin endpoints for RAG index metadata."""
 
 from __future__ import annotations
 
@@ -10,9 +10,9 @@ from src.services.rag_service.deps import get_index_hub
 router = APIRouter(prefix="/v1/admin", tags=["admin"])
 
 
-@router.post("/reindex")
-async def reindex(hub=Depends(get_index_hub)) -> dict:
-    return hub.reindex_legacy()
+@router.post("/manifest:rebuild")
+async def rebuild_manifest(hub=Depends(get_index_hub)) -> dict:
+    return hub.rebuild_manifest()
 
 
 @router.get("/manifest", response_model=ManifestResponse)

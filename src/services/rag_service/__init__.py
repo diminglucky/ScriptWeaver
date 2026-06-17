@@ -1,4 +1,1 @@
-"""rag-service: embeddings + FAISS shards + project memory.
-
-See v2 plan §4.
-"""
+"""rag-service: embeddings + Chroma shards + project memory."""

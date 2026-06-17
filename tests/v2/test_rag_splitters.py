@@ -33,13 +33,23 @@ def test_offsets_are_consistent_with_source():
 
 
 def test_overlap_creates_continuity_across_chunks():
-    text = "甲乙丙丁戊己庚辛壬癸。" * 30
-    chunks = split_text(text, chunk_size=60, overlap=12)
+    text = "\n\n".join([
+        "第一段介绍人物的处境和不能说出口的秘密。" * 2,
+        "第二段让人物接到一条陌生短信。" * 2,
+        "第三段揭示门锁没有坏却总是自动反锁。" * 2,
+        "第四段把旧照片和错位记忆联系起来。" * 2,
+    ])
+    chunks = split_text(text, chunk_size=70, overlap=12, overlap_paragraphs=1)
     assert len(chunks) >= 2
-    # The second chunk should begin with characters that appear at the tail
-    # of the first chunk.
-    head_of_second = chunks[1].text[:6]
-    assert head_of_second and head_of_second in chunks[0].text
+    first_paragraph_of_second = chunks[1].text.split("\n\n", 1)[0]
+    assert first_paragraph_of_second in chunks[0].text
+
+
+def test_paragraph_boundaries_are_preserved_when_possible():
+    text = "第一段有完整语义。" * 3 + "\n\n" + "第二段是另一场戏。" * 3
+    chunks = split_text(text, chunk_size=200, overlap=20)
+    assert len(chunks) == 1
+    assert "\n\n" in chunks[0].text
 
 
 def test_invalid_overlap_raises():
@@ -47,3 +57,18 @@ def test_invalid_overlap_raises():
         split_text("xxxxxxxxxxxxxxxxxxxxxxxxxx", chunk_size=10, overlap=10)
     with pytest.raises(ValueError):
         split_text("xxxxxxxxxxxxxxxxxxxxxxxxxx", chunk_size=0, overlap=0)
+
+
+def test_single_newline_lines_are_treated_as_paragraphs():
+    text = "\n".join([
+        "alpha paragraph has enough detail to be indexed",
+        "beta paragraph has enough detail to be indexed",
+        "gamma paragraph has enough detail to be indexed",
+    ])
+    chunks = split_text(text, chunk_size=95, overlap=10, overlap_paragraphs=1)
+    assert len(chunks) >= 2
+    assert chunks[0].text.split("\n\n") == [
+        "alpha paragraph has enough detail to be indexed",
+        "beta paragraph has enough detail to be indexed",
+    ]
+    assert chunks[1].text.startswith("beta paragraph")

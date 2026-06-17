@@ -1,4 +1,4 @@
-"""PresetsConfig loaders. See v2 plan §12."""
+﻿"""PresetsConfig loaders. See docs/technical_architecture.md."""
 
 from __future__ import annotations
 

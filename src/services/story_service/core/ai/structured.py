@@ -1,13 +1,4 @@
-"""invoke_structured: LLM call → pydantic schema with self-repair retry.
-
-See v2 plan §5.7.
-
-The LLM is duck-typed: any object with ``async def ainvoke(prompt) -> Any``
-will work. The result is normalised through :func:`_extract_text` (handles
-plain str, dict, and LangChain-style ``.content`` messages), parsed as JSON,
-then validated against ``schema``. On ``ValidationError`` we rebuild the
-prompt with a repair instruction and retry up to ``max_retries`` times.
-"""
+"""Invoke an LLM and validate the response against a pydantic schema."""
 
 from __future__ import annotations
 
@@ -37,7 +28,6 @@ def _extract_text(raw: Any) -> str:
         return ""
     if isinstance(raw, str):
         return raw
-    # LangChain / OpenAI-like message objects.
     content = getattr(raw, "content", None)
     if isinstance(content, str):
         return content
@@ -66,12 +56,12 @@ def _first_error_path(err: ValidationError) -> str:
 
 
 def _repair_prompt(original: Any, response: str, error_text: str) -> Any:
-    """Build a repair-prompt that asks the model to fix the JSON."""
+    """Build a repair prompt that asks the model to fix the JSON."""
     instructions = (
-        "你上一次的输出无法通过 JSON Schema 校验。"
-        f"\n错误信息: {error_text}"
-        "\n请只输出修正后的纯 JSON（不要 Markdown 代码块、不要解释）。"
-        "\n上一次输出:\n" + response
+        "Your previous output failed JSON schema validation."
+        f"\nError: {error_text}"
+        "\nReturn only corrected JSON. Do not include Markdown fences or explanations."
+        "\nPrevious output:\n" + response
     )
     if isinstance(original, str):
         return original + "\n\n" + instructions

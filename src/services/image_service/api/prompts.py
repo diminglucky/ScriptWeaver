@@ -1,4 +1,4 @@
-"""POST /v1/projects/{id}/image-prompts:generate. See v2 plan §6.3."""
+﻿"""POST /v1/projects/{id}/image-prompts:generate. See docs/technical_architecture.md.3."""
 
 from __future__ import annotations
 

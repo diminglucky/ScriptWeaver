@@ -1,4 +1,4 @@
-"""GET /v1/health for rag-service. See v2 plan §14.5."""
+﻿"""GET /v1/health for rag-service. See docs/technical_architecture.md.5."""
 
 from __future__ import annotations
 

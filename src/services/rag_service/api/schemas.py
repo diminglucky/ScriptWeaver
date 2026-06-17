@@ -1,4 +1,4 @@
-"""HTTP request / response schemas for rag-service. See v2 plan §7.3."""
+﻿"""HTTP request / response schemas for rag-service. See docs/technical_architecture.md.3."""
 from __future__ import annotations
 
 from typing import Literal
@@ -20,6 +20,7 @@ class IngestRequest(BaseModel):
     documents: list[DocumentIngest]
     chunk_size: int = 600
     overlap: int = 80
+    overlap_paragraphs: int = 1
 
 
 class IngestResponse(BaseModel):
@@ -69,5 +70,5 @@ class MemoryListResponse(BaseModel):
 class ManifestResponse(BaseModel):
     schema_version: int
     embedding_model: str | None
-    faiss: bool
+    vector_backend: str = "chroma"
     shards: list[dict]

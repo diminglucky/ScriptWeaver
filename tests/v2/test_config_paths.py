@@ -1,4 +1,4 @@
-"""RepoPaths resolution + WSF_REPO_ROOT override. See v2 plan §12."""
+﻿"""RepoPaths resolution + WSF_REPO_ROOT override. See docs/technical_architecture.md."""
 
 from __future__ import annotations
 

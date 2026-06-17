@@ -1,4 +1,4 @@
-"""Filesystem layout helpers for `projects/<id>/`. See v2 plan §3.6 / §11.
+﻿"""Filesystem layout helpers for `projects/<id>/`. See docs/technical_architecture.md.6 / 搂11.
 
 All 3 services must agree on the same paths. story-service is the only
 writer; rag-service and image-service must access these paths via HTTP.
@@ -16,7 +16,7 @@ class ProjectPaths:
         self.root = Path(projects_root) / project_id
         self.project_id = project_id
 
-    # ── legacy (v1) ───────────────────────────────────────────────────────
+    # 鈹€鈹€ legacy (v1) 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
     @property
     def project_json(self) -> Path:
         return self.root / "project.json"
@@ -33,7 +33,7 @@ class ProjectPaths:
     def characters_dir(self) -> Path:
         return self.root / "characters"
 
-    # ── v2 additions ──────────────────────────────────────────────────────
+    # 鈹€鈹€ v2 additions 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
     @property
     def storybible_json(self) -> Path:
         return self.root / "storybible.json"

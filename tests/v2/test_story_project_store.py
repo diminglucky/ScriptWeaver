@@ -1,4 +1,4 @@
-"""ProjectStore atomic writes + legacy migration. See v2 plan §5.9 / §11."""
+"""ProjectStore atomic writes and project migration."""
 
 from __future__ import annotations
 
@@ -28,7 +28,7 @@ def test_save_storybible_atomic_no_tmp_left(tmp_path: Path):
 
 def test_save_chapter_uses_zero_padded_filename(tmp_path: Path):
     store = ProjectStore("p1", projects_root=tmp_path)
-    store.save_chapter(ChapterDraft(section_index=3, title="三", content="..."))
+    store.save_chapter(ChapterDraft(section_index=3, title="Three", content="..."))
     assert (tmp_path / "p1" / "chapters" / "003.json").is_file()
 
 
@@ -51,8 +51,8 @@ def test_list_chapters_skips_corrupt_files(tmp_path: Path):
 
 def test_save_final_story(tmp_path: Path):
     store = ProjectStore("p1", projects_root=tmp_path)
-    store.save_final_story("第一章\n\n第二章")
-    assert store.load_final_story() == "第一章\n\n第二章"
+    store.save_final_story("chapter one\n\nchapter two")
+    assert store.load_final_story() == "chapter one\n\nchapter two"
 
 
 def test_load_storybible_returns_none_when_missing(tmp_path: Path):
@@ -64,14 +64,14 @@ def test_migrate_legacy_creates_minimal_storybible(tmp_path: Path):
     proj = tmp_path / "legacy"
     proj.mkdir()
     (proj / "project.json").write_text(
-        json.dumps({"requirement": "原需求", "category": "悬疑", "style": "克制", "target_chars": 4000}),
+        json.dumps({"requirement": "old requirement", "category": "suspense", "style": "restrained", "target_chars": 4000}),
         encoding="utf-8",
     )
 
     bible = ProjectStore.migrate_legacy_with_root("legacy", projects_root=tmp_path)
-    assert bible.requirement == "原需求"
-    assert bible.genre == "悬疑"
-    assert bible.style == "克制"
+    assert bible.requirement == "old requirement"
+    assert bible.genre == "suspense"
+    assert bible.style == "restrained"
     assert bible.target_chars == 4000
 
 

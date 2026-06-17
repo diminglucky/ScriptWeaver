@@ -4,8 +4,6 @@ from __future__ import annotations
 import asyncio
 from pathlib import Path
 
-import numpy as np
-
 from src.services.rag_service.core.index_hub import IndexHub
 from src.services.rag_service.core.retrievers import CreativeRetriever
 

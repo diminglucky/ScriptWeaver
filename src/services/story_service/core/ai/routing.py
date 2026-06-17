@@ -1,4 +1,4 @@
-"""Task → provider/model resolution. See v2 plan §5.3.
+﻿"""Task 鈫?provider/model resolution. See docs/technical_architecture.md.3.
 
 Thin wrapper over `src.shared.config.routing.RoutingConfig` that exposes
 helpers specific to story-service tasks (e.g. fallbacks).

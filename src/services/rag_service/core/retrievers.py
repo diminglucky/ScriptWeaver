@@ -1,6 +1,6 @@
-"""CreativeRetriever: query multiple shards and merge results.
+﻿"""CreativeRetriever: query multiple shards and merge results.
 
-See v2 plan §4.3 / §4.6.
+See docs/technical_architecture.md.3 / 搂4.6.
 """
 
 from __future__ import annotations
@@ -59,7 +59,7 @@ class CreativeRetriever:
             try:
                 hits = shard.search(qvec, top_k=per_shard_k)
             except ValueError:
-                # Dim mismatch (e.g. legacy shard, swapped embedding model).
+                # Dim mismatch, usually caused by changing embedding models.
                 continue
             for hit in hits:
                 if hit.score < min_score:

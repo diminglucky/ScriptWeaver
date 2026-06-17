@@ -1,7 +1,4 @@
-"""Prompt library. Merges config/story_*_profile.json + guardrails.
-
-See v2 plan §5.8.
-"""
+"""Prompt library. Merges config/story_*_profile.json and guardrails."""
 
 from __future__ import annotations
 
@@ -41,7 +38,7 @@ class PromptLibrary:
     def build_story_bible_prompt(self, state: dict[str, Any]) -> dict[str, Any]:
         return {
             "task": "story_bible",
-            "instruction": "基于需求、检索资料和约束，输出符合 StoryBible schema 的纯 JSON。",
+            "instruction": "Use the requirement, retrieved context, and constraints to return pure JSON matching StoryBible.",
             "profile": self.prompt_profile.get("outline", {}),
             "guardrails": self.guardrails,
             "state": state,
@@ -50,7 +47,7 @@ class PromptLibrary:
     def build_character_prompt(self, state: dict[str, Any]) -> dict[str, Any]:
         return {
             "task": "character_design",
-            "instruction": "基于故事上下文输出 characters 数组，元素符合 CharacterProfile schema。",
+            "instruction": "Return a characters array whose items match CharacterProfile.",
             "profile": self.prompt_profile.get("story", {}),
             "guardrails": self.guardrails,
             "state": state,
@@ -59,7 +56,7 @@ class PromptLibrary:
     def build_outline_prompt(self, state: dict[str, Any]) -> dict[str, Any]:
         return {
             "task": "outline",
-            "instruction": "输出 outline 数组，元素符合 OutlineSection schema。",
+            "instruction": "Return an outline array whose items match OutlineSection.",
             "profile": self.prompt_profile.get("outline", {}),
             "pipeline": self.pipeline_profile.get("emotion_arc", {}),
             "guardrails": self.guardrails,
@@ -69,7 +66,7 @@ class PromptLibrary:
     def build_chapter_prompt(self, state: dict[str, Any], section: dict[str, Any]) -> dict[str, Any]:
         return {
             "task": "chapter",
-            "instruction": "基于 StoryBible、章节规划和上下文输出符合 ChapterDraft schema 的纯 JSON。",
+            "instruction": "Use the StoryBible, section plan, and context to return pure JSON matching ChapterDraft.",
             "profile": self.prompt_profile.get("section", {}),
             "pipeline": self.pipeline_profile,
             "guardrails": self.guardrails,
@@ -80,7 +77,7 @@ class PromptLibrary:
     def build_review_prompt(self, state: dict[str, Any]) -> dict[str, Any]:
         return {
             "task": "review",
-            "instruction": "评分并给出可执行修改建议，输出符合 ReviewResult schema 的纯 JSON。",
+            "instruction": "Score the draft and return actionable revision notes as pure JSON matching ReviewResult.",
             "profile": self.pipeline_profile.get("quality_review", {}),
             "guardrails": self.guardrails,
             "state": state,

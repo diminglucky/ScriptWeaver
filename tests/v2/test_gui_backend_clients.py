@@ -44,6 +44,7 @@ def test_rag_client_ingest_search_memory(monkeypatch):
         mem = await c.list_memory("p1")
         await c.write_memory("p1", [{"source_id": "m", "text": "x"}])
         await c.clear_memory("p1")
+        await c.rebuild_manifest()
         await c.manifest()
         return found, mem
 
@@ -52,6 +53,7 @@ def test_rag_client_ingest_search_memory(monkeypatch):
     assert mem == {"entries": []}
     assert calls[0][0] == "POST" and calls[0][1] == "http://rag/v1/kb/reference/documents"
     assert calls[1][2]["json"]["top_k"] == 2
+    assert calls[-2][1] == "http://rag/v1/admin/manifest:rebuild"
     assert calls[-1][1] == "http://rag/v1/admin/manifest"
 
 

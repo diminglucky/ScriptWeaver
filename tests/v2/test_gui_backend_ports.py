@@ -1,4 +1,4 @@
-"""ports.json read / write / delete + base_url. See v2 plan §9.4 / §10."""
+﻿"""ports.json read / write / delete + base_url. See docs/technical_architecture.md.4 / 搂10."""
 
 from __future__ import annotations
 
@@ -45,7 +45,7 @@ def test_base_url_uses_loopback():
 
 
 def test_delete_ports_is_idempotent():
-    # No file yet → no exception.
+    # No file yet 鈫?no exception.
     ports_module.delete_ports()
     pf = ports_module.PortsFile(
         token="t", service_token="s", story_port=1, rag_port=2, image_port=3

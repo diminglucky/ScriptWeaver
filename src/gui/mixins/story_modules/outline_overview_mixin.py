@@ -433,7 +433,11 @@ class OutlineOverviewMixin:
         top_k = self.top_k.get() if hasattr(self, "top_k") else 6
         model_only = bool(self.model_only.get()) if hasattr(self, "model_only") else True
         index_dir_value = self.index_dir.get() if hasattr(self, "index_dir") else ""
-        index_exists = bool(index_dir_value) and (Path(index_dir_value) / "kb.index").exists()
+        index_dir = Path(index_dir_value) if index_dir_value else None
+        index_exists = bool(index_dir) and (
+            (index_dir / "v2" / "manifest.json").exists()
+            or any(index_dir.glob("v2/**/chroma"))
+        )
 
         def task():
             try:

@@ -1,4 +1,4 @@
-"""LangGraph state dicts. See v2 plan §5.4.
+﻿"""LangGraph state dicts. See docs/technical_architecture.md.4.
 
 Note: events are NOT stored in state. EventBus distributes them externally.
 """

@@ -1,6 +1,6 @@
-"""POST /v1/images:generate — synchronous single-image generation.
+﻿"""POST /v1/images:generate 鈥?synchronous single-image generation.
 
-See v2 plan §7.4.
+See docs/technical_architecture.md.4.
 """
 
 from __future__ import annotations

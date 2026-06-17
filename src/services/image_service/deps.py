@@ -1,4 +1,4 @@
-"""DI providers for image-service. See v2 plan §6."""
+﻿"""DI providers for image-service. See docs/technical_architecture.md."""
 
 from __future__ import annotations
 

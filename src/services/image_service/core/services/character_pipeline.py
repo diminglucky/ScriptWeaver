@@ -1,4 +1,4 @@
-"""Character art pipelines (turnaround + photo). See v2 plan §6.4."""
+﻿"""Character art pipelines (turnaround + photo). See docs/technical_architecture.md.4."""
 
 from __future__ import annotations
 

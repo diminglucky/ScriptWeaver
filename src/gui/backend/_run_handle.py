@@ -1,6 +1,6 @@
-"""RunHandle: wraps run_id + SSE iterator + cancel.
+﻿"""RunHandle: wraps run_id + SSE iterator + cancel.
 
-See v2 plan §10.2.
+See docs/technical_architecture.md.2.
 """
 
 from __future__ import annotations

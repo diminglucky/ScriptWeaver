@@ -1,6 +1,6 @@
-"""Loads `custom_api_presets.json` + `custom_image_api_presets.json`.
+﻿"""Loads `custom_api_presets.json` + `custom_image_api_presets.json`.
 
-See v2 plan §12. Each preset records a base_url plus an api_key alias which
+See docs/technical_architecture.md. Each preset records a base_url plus an api_key alias which
 must be resolvable via `KeyVault`.
 """
 

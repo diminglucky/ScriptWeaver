@@ -1,4 +1,4 @@
-"""Shared domain models. See v2 plan §3."""
+﻿"""Shared domain models. See docs/technical_architecture.md."""
 
 from .schemas import (
     CharacterProfile,

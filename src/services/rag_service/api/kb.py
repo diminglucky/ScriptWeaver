@@ -1,10 +1,10 @@
-"""Document ingestion / deletion for a single knowledge-base shard.
+﻿"""Document ingestion / deletion for a single knowledge-base shard.
 
 Endpoints:
     POST   /v1/kb/{kb_type}/documents
     DELETE /v1/kb/{kb_type}/documents/{source_id}
 
-See v2 plan §7.3.
+See docs/technical_architecture.md.3.
 """
 
 from __future__ import annotations
@@ -45,7 +45,12 @@ async def ingest_documents(
 
     project_id_for_shard: str | None = None
     for doc in body.documents:
-        chunks = split_text(doc.text, chunk_size=body.chunk_size, overlap=body.overlap)
+        chunks = split_text(
+            doc.text,
+            chunk_size=body.chunk_size,
+            overlap=body.overlap,
+            overlap_paragraphs=body.overlap_paragraphs,
+        )
         if not chunks:
             continue
         if kb_type == "project_memory":

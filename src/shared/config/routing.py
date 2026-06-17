@@ -1,6 +1,6 @@
-"""Loads `model_routing.json` + `custom_model_routing.json`.
+﻿"""Loads `model_routing.json` + `custom_model_routing.json`.
 
-See v2 plan §5.3 / §12.4.
+See docs/technical_architecture.md.3 / 搂12.4.
 
 TaskName values must align with `model_routing.json` keys; full table in
 the v2 design doc.
@@ -27,7 +27,7 @@ TaskName = Literal[
     "image_shot_extract",
     "image_shot_to_desc",
     "director_script_generate",
-    # NOTE: `requirement_parse` may need to be added per §12.4; falls back
+    # NOTE: `requirement_parse` may need to be added per 搂12.4; falls back
     # to `story_outline` until the routing file is updated.
 ]
 

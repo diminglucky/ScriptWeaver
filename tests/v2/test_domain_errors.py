@@ -1,4 +1,4 @@
-"""CreativeError hierarchy + envelope decoding. See v2 plan §3.5 / §14.1."""
+﻿"""CreativeError hierarchy + envelope decoding. See docs/technical_architecture.md.5 / 搂14.1."""
 
 from __future__ import annotations
 

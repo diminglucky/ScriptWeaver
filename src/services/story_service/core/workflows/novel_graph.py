@@ -1,25 +1,4 @@
-"""Novel-generation LangGraph. See v2 plan §5.5.
-
-Node sequence (interrupt_before nodes marked with *):
-
-    parse_requirement
-    → retrieve_reference_context
-    → build_story_bible
-    → save_storybible
-    → design_characters
-    → generate_outline
-    → review_outline
-    → human_review_outline*
-    → chapter_loop
-        retrieve_chapter_context
-        generate_chapter
-        review_chapter
-        repair_chapter*
-        summarize_chapter
-        push_to_project_memory
-    → assemble_final_story
-    → save_project
-"""
+"""Novel-generation workflow graph."""
 
 from __future__ import annotations
 
@@ -79,6 +58,20 @@ async def _write_memory(rag_client: Any, project_id: str, entries: list[dict]) -
     await _maybe_await(rag_client.write_memory(project_id, entries))
 
 
+def _context_lines(contexts: list[RetrievedContext], *, limit: int = 8) -> list[str]:
+    lines: list[str] = []
+    for idx, ctx in enumerate(contexts[:limit], 1):
+        src = ctx.source
+        label = src.kb_type
+        if src.project_id:
+            label = f"{label}:{src.project_id}"
+        text = " ".join(str(ctx.text or "").split())
+        if len(text) > 500:
+            text = text[:500].rstrip() + "..."
+        lines.append(f"[{idx}] {label} {src.source_id} score={src.score:.3f}: {text}")
+    return lines
+
+
 def _default_outline(chapter_count: int) -> list[OutlineSection]:
     return [
         OutlineSection(index=i, title=f"第{i + 1}章", purpose="推进主线", expected_chars=1200)
@@ -98,11 +91,7 @@ def _fallback_bible(state: dict[str, Any]) -> StoryBible:
 
 
 def build_novel_graph(*, registry, prompts, rag_client, project_id: str) -> Any:
-    """Construct and compile the LangGraph app for a single novel run.
-
-    Returns the compiled app with `interrupt_before=[human_review_outline,
-    repair_chapter]` and the project-scoped SqliteSaver wired in.
-    """
+    """Construct and compile the workflow app for a single novel run."""
     store = ProjectStore(project_id)
 
     async def parse_requirement(state: dict[str, Any]) -> dict[str, Any]:
@@ -176,15 +165,35 @@ def build_novel_graph(*, registry, prompts, rag_client, project_id: str) -> Any:
         bible: StoryBible = state["story_bible"]
         chapters: list[ChapterDraft] = []
         llm = _chat_model(registry, "chapter")
+        previous_summaries: list[str] = []
         for section in bible.outline:
-            chapter_contexts = await _search(
-                rag_client,
-                "reference",
-                " ".join([section.title, section.purpose, section.conflict]),
-                project_id=None,
-            )
+            query = " ".join([
+                bible.premise,
+                section.title,
+                section.purpose,
+                section.conflict,
+                " ".join(section.required_beats),
+                " ".join(previous_summaries[-3:]),
+            ]).strip()
+            if state.get("use_rag", True):
+                reference_contexts = await _search(rag_client, "reference", query, project_id=None)
+                memory_contexts = await _search(rag_client, "project_memory", query, project_id=project_id)
+            else:
+                reference_contexts = []
+                memory_contexts = []
+            chapter_contexts = reference_contexts + memory_contexts
+            chapter_state = {
+                **state,
+                "current_section": section.model_dump(),
+                "previous_chapter_summaries": previous_summaries[-5:],
+                "chapter_contexts": chapter_contexts,
+                "chapter_context_text": "\n".join(_context_lines(chapter_contexts)),
+            }
             if llm is None:
-                content = f"{section.title}\\n\\n{bible.premise or bible.requirement}\\n\\n{section.purpose}"
+                context_text = chapter_state.get("chapter_context_text", "")
+                content = f"{section.title}\n\n{bible.premise or bible.requirement}\n\n{section.purpose}"
+                if context_text:
+                    content += f"\n\n{context_text}"
                 draft = ChapterDraft(
                     section_index=section.index,
                     title=section.title,
@@ -195,18 +204,30 @@ def build_novel_graph(*, registry, prompts, rag_client, project_id: str) -> Any:
                 )
             else:
                 prompt = (
-                    prompts.build_chapter_prompt(state, section.model_dump())
+                    prompts.build_chapter_prompt(chapter_state, section.model_dump())
                     if prompts is not None
-                    else {"task": "chapter", "section": section.model_dump(), "state": state}
+                    else {"task": "chapter", "section": section.model_dump(), "state": chapter_state}
                 )
                 draft, _ = await invoke_structured(llm, prompt, ChapterDraft)
+                if not draft.citations:
+                    draft.citations = [c.source for c in chapter_contexts]
             chapters.append(draft)
             store.save_chapter(draft)
+            memory_text = "\n".join(
+                part for part in [
+                    f"chapter={draft.section_index}",
+                    f"title={draft.title}",
+                    f"summary={draft.summary or draft.content[:300]}",
+                    "continuity=" + "; ".join(draft.continuity_updates) if draft.continuity_updates else "",
+                ]
+                if part
+            )
             await _write_memory(rag_client, project_id, [{
                 "source_id": f"chapter-{draft.section_index}",
-                "text": draft.summary or draft.content[:300],
-                "tags": ["chapter_summary"],
+                "text": memory_text,
+                "tags": ["chapter_summary", "continuity"],
             }])
+            previous_summaries.append(draft.summary or draft.content[:300])
         return {"chapters": chapters}
 
     async def assemble_final_story(state: dict[str, Any]) -> dict[str, Any]:

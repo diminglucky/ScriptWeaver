@@ -1,6 +1,6 @@
-"""SSE event bus: per run_id queue + buffered history for reconnects.
+﻿"""SSE event bus: per run_id queue + buffered history for reconnects.
 
-See v2 plan §8.5.
+See docs/technical_architecture.md.5.
 """
 
 from __future__ import annotations

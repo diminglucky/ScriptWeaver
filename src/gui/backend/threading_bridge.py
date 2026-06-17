@@ -1,6 +1,6 @@
-"""Bridge between asyncio worker threads and the Tk main thread.
+﻿"""Bridge between asyncio worker threads and the Tk main thread.
 
-See v2 plan §10.4.
+See docs/technical_architecture.md.4.
 """
 
 from __future__ import annotations

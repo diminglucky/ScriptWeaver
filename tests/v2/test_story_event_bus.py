@@ -1,4 +1,4 @@
-"""EventBus subscribe + buffer + auto-close. See v2 plan §8.5."""
+﻿"""EventBus subscribe + buffer + auto-close. See docs/technical_architecture.md.5."""
 
 from __future__ import annotations
 

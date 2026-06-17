@@ -1,4 +1,4 @@
-"""GUI-side async client for rag-service. See v2 plan §10.2."""
+﻿"""GUI-side async client for rag-service. See docs/technical_architecture.md.2."""
 
 from __future__ import annotations
 
@@ -71,12 +71,15 @@ class RagClient:
             token=self.token,
         )
 
-    async def reindex(self) -> dict:
+    async def rebuild_manifest(self) -> dict:
         return await request_json(
             "POST",
-            f"{self.base_url}/v1/admin/reindex",
+            f"{self.base_url}/v1/admin/manifest:rebuild",
             token=self.token,
         )
+
+    async def reindex(self) -> dict:
+        return await self.rebuild_manifest()
 
     async def manifest(self) -> dict:
         return await request_json(

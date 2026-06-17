@@ -1,8 +1,7 @@
-"""SQLite metadata store, one per shard. See v2 plan §4.3.
+﻿"""SQLite metadata store, one per shard. See docs/technical_architecture.md.3.
 
-Schema (single ``chunks`` table) is the source of truth for chunk identity
-and ordering inside the companion vector array. The ``ordinal`` column maps
-a chunk to its row index in the shard's ``vectors.npy``.
+Schema (single ``chunks`` table) is the source of truth for chunk identity,
+metadata, and deterministic insertion order. ChromaDB stores the vectors.
 """
 
 from __future__ import annotations
@@ -156,6 +155,17 @@ class SqliteStore:
             f"SELECT * FROM chunks WHERE ordinal IN ({placeholders})", ordinals
         )
         return {int(row["ordinal"]): _row_to_dict(row) for row in cur.fetchall()}
+
+    def fetch_source(self, source_id: str) -> list[dict]:
+        cur = self.conn.execute(
+            "SELECT * FROM chunks WHERE source_id = ? ORDER BY ordinal ASC", (source_id,)
+        )
+        return [_row_to_dict(row) for row in cur.fetchall()]
+
+    def list_chunks(self) -> list[dict]:
+        """Return all chunks ordered by insertion ordinal."""
+        cur = self.conn.execute("SELECT * FROM chunks ORDER BY ordinal ASC")
+        return [_row_to_dict(row) for row in cur.fetchall()]
 
     def count(self) -> int:
         cur = self.conn.execute("SELECT COUNT(*) FROM chunks")

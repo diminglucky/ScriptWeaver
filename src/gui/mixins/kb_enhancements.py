@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 SUPPORTED_KB_EXTENSIONS = (".txt", ".md", ".markdown", ".json", ".csv", ".docx", ".pdf")
 SEARCHABLE_KB_EXTENSIONS = {".txt", ".md", ".markdown", ".json", ".csv", ".docx", ".pdf"}
-INDEX_ARTIFACT_NAMES = {"kb.index", "faiss.index", "chunks.npy", "meta.npy", "kb.faiss", "kb.pkl"}
+INDEX_ARTIFACT_NAMES = {"manifest.json", "meta.sqlite"}
 
 
 def _discover_supported_files(kb_path: Path) -> list[Path]:
@@ -70,6 +70,12 @@ def _clear_known_index_artifacts(index_dir: Path) -> tuple[int, int]:
     kept = 0
     if not index_dir.exists():
         return removed, kept
+    v2_dir = index_dir / "v2"
+    if v2_dir.exists():
+        import shutil
+
+        shutil.rmtree(v2_dir)
+        return 1, 0
 
     for path in index_dir.rglob("*"):
         if not path.is_file():
@@ -88,7 +94,7 @@ def _clear_known_index_artifacts(index_dir: Path) -> tuple[int, int]:
 def _has_valid_index_artifacts(index_dir: Path) -> bool:
     if not index_dir.exists():
         return False
-    return any((index_dir / name).exists() for name in ("kb.index", "faiss.index", "kb.faiss"))
+    return (index_dir / "v2" / "manifest.json").exists() or any(index_dir.glob("v2/**/chroma"))
 
 
 class KBPreviewDialog:
@@ -467,7 +473,7 @@ class KBManagerDialog:
             stats.append(f"索引文件: {len(index_files)} 个")
             stats.append(f"索引大小: {size_str}")
             
-            # 检查索引是否有效（兼容新旧索引文件名）
+            # Check whether the current v2 index layout is valid.
             if _has_valid_index_artifacts(self.index_dir):
                 stats.append("索引状态: ✅ 有效")
             else:

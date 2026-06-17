@@ -1,6 +1,6 @@
-"""Per-process run registry with cancel + client-attach.
+﻿"""Per-process run registry with cancel + client-attach.
 
-See v2 plan §8.3.
+See docs/technical_architecture.md.3.
 """
 
 from __future__ import annotations

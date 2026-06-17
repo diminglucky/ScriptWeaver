@@ -1,6 +1,6 @@
-"""POST /v1/projects/{id}/novel:run — kick off the novel workflow.
+﻿"""POST /v1/projects/{id}/novel:run 鈥?kick off the novel workflow.
 
-See v2 plan §5.5, §7.2.
+See docs/technical_architecture.md.5, 搂7.2.
 """
 
 from __future__ import annotations

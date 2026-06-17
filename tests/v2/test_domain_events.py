@@ -1,4 +1,4 @@
-"""CreativeEvent encode/decode. See v2 plan §3.3."""
+﻿"""CreativeEvent encode/decode. See docs/technical_architecture.md.3."""
 
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ def test_event_to_json_roundtrip_preserves_fields():
         run_id="r1",
         node="generate_chapter",
         message="ok",
-        payload={"text": "你好"},
+        payload={"text": "浣犲ソ"},
     )
     raw = serialize_event(ev)
     back = deserialize_event(raw)
@@ -21,7 +21,7 @@ def test_event_to_json_roundtrip_preserves_fields():
     assert back.run_id == "r1"
     assert back.node == "generate_chapter"
     assert back.message == "ok"
-    assert back.payload == {"text": "你好"}
+    assert back.payload == {"text": "浣犲ソ"}
     assert back.ts != ""  # stamped during to_json
 
 
@@ -41,7 +41,7 @@ def test_deserialize_tolerates_missing_optional_fields():
 
 
 def test_serialized_event_is_valid_json_with_unicode():
-    ev = CreativeEvent(type="warning", run_id="r4", message="中文消息")
+    ev = CreativeEvent(type="warning", run_id="r4", message="涓枃娑堟伅")
     raw = serialize_event(ev)
     obj = json.loads(raw)
-    assert obj["message"] == "中文消息"
+    assert obj["message"] == "涓枃娑堟伅"

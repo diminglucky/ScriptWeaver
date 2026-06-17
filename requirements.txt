@@ -7,17 +7,10 @@ typer>=0.12.3,<1.0.0
 openai>=1.44.0,<2.0.0
 
 # RAG stack
-# Optional KB vector backend:
-# Install manually when your Python/platform has wheel support.
-# faiss-cpu>=1.8.0.post1,<2.0.0
+chromadb>=0.5.0,<1.0.0
 # Optional KB document parsers:
 # python-docx>=1.1.2,<2.0.0
 # pypdf>=5.0.0,<6.0.0
-langchain>=0.2.0
-langchain-community>=0.2.0
-langchain-huggingface>=0.0.3
-numpy>=1.26.0,<2.0.0
-scipy>=1.10.1,<1.12.0
 transformers>=4.41.2,<5.0.0
 sentence-transformers>=2.6.1,<3.0.0
 

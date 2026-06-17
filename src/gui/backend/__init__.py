@@ -1,7 +1,7 @@
-"""GUI-side backend integration: supervisor + http clients + threading bridge.
+"""GUI-side backend integration: supervisor, HTTP clients, and threading bridge.
 
-See v2 plan §9 / §10. The GUI must NOT import LangChain / FAISS / openai
-directly — every backend interaction goes through this package.
+The GUI must not import workflow, vector backend, or model SDK internals
+directly; every backend interaction goes through this package.
 """
 
 from .ports import PortsFile, read_ports, write_ports

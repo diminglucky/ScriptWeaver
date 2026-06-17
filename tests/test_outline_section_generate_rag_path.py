@@ -112,7 +112,8 @@ class _DummyApp(StoryInfraMixin, OutlineSectionGenerateMixin):
 def test_generate_section_rag_uses_existing_index(tmp_path: Path):
     idx_dir = tmp_path / "idx"
     idx_dir.mkdir(parents=True, exist_ok=True)
-    (idx_dir / "kb.index").write_bytes(b"ok")
+    (idx_dir / "v2").mkdir()
+    (idx_dir / "v2" / "manifest.json").write_text("{}", encoding="utf-8")
 
     app = _DummyApp(index_dir=idx_dir)
 

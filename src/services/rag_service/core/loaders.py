@@ -1,7 +1,7 @@
-"""Document loaders for .txt / .md / .docx / .pdf. See v2 plan §4.2.
+﻿"""Document loaders for .txt / .md / .docx / .pdf. See docs/technical_architecture.md.2.
 
-Thin wrapper over `src.utils.text.read_file_text` so the v1 and v2 stacks
-share parsing logic for legacy KB files.
+Thin wrapper over `src.utils.text.read_file_text` so GUI and service ingest
+share document parsing logic.
 """
 
 from __future__ import annotations

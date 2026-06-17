@@ -1,6 +1,6 @@
-"""Reusable review sub-graph: scores draft + suggests fixes.
+﻿"""Reusable review sub-graph: scores draft + suggests fixes.
 
-Used both for outline review and chapter review. See v2 plan §5.5.
+Used both for outline review and chapter review. See docs/technical_architecture.md.5.
 """
 
 from __future__ import annotations

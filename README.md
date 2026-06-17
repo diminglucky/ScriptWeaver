@@ -23,7 +23,7 @@ ScriptWeaver 是一个面向知乎短篇、长篇连载和图文内容生产的�
 - v2 RAG 微服务位于 `src/services/rag_service/`。
 - 支持文档 ingest、文本切分、embedding hub、SQLite metadata store、vector shard/index hub。
 - 支持 `reference`、`project_memory`、`style_corpus` 三类知识库。
-- 提供 HTTP search、project memory、manifest、reindex API。
+- 提供 HTTP search、project memory、manifest API。
 
 ### 3. Story Service
 
@@ -101,7 +101,7 @@ export WSF_IMAGE_BASE_URL=http://127.0.0.1:8103
 python3.11 -m pip install -r requirements.txt
 ```
 
-主要依赖包括 FastAPI、uvicorn、httpx、Pydantic v2、LangChain、LangGraph、numpy、scipy、transformers、sentence-transformers、requests、Pillow、tqdm、playwright。
+主要依赖包括 FastAPI、uvicorn、httpx、Pydantic v2、LangGraph、ChromaDB、transformers、sentence-transformers、requests、Pillow、tqdm、playwright。
 
 ## 项目结构
 
@@ -158,7 +158,7 @@ python3.11 -m pip install -r requirements.txt
 - `POST /v1/projects/{project_id}/memory`
 - `GET /v1/projects/{project_id}/memory`
 - `DELETE /v1/projects/{project_id}/memory`
-- `POST /v1/admin/reindex`
+- `POST /v1/admin/manifest:rebuild`
 - `GET /v1/admin/manifest`
 
 ### story-service

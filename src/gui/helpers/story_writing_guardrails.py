@@ -47,7 +47,7 @@ DEFAULT_STORY_GUARDRAILS: dict[str, Any] = {
     },
     "article_title": {
         "min_len": 14,
-        "max_len": 30,
+        "max_len": 20,
     },
 }
 
@@ -296,4 +296,4 @@ def normalize_article_title(raw: str, *, min_len: int | None = None, max_len: in
         text = text[:max_len].rstrip("，,。！？!?；;：:、-—· ")
 
     # Keep very short titles untouched to avoid inventing content.
-    return text
+    return text[:max_len]

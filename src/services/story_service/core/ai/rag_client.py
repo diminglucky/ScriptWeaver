@@ -1,4 +1,4 @@
-"""httpx async client → rag-service. See v2 plan §5.5 retrieval nodes."""
+﻿"""httpx async client 鈫?rag-service. See docs/technical_architecture.md.5 retrieval nodes."""
 
 from __future__ import annotations
 

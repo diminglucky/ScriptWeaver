@@ -1,14 +1,14 @@
-"""image_prompt_graph LangGraph. See v2 plan §6.3.
+﻿"""image_prompt_graph LangGraph. See docs/technical_architecture.md.3.
 
 Nodes:
     load_chapter_or_section
-    → retrieve_visual_context
-    → load_character_anchors
-    → extract_shots
-    → generate_shot_prompts
-    → translate_prompts*
-    → review_prompt_safety
-    → save_shot_prompts
+    鈫?retrieve_visual_context
+    鈫?load_character_anchors
+    鈫?extract_shots
+    鈫?generate_shot_prompts
+    鈫?translate_prompts*
+    鈫?review_prompt_safety
+    鈫?save_shot_prompts
 """
 
 from __future__ import annotations
@@ -29,7 +29,7 @@ def build_image_prompt_graph(*, registry, prompts, story_client, rag_client) -> 
 
     async def generate_shot_prompts(state: dict[str, Any]) -> dict[str, Any]:
         project_id = str(state.get("project_id") or "project")
-        scene = state.get("scene") or state.get("story_text") or "默认场景"
+        scene = state.get("scene") or state.get("story_text") or "榛樿鍦烘櫙"
         shot = ShotPrompt(
             shot_id="shot-001",
             scene=str(scene)[:200],

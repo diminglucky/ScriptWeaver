@@ -54,40 +54,38 @@ class KBPreviewHelperTests(unittest.TestCase):
     def test_clear_known_index_artifacts_keeps_non_index_files(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            (root / "kb.index").write_bytes(b"a")
-            (root / "chunks.npy").write_bytes(b"b")
-            (root / "kb.faiss").write_bytes(b"c")
-            (root / "kb.pkl").write_bytes(b"d")
+            v2 = root / "v2" / "reference" / "_global" / "chroma"
+            v2.mkdir(parents=True)
+            (root / "v2" / "manifest.json").write_text("{}", encoding="utf-8")
             keep = root / "notes.txt"
             keep.write_text("keep", encoding="utf-8")
 
             removed, kept = _clear_known_index_artifacts(root)
 
-            self.assertEqual(removed, 4)
-            self.assertEqual(kept, 1)
-            self.assertFalse((root / "kb.index").exists())
-            self.assertFalse((root / "chunks.npy").exists())
-            self.assertFalse((root / "kb.faiss").exists())
-            self.assertFalse((root / "kb.pkl").exists())
+            self.assertEqual(removed, 1)
+            self.assertEqual(kept, 0)
+            self.assertFalse((root / "v2").exists())
             self.assertTrue(keep.exists())
 
-    def test_has_valid_index_artifacts_accepts_kb_index(self):
+    def test_has_valid_index_artifacts_accepts_manifest(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            (root / "kb.index").write_bytes(b"a")
+            (root / "v2").mkdir()
+            (root / "v2" / "manifest.json").write_text("{}", encoding="utf-8")
             self.assertTrue(_has_valid_index_artifacts(root))
 
-    def test_has_valid_index_artifacts_accepts_legacy_faiss_index(self):
+    def test_has_valid_index_artifacts_accepts_chroma_dir(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            (root / "faiss.index").write_bytes(b"a")
+            (root / "v2" / "reference" / "_global" / "chroma").mkdir(parents=True)
             self.assertTrue(_has_valid_index_artifacts(root))
 
-    def test_has_valid_index_artifacts_accepts_kb_faiss(self):
+    def test_has_valid_index_artifacts_rejects_unrelated_files(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            (root / "kb.faiss").write_bytes(b"a")
-            self.assertTrue(_has_valid_index_artifacts(root))
+            (root / "notes.txt").write_text("not an index", encoding="utf-8")
+            (root / "manifest.json").write_text("{}", encoding="utf-8")
+            self.assertFalse(_has_valid_index_artifacts(root))
 
 
 if __name__ == "__main__":

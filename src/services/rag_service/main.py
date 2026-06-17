@@ -1,9 +1,9 @@
-"""FastAPI app for rag-service. See v2 plan §4, §7.3.
+﻿"""FastAPI app for rag-service. See docs/technical_architecture.md.3.
 
 Build-out steps (Phase 2):
     1. wire EmbeddingHub + IndexHub singletons in `deps.py`
     2. implement each router under `api/`
-    3. add exception handler that maps CreativeError → JSON envelope (§14.1)
+    3. add exception handler that maps CreativeError 鈫?JSON envelope (搂14.1)
 """
 
 from __future__ import annotations

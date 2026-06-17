@@ -1,4 +1,4 @@
-"""ServiceSettings env-driven defaults. See v2 plan §12.2."""
+﻿"""ServiceSettings env-driven defaults. See docs/technical_architecture.md.2."""
 
 from __future__ import annotations
 

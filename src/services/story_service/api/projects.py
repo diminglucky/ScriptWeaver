@@ -1,6 +1,6 @@
-"""Project metadata + storybible + chapters + story.txt endpoints.
+﻿"""Project metadata + storybible + chapters + story.txt endpoints.
 
-See v2 plan §7.2.
+See docs/technical_architecture.md.2.
 """
 
 from __future__ import annotations

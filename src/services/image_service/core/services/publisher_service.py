@@ -1,6 +1,6 @@
-"""Wraps zhihu_publisher.publish_to_zhihu_sync as an async service.
+﻿"""Wraps zhihu_publisher.publish_to_zhihu_sync as an async service.
 
-See v2 plan §6.6.
+See docs/technical_architecture.md.6.
 """
 
 from __future__ import annotations

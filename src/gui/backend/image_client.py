@@ -1,4 +1,4 @@
-"""GUI-side async client for image-service. See v2 plan §10.2."""
+﻿"""GUI-side async client for image-service. See docs/technical_architecture.md.2."""
 
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ class ImageClient:
         self.base_url = base_url.rstrip("/")
         self.token = token
 
-    # ── prompts / shots ───────────────────────────────────────────────────
+    # 鈹€鈹€ prompts / shots 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
     async def generate_shot_prompts(self, project_id: str, request: dict) -> RunHandle:
         data = await request_json(
             "POST",
@@ -42,7 +42,7 @@ class ImageClient:
         rows = data.get("shots", data if isinstance(data, list) else [])
         return [ShotPrompt.model_validate(x) for x in rows]
 
-    # ── characters ────────────────────────────────────────────────────────
+    # 鈹€鈹€ characters 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
     async def generate_turnaround(self, project_id: str, name: str) -> RunHandle:
         data = await request_json(
             "POST",
@@ -61,7 +61,7 @@ class ImageClient:
         )
         return self._run_handle(data["run_id"])
 
-    # ── single image ──────────────────────────────────────────────────────
+    # 鈹€鈹€ single image 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
     async def render_single(self, request: dict) -> dict:
         return await request_json(
             "POST",
@@ -70,7 +70,7 @@ class ImageClient:
             json=request,
         )
 
-    # ── director / publish ────────────────────────────────────────────────
+    # 鈹€鈹€ director / publish 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
     async def director_script(self, project_id: str, request: dict) -> RunHandle:
         data = await request_json(
             "POST",

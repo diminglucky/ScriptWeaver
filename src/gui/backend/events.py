@@ -1,6 +1,6 @@
-"""Decode an httpx streaming response into CreativeEvent objects.
+﻿"""Decode an httpx streaming response into CreativeEvent objects.
 
-See v2 plan §7.5.
+See docs/technical_architecture.md.5.
 """
 
 from __future__ import annotations

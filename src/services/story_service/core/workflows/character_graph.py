@@ -1,4 +1,4 @@
-"""Character-design LangGraph. See v2 plan §5.6."""
+﻿"""Character-design LangGraph. See docs/technical_architecture.md.6."""
 
 from __future__ import annotations
 
@@ -31,13 +31,13 @@ def build_character_graph(*, registry, prompts, rag_client, project_id: str) -> 
     async def design_characters(state: dict[str, Any]) -> dict[str, Any]:
         llm = _chat_model(registry, "character_design")
         if llm is None:
-            chars = [CharacterProfile(name="主角", role="protagonist", motivation=state.get("story_context", ""))]
+            chars = [CharacterProfile(name="涓昏", role="protagonist", motivation=state.get("story_context", ""))]
         else:
             prompt = prompts.build_character_prompt(state) if prompts is not None else {"task": "character_design", "state": state}
             plan, _ = await invoke_structured(llm, prompt, CharacterPlan)
             chars = plan.characters
         if not chars:
-            chars = [CharacterProfile(name="主角", role="protagonist")]
+            chars = [CharacterProfile(name="涓昏", role="protagonist")]
         return {"characters": chars}
 
     return SimpleCompiledGraph(steps=[

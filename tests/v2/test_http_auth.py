@@ -1,4 +1,4 @@
-"""Bearer-token dependency factory. See v2 plan §8.1."""
+﻿"""Bearer-token dependency factory. See docs/technical_architecture.md.1."""
 
 from __future__ import annotations
 

@@ -1,7 +1,4 @@
-"""ModelRegistry: constructs LangChain chat models from routing + presets + keys.
-
-See v2 plan §5.3.
-"""
+"""ModelRegistry: constructs chat models from routing, presets, and keys."""
 
 from __future__ import annotations
 
@@ -31,12 +28,12 @@ class _DeterministicChatModel:
                 "requirement": requirement,
                 "genre": genre,
                 "style": style,
-                "theme": "成长与代价",
-                "premise": requirement or "主角面对一次改变命运的选择。",
-                "core_conflict": "愿望与代价之间的冲突",
+                "theme": "growth and cost",
+                "premise": requirement or "The protagonist faces a life-changing choice.",
+                "core_conflict": "desire versus consequence",
                 "target_chars": target_chars,
                 "characters": [{
-                    "name": "主角",
+                    "name": "protagonist",
                     "role": "protagonist",
                     "motivation": requirement,
                 }],
@@ -49,7 +46,7 @@ class _DeterministicChatModel:
         if self.task in {"character_design", "character_extract", "character_description"}:
             return json.dumps({
                 "characters": [{
-                    "name": "主角",
+                    "name": "protagonist",
                     "role": "protagonist",
                     "motivation": requirement,
                 }]
@@ -147,7 +144,7 @@ class ModelRegistry:
         return cls(
             routing=load_routing(),
             presets=load_presets(),
-            vault=KeyVault(),  # populated by deps wiring at startup
+            vault=KeyVault(),
         )
 
     def chat_model(
@@ -204,4 +201,4 @@ class ModelRegistry:
         )
 
     def estimate_cost(self, task: str, prompt_tokens: int, completion_tokens: int) -> float:
-        return 0.0  # placeholder; see §8.6
+        return 0.0

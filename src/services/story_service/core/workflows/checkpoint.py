@@ -1,4 +1,4 @@
-"""Per-project checkpoint store. See v2 plan §5.10 / §11.5.
+﻿"""Per-project checkpoint store. See docs/technical_architecture.md.10 / 搂11.5.
 
 Phase 2 ships a stdlib-sqlite implementation good enough for thread-level
 save/load/list/delete plus retention cleanup. Phase 3 will plug LangGraph's

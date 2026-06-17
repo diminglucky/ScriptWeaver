@@ -1,10 +1,10 @@
-"""ScriptWeaver v2 backend microservices.
+"""ScriptWeaver backend microservices.
 
 Three independent FastAPI processes:
 
-- `rag_service`   – embeddings, FAISS shards, project memory.
-- `story_service` – LLM workflows for novel + character design.
-- `image_service` – image prompts / shots / characters / director / publishing.
+- `rag_service`: embeddings, Chroma shards, and project memory.
+- `story_service`: LLM workflows for novels and character design.
+- `image_service`: image prompts, shots, characters, director, and publishing.
 
-See docs/plans/2026-05-25-langchain-rag-novel-framework-v2.md.
+See docs/technical_architecture.md.
 """

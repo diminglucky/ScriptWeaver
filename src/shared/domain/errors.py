@@ -1,4 +1,4 @@
-"""Cross-service error hierarchy. See v2 plan §3.5."""
+﻿"""Cross-service error hierarchy. See docs/technical_architecture.md.5."""
 
 from __future__ import annotations
 

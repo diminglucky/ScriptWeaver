@@ -1,1 +1,1 @@
-"""FastAPI routers for story-service. See v2 plan §7.2."""
+﻿"""FastAPI routers for story-service. See docs/technical_architecture.md.2."""

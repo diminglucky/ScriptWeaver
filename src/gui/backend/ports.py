@@ -1,4 +1,4 @@
-"""Read/write `.runtime/ports.json`. See v2 plan §9.4."""
+﻿"""Read/write `.runtime/ports.json`. See docs/technical_architecture.md.4."""
 
 from __future__ import annotations
 

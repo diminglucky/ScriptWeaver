@@ -1,1 +1,1 @@
-"""FastAPI routers for rag-service. See v2 plan §7.3."""
+﻿"""FastAPI routers for rag-service. See docs/technical_architecture.md.3."""

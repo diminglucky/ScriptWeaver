@@ -1,5 +1,5 @@
-"""Re-exports the shared ModelRegistry. image-service only consumes image_*
-and director_script_generate tasks. See v2 plan §6.2.
+﻿"""Re-exports the shared ModelRegistry. image-service only consumes image_*
+and director_script_generate tasks. See docs/technical_architecture.md.2.
 """
 
 from __future__ import annotations

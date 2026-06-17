@@ -1,4 +1,4 @@
-"""Creative event protocol. See v2 plan §3.3 / §7.5 / §14.2.
+﻿"""Creative event protocol. See docs/technical_architecture.md.3 / 搂7.5 / 搂14.2.
 
 A single event type is shared by all 3 services; SSE wire format is
 `event: creative\\ndata: <json>\\n\\n`.

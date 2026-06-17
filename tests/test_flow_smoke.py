@@ -162,27 +162,6 @@ if "sentence_transformers" not in sys.modules:
     st_mod.SentenceTransformer = DummySentenceTransformer
     sys.modules["sentence_transformers"] = st_mod
 
-if "faiss" not in sys.modules:
-    faiss_mod = types.ModuleType("faiss")
-
-    class DummyIndex:
-        def __init__(self, *args, **kwargs):
-            pass
-
-        def add(self, *args, **kwargs):
-            pass
-
-        def search(self, *args, **kwargs):
-            return [[0.0]], [[-1]]
-
-    def _noop(*args, **kwargs):
-        return DummyIndex()
-
-    faiss_mod.IndexFlatIP = DummyIndex
-    faiss_mod.read_index = _noop
-    faiss_mod.write_index = _noop
-    sys.modules["faiss"] = faiss_mod
-
 from PIL import Image
 
 from src.gui.mixins.ui_mixin import UiMixin

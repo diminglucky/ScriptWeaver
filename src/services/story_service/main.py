@@ -1,4 +1,4 @@
-"""FastAPI app for story-service. See v2 plan §5, §7.2.
+﻿"""FastAPI app for story-service. See docs/technical_architecture.md.2.
 
 Build-out order (Phase 3):
     1. ModelRegistry singleton in `deps.py`

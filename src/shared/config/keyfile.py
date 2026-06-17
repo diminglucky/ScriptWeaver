@@ -1,7 +1,7 @@
-"""KeyVault bridge to existing `config/.keyfile` encryption.
+﻿"""KeyVault bridge to existing `config/.keyfile` encryption.
 
 Wraps the legacy `SecureKeyStorage` so services don't depend on the GUI
-mixin path. See v2 plan §5.3 / §12.2.
+mixin path. See docs/technical_architecture.md.3 / 搂12.2.
 """
 
 from __future__ import annotations

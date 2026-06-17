@@ -112,8 +112,12 @@ class OutlineGenerateMixin:
 
     def _ensure_outline_index_ready(self) -> Optional[bool]:
         """确保目录生成所需索引已就绪。返回 None 表示用户取消。"""
-        index_path = Path(self.index_dir.get()) / "kb.index"
-        if index_path.exists():
+        index_dir = Path(self.index_dir.get())
+        has_index = (
+            (index_dir / "v2" / "manifest.json").exists()
+            or any(index_dir.glob("v2/**/chroma"))
+        )
+        if has_index:
             return False
         if messagebox.askyesno("提示", "未找到索引，是否现在根据当前数据目录自动构建？"):
             return True

@@ -64,6 +64,7 @@ def test_ingest_search_delete_reference_roundtrip(tmp_path: Path):
             ],
             "chunk_size": 200,
             "overlap": 20,
+            "overlap_paragraphs": 1,
         }
         ingest = client.post("/v1/kb/reference/documents", json=payload)
         assert ingest.status_code == 200
@@ -103,10 +104,15 @@ def test_project_memory_crud_and_search_is_project_scoped(tmp_path: Path):
         )
         assert write.status_code == 200
         assert write.json()["entries"][0]["source_id"] == "m1"
+        write_2 = client.post(
+            "/v1/projects/proj-a/memory",
+            json={"entries": [{"source_id": "m2", "text": "Second dragon memory for project A. " * 3, "tags": ["continuity"]}]},
+        )
+        assert write_2.status_code == 200
 
         listed = client.get("/v1/projects/proj-a/memory")
         assert listed.status_code == 200
-        assert [e["source_id"] for e in listed.json()["entries"]] == ["m1"]
+        assert [e["source_id"] for e in listed.json()["entries"]] == ["m1", "m2"]
 
         found = client.post(
             "/v1/kb/project_memory/search",
@@ -124,7 +130,7 @@ def test_project_memory_crud_and_search_is_project_scoped(tmp_path: Path):
 
         cleared = client.delete("/v1/projects/proj-a/memory")
         assert cleared.status_code == 200
-        assert cleared.json()["removed"] == 1
+        assert cleared.json()["removed"] == 2
         assert client.get("/v1/projects/proj-a/memory").json()["entries"] == []
     finally:
         hub.close()
@@ -139,6 +145,7 @@ def test_manifest_endpoint(tmp_path: Path):
         body = r.json()
         assert body["schema_version"] == 1
         assert body["embedding_model"] == "fake"
+        assert body["vector_backend"] == "chroma"
         assert isinstance(body["shards"], list)
     finally:
         hub.close()
