@@ -93,6 +93,47 @@ def test_shard_upsert_replaces_existing_chunk_id(tmp_path: Path):
         sh.close()
 
 
+def test_shard_replace_sources_removes_stale_chunks(tmp_path: Path):
+    sh = Shard(kb_type="reference", project_id=None, root=tmp_path)
+    try:
+        sh.upsert(
+            ["old-1", "old-2", "keep"],
+            [_v(1, 0), _v(1, 0), _v(0, 1)],
+            [_meta("old-1", "s1"), _meta("old-2", "s1"), _meta("keep", "s2")],
+        )
+        removed = sh.replace_sources(["new-1"], [_v(1, 0)], [_meta("new-1", "s1", text="fresh")])
+        assert removed == 2
+        rows = sh.store.list_chunks()
+        assert {row["chunk_id"] for row in rows} == {"new-1", "keep"}
+        hits = sh.search([1, 0], top_k=5)
+        assert "old-1" not in [hit.chunk_id for hit in hits]
+        assert hits[0].chunk_id == "new-1"
+    finally:
+        sh.close()
+
+
+def test_shard_replace_sources_validates_dim_before_delete(tmp_path: Path):
+    sh = Shard(kb_type="reference", project_id=None, root=tmp_path)
+    try:
+        sh.upsert(["old"], [_v(1, 0)], [_meta("old", "s1")])
+        with pytest.raises(ValueError):
+            sh.replace_sources(["new"], [_v(1, 0, 0)], [_meta("new", "s1")])
+        assert [row["chunk_id"] for row in sh.store.list_chunks()] == ["old"]
+    finally:
+        sh.close()
+
+
+def test_shard_clear_removes_vectors_and_metadata(tmp_path: Path):
+    sh = Shard(kb_type="reference", project_id=None, root=tmp_path)
+    try:
+        sh.upsert(["c1", "c2"], [_v(1, 0), _v(0, 1)], [_meta("c1", "s1"), _meta("c2", "s2")])
+        assert sh.clear() == 2
+        assert len(sh) == 0
+        assert sh.search([1, 0], top_k=2) == []
+    finally:
+        sh.close()
+
+
 def test_shard_dim_mismatch_raises(tmp_path: Path):
     sh = Shard(kb_type="reference", project_id=None, root=tmp_path)
     try:

@@ -13,38 +13,38 @@ logger = logging.getLogger(__name__)
 
 class StoryUIBuilderMixin(StoryPromptBuilderMixin):
 	"""Story ui_builder 功能"""
-	
+
 	def _build_story_page(self) -> None:
 		"""构建故事生成页面 - 简化版，配置已移至设置页面"""
-		
+
 		# 直接在页面上构建创作界面，不再使用子标签页
 		self.story_tab_create = self.page_story  # 兼容旧代码引用
-		
+
 		# 构建创作界面
 		self._build_story_create_tab()
-	
-	
+
+
 	def _build_story_setup_tab(self) -> None:
 		"""构建配置标签页"""
 		# 创建Canvas和滚动条来支持内容滚动
 		canvas = tk.Canvas(self.story_tab_setup, bg="#2b2b2b", highlightthickness=0)
 		scrollbar = ttk.Scrollbar(self.story_tab_setup, orient="vertical", command=canvas.yview)
 		scrollable_frame = tk.Frame(canvas, bg="#2b2b2b")
-		
+
 		scrollable_frame.bind(
 			"<Configure>",
 			lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
 		)
-		
+
 		# 创建窗口并保存ID
 		canvas_window = canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
 		canvas.configure(yscrollcommand=scrollbar.set)
-		
+
 		# 绑定Canvas大小变化事件，使scrollable_frame填充整个宽度
 		def _on_canvas_configure(event):
 			canvas.itemconfig(canvas_window, width=event.width)
 		canvas.bind("<Configure>", _on_canvas_configure)
-		
+
 		# 绑定鼠标滚轮事件（支持macOS和Windows）
 		def _on_mousewheel(event):
 			# macOS使用event.delta，Windows使用event.delta/120
@@ -54,7 +54,7 @@ class StoryUIBuilderMixin(StoryPromptBuilderMixin):
 				canvas.yview_scroll(-1, "units")
 			elif event.num == 5:  # Linux向下滚动
 				canvas.yview_scroll(1, "units")
-		
+
 		# Use local bindings to avoid cross-tab/global wheel conflicts.
 		canvas.bind("<MouseWheel>", _on_mousewheel)
 		canvas.bind("<Button-4>", _on_mousewheel)
@@ -62,10 +62,10 @@ class StoryUIBuilderMixin(StoryPromptBuilderMixin):
 		scrollable_frame.bind("<MouseWheel>", _on_mousewheel)
 		scrollable_frame.bind("<Button-4>", _on_mousewheel)
 		scrollable_frame.bind("<Button-5>", _on_mousewheel)
-		
+
 		canvas.pack(side="left", fill="both", expand=True)
 		scrollbar.pack(side="right", fill="y")
-		
+
 		# 将所有组件添加到scrollable_frame而不是self.story_tab_setup
 		# Group 1: 数据与索引（精简布局）
 		grp_paths = ttk.LabelFrame(scrollable_frame, text="📚 资料与索引")
@@ -91,20 +91,20 @@ class StoryUIBuilderMixin(StoryPromptBuilderMixin):
 		grp_params.columnconfigure(1, weight=1)
 		grp_params.columnconfigure(3, weight=1)
 		grp_params.columnconfigure(5, weight=1)
-		
+
 		# 模型参数
 		tk.Label(grp_params, text="TopK:").grid(row=0, column=0, sticky="e", padx=(8, 4), pady=8)
 		self.spin_topk = tk.Spinbox(grp_params, from_=1, to=20, textvariable=self.top_k, width=6)
 		self.spin_topk.grid(row=0, column=1, sticky="w", padx=(0, 15))
-		
+
 		tk.Label(grp_params, text="温度:").grid(row=0, column=2, sticky="e", padx=(0, 4))
 		self.spin_temp = tk.Spinbox(grp_params, from_=0.0, to=1.5, increment=0.1, textvariable=self.temperature, width=6)
 		self.spin_temp.grid(row=0, column=3, sticky="w", padx=(0, 15))
-		
+
 		tk.Label(grp_params, text="目标字数:").grid(row=0, column=4, sticky="e", padx=(0, 4))
 		self.spin_len = tk.Spinbox(grp_params, from_=500, to=30000, increment=500, textvariable=self.target_chars, width=8)
 		self.spin_len.grid(row=0, column=5, sticky="w", padx=(0, 8))
-		
+
 		self.chk_model_only = ttk.Checkbutton(grp_params, text="⚡ 仅用模型（不检索知识库）", variable=self.model_only)
 		self.chk_model_only.grid(row=1, column=0, columnspan=6, sticky="w", padx=8, pady=(0, 8))
 
@@ -112,13 +112,13 @@ class StoryUIBuilderMixin(StoryPromptBuilderMixin):
 		grp_api = ttk.LabelFrame(scrollable_frame, text="🔌 基础 API 配置")
 		grp_api.pack(fill="x", padx=15, pady=8)
 		grp_api.columnconfigure(1, weight=1)
-		
+
 		# API预设下拉框（第一行）
 		row_preset = tk.Frame(grp_api, bg="#2b2b2b")
 		row_preset.grid(row=0, column=0, columnspan=2, sticky="we", padx=8, pady=(8, 6))
-		
+
 		tk.Label(row_preset, text="API预设:", bg="#2b2b2b").pack(side=LEFT, padx=(0, 8))
-		
+
 		self.api_preset = tk.StringVar(value="自定义")
 		self.api_presets = {
 			"DeepSeek": {
@@ -162,7 +162,7 @@ class StoryUIBuilderMixin(StoryPromptBuilderMixin):
 				"key": ""
 			}
 		}
-		
+
 		# 加载自定义配置
 		self._load_custom_presets()
 		self._normalize_story_preset_names()
@@ -170,19 +170,19 @@ class StoryUIBuilderMixin(StoryPromptBuilderMixin):
 			current = (self.api_preset.get() or "").strip()
 			if current not in self.api_presets:
 				self.api_preset.set("Custom" if "Custom" in self.api_presets else next(iter(self.api_presets), ""))
-		
-		self.combo_api_preset = ttk.Combobox(row_preset, textvariable=self.api_preset, 
+
+		self.combo_api_preset = ttk.Combobox(row_preset, textvariable=self.api_preset,
 											  values=list(self.api_presets.keys()),
 											  state="readonly", width=22)
 		self.combo_api_preset.pack(side=LEFT, padx=(0, 10))
 		self.combo_api_preset.bind("<<ComboboxSelected>>", self._on_api_preset_selected)
-		
+
 		# 自定义预设按钮
-		btn_save_preset = tk.Button(row_preset, text="💾 保存预设", command=self._save_custom_preset, 
+		btn_save_preset = tk.Button(row_preset, text="💾 保存预设", command=self._save_custom_preset,
 				  font=("", 9), bg="#607D8B", fg="white", relief=tk.FLAT, padx=10, pady=4, cursor="hand2")
 		btn_save_preset.pack(side=LEFT, padx=2)
-		
-		btn_delete_preset = tk.Button(row_preset, text="🗑️ 删除", command=self._delete_custom_preset, 
+
+		btn_delete_preset = tk.Button(row_preset, text="🗑️ 删除", command=self._delete_custom_preset,
 				  font=("", 9), bg="#d32f2f", fg="white", relief=tk.FLAT, padx=10, pady=4, cursor="hand2")
 		btn_delete_preset.pack(side=LEFT, padx=2)
 
@@ -190,44 +190,44 @@ class StoryUIBuilderMixin(StoryPromptBuilderMixin):
 		tk.Label(grp_api, text="API Key:").grid(row=1, column=0, sticky="e", padx=(8, 4), pady=6)
 		self.entry_api = tk.Entry(grp_api, textvariable=self.api_key, show="*")
 		self.entry_api.grid(row=1, column=1, sticky="we", padx=(0, 8))
-		
+
 		# Base URL（第三行）
 		tk.Label(grp_api, text="Base URL:").grid(row=2, column=0, sticky="e", padx=(8, 4), pady=6)
 		self.entry_base = tk.Entry(grp_api, textvariable=self.base_url)
 		self.entry_base.grid(row=2, column=1, sticky="we", padx=(0, 8))
-		
+
 		# Model + 操作按钮（第四行）
 		row_model = tk.Frame(grp_api, bg="#2b2b2b")
 		row_model.grid(row=3, column=0, columnspan=2, sticky="we", padx=8, pady=(6, 8))
-		
+
 		tk.Label(row_model, text="Model:", bg="#2b2b2b").pack(side=LEFT, padx=(0, 8))
 		self.entry_model = tk.Entry(row_model, textvariable=self.model, width=25)
 		self.entry_model.pack(side=LEFT, padx=(0, 15))
-		
-		tk.Button(row_model, text="💾 保存配置", command=self.save_api_config, 
+
+		tk.Button(row_model, text="💾 保存配置", command=self.save_api_config,
 				 bg="#4CAF50", fg="white", relief=tk.FLAT, padx=12, pady=5, cursor="hand2").pack(side=LEFT, padx=2)
 		tk.Button(row_model, text="📥 加载配置", command=self.load_api_config,
 				 bg="#2196F3", fg="white", relief=tk.FLAT, padx=12, pady=5, cursor="hand2").pack(side=LEFT, padx=2)
 		tk.Button(row_model, text="🔌 API测试", command=self.on_test_story_api,
 				 bg="#FF9800", fg="white", relief=tk.FLAT, padx=12, pady=5, cursor="hand2").pack(side=LEFT, padx=2)
-		
+
 		# Group 4: 故事创作功能API配置（优化布局）
 		grp_assist_api = ttk.LabelFrame(scrollable_frame, text="🤖 故事创作功能 API 配置")
 		grp_assist_api.pack(fill="x", padx=15, pady=8)
 		grp_assist_api.columnconfigure(1, weight=1)
-		
+
 		# 说明文字
-		tk.Label(grp_assist_api, text="💡 提示：选择用于生成目录和故事的API（使用上方配置的API Key）", 
+		tk.Label(grp_assist_api, text="💡 提示：选择用于生成目录和故事的API（使用上方配置的API Key）",
 				 fg="#90CAF9", font=("", 9), bg="#2b2b2b").grid(row=0, column=0, columnspan=2, sticky="w", padx=8, pady=(8, 10))
-		
+
 		# 目录生成API选择
 		tk.Label(grp_assist_api, text="目录生成API:", bg="#2b2b2b", fg=Theme.TEXT_PRIMARY, font=("", 11, "bold")).grid(row=1, column=0, sticky="e", padx=(8, 4), pady=8)
 		self.outline_gen_api = tk.StringVar(value="DeepSeek")
-		self.combo_outline_gen_api = ttk.Combobox(grp_assist_api, textvariable=self.outline_gen_api, 
+		self.combo_outline_gen_api = ttk.Combobox(grp_assist_api, textvariable=self.outline_gen_api,
 											   values=["DeepSeek"],  # 初始值，会在加载配置时更新
 											   state="readonly", width=35)
 		self.combo_outline_gen_api.grid(row=1, column=1, sticky="w", padx=(0, 8))
-		
+
 		# 故事生成API选择
 		tk.Label(grp_assist_api, text="故事生成API:", bg="#2b2b2b", fg=Theme.TEXT_PRIMARY, font=("", 11, "bold")).grid(row=2, column=0, sticky="e", padx=(8, 4), pady=8)
 		self.story_gen_api = tk.StringVar(value="DeepSeek")
@@ -235,50 +235,50 @@ class StoryUIBuilderMixin(StoryPromptBuilderMixin):
 											   values=["DeepSeek"],  # 初始值，会在加载配置时更新
 											   state="readonly", width=35)
 		self.combo_story_gen_api.grid(row=2, column=1, sticky="w", padx=(0, 8))
-		
+
 		# 保存按钮（居中显示）
 		btn_frame = tk.Frame(grp_assist_api, bg="#2b2b2b")
 		btn_frame.grid(row=3, column=0, columnspan=2, padx=8, pady=(8, 8))
 		btn_save_story_assist_api = tk.Button(btn_frame, text="💾 保存故事创作API配置", command=self._save_story_assist_api_config,
-									   font=("", 10, "bold"), bg="#4CAF50", fg="white", relief=tk.FLAT, 
+									   font=("", 10, "bold"), bg="#4CAF50", fg="white", relief=tk.FLAT,
 									   padx=20, pady=8, cursor="hand2")
 		btn_save_story_assist_api.pack()
-		
+
 		# 测试日志输出区域（合理高度）
 		grp_log = ttk.LabelFrame(scrollable_frame, text="📋 测试日志")
 		grp_log.pack(fill="x", padx=15, pady=(8, 15))
-		
+
 		# 工具栏
 		toolbar = tk.Frame(grp_log, bg="#2b2b2b")
 		toolbar.pack(fill="x", padx=5, pady=(5, 0))
-		
-		tk.Label(toolbar, text="💡 提示：点击上方'API测试'按钮查看详细测试结果", 
+
+		tk.Label(toolbar, text="💡 提示：点击上方'API测试'按钮查看详细测试结果",
 				fg="#90CAF9", font=("", 9), bg="#2b2b2b").pack(side=LEFT, padx=5)
-		
-		btn_clear_log = tk.Button(toolbar, text="🗑️ 清空日志", 
+
+		btn_clear_log = tk.Button(toolbar, text="🗑️ 清空日志",
 								  command=lambda: self.story_test_log.delete("1.0", END),
-								  font=("", 9), bg="#607D8B", fg="white", 
+								  font=("", 9), bg="#607D8B", fg="white",
 								  relief=tk.FLAT, padx=12, pady=4, cursor="hand2")
 		btn_clear_log.pack(side=RIGHT, padx=5)
-		
+
 		# 日志文本框容器（调整为更合理的高度200px）
 		log_container = tk.Frame(grp_log, bg="#1e1e1e", relief=tk.SUNKEN, bd=1, height=200)
 		log_container.pack(fill="both", padx=5, pady=5)
 		log_container.pack_propagate(False)  # 防止子组件改变容器大小
-		
+
 		# 添加滚动条
 		scroll_y = tk.Scrollbar(log_container, orient="vertical")
 		scroll_y.pack(side=RIGHT, fill="y")
-		
+
 		# 日志文本框 - 固定高度
-		self.story_test_log = tk.Text(log_container, wrap="word", 
+		self.story_test_log = tk.Text(log_container, wrap="word",
 									yscrollcommand=scroll_y.set,
-									bg="#1e1e1e", fg="#d4d4d4", 
+									bg="#1e1e1e", fg="#d4d4d4",
 									font=("Consolas", 10), relief=tk.FLAT,
 									padx=10, pady=10)
 		self.story_test_log.pack(fill="both", expand=True)
 		scroll_y.config(command=self.story_test_log.yview)
-		
+
 		# 初始提示信息
 		self.story_test_log.insert("1.0", "欢迎使用AI故事创作平台！\n\n")
 		self.story_test_log.insert(END, "📝 使用说明：\n")
@@ -286,34 +286,41 @@ class StoryUIBuilderMixin(StoryPromptBuilderMixin):
 		self.story_test_log.insert(END, "2. 点击'API测试'按钮测试连接\n")
 		self.story_test_log.insert(END, "3. 测试结果会显示在此区域\n\n")
 		self.story_test_log.insert(END, "准备就绪，可以开始测试了... ✨\n")
-	
-	
+
+
 	def _build_story_create_tab(self) -> None:
 		"""构建创作标签页"""
 		# 直接使用tab背景，不添加额外容器
 		self.story_tab_create.columnconfigure(1, weight=1)
 
-		# 第一行：种类 + 风格 + 按钮（单行）
+		ui_font = (Theme.FONT_FAMILY, Theme.FONT_SIZE_NORMAL)
+		control_font = (Theme.FONT_FAMILY, Theme.FONT_SIZE_NORMAL, "bold")
+		action_font = (Theme.FONT_FAMILY, Theme.FONT_SIZE_NORMAL, "bold")
+
+		# 第一行：种类 + 风格 + 主要动作。保持紧凑，把首屏高度留给正文。
 		row1_frame = tk.Frame(self.story_tab_create, bg="#2b2b2b")
-		row1_frame.grid(row=0, column=0, columnspan=2, sticky="we", padx=15, pady=(15, 12))
+		row1_frame.grid(row=0, column=0, columnspan=2, sticky="we", padx=15, pady=(10, 6))
+		row1_frame.columnconfigure(0, weight=1)
+		row1_frame.columnconfigure(1, weight=0)
 
-		# 右侧：快捷按钮组（固定单行显示）
-		btn_frame = tk.Frame(row1_frame, bg="#1e1e1e")
-		btn_frame.pack(side=RIGHT)
-
-		# 左侧：题材与风格
+		# 顶部：题材与风格
 		row1_left = tk.Frame(row1_frame, bg="#2b2b2b")
-		row1_left.pack(side=LEFT, fill="x", expand=True, padx=(0, 10))
+		row1_left.grid(row=0, column=0, sticky="we", padx=(0, 12))
+		row1_left.columnconfigure(3, weight=1)
 
-		tk.Label(row1_left, text="📚 种类:", font=("", 12, "bold"), bg="#2b2b2b", fg="#ffffff").pack(side=LEFT, padx=(0, 8))
+		# 右侧：快捷按钮组。横向排列，避免挤压正文输出区。
+		btn_frame = tk.Frame(row1_frame, bg="#2b2b2b")
+		btn_frame.grid(row=0, column=1, sticky="e")
+
+		tk.Label(row1_left, text="📚 种类:", font=control_font, bg="#2b2b2b", fg="#ffffff").grid(row=0, column=0, sticky="w", padx=(0, 8))
 		self.combo_category = ttk.Combobox(
 			row1_left,
 			textvariable=self.category,
-			width=12,
+			width=9,
 			values=("爱情", "悬疑", "惊悚", "恐怖", "心理惊悚", "职场", "科幻", "成长", "亲情", "社会观察", "校园", "历史", "奇幻"),
-			font=("", 12),
+			font=ui_font,
 		)
-		self.combo_category.pack(side=LEFT, padx=(0, 20))
+		self.combo_category.grid(row=0, column=1, sticky="w", padx=(0, 8))
 
 		# 主模型选择已迁移到“设置”页，这里仅保留运行时变量兼容旧逻辑
 		if not hasattr(self, "story_model_var"):
@@ -328,12 +335,11 @@ class StoryUIBuilderMixin(StoryPromptBuilderMixin):
 		# 异步加载模型列表（仍用于其它页模型下拉）
 		self.after(500, self._load_available_models)
 
-		tk.Label(row1_left, text="🎨 风格:", font=("", 12, "bold"), bg="#2b2b2b", fg="#ffffff").pack(side=LEFT, padx=(0, 8))
+		tk.Label(row1_left, text="🎨 风格:", font=control_font, bg="#2b2b2b", fg="#ffffff").grid(row=0, column=2, sticky="w", padx=(8, 8))
 		self.entry_style = tk.Entry(
 			row1_left,
 			textvariable=self.style,
-			width=42,
-			font=("", 12),
+			font=ui_font,
 			relief=tk.FLAT,
 			borderwidth=0,
 			bg="#1e1e1e",
@@ -343,7 +349,7 @@ class StoryUIBuilderMixin(StoryPromptBuilderMixin):
 			selectforeground="#000000",
 			highlightthickness=0,
 		)
-		self.entry_style.pack(side=LEFT, fill="x", expand=True, padx=(0, 6))
+		self.entry_style.grid(row=0, column=3, sticky="we", padx=(0, 6), ipady=3)
 		# 修复Entry颜色问题
 		if hasattr(self, '_fix_entry_colors'):
 			self._fix_entry_colors(self.entry_style)
@@ -351,7 +357,7 @@ class StoryUIBuilderMixin(StoryPromptBuilderMixin):
 				row1_left,
 				text="➕",
 				command=self._show_style_menu,
-				font=("", 11, "bold"),
+				font=control_font,
 				bg="#000000",
 				fg="#ffffff",
 				relief=tk.FLAT,
@@ -361,12 +367,12 @@ class StoryUIBuilderMixin(StoryPromptBuilderMixin):
 				activebackground="#000000",
 				activeforeground="#ffffff",
 			)
-			self.btn_add_style.pack(side=LEFT, padx=(0, 8))
+			self.btn_add_style.grid(row=0, column=4, sticky="e")
 			self.chk_story_global_overview_quick = tk.Checkbutton(
 				btn_frame,
 				text="先全书总览",
 				variable=self.story_global_overview_enabled,
-				font=("", 10, "bold"),
+				font=control_font,
 				bg="#1e1e1e",
 				fg="#93c5fd",
 				selectcolor="#111827",
@@ -378,12 +384,12 @@ class StoryUIBuilderMixin(StoryPromptBuilderMixin):
 				pady=2,
 				cursor="hand2",
 			)
-			self.chk_story_global_overview_quick.pack(side=LEFT, padx=(0, 6))
+			self.chk_story_global_overview_quick.grid(row=0, column=0, sticky="w", padx=(0, 6))
 			self.chk_story_overview_quick = tk.Checkbutton(
 				btn_frame,
 				text="先章节总览",
 				variable=self.story_overview_before_generate,
-				font=("", 10, "bold"),
+				font=control_font,
 				bg="#1e1e1e",
 				fg="#93c5fd",
 				selectcolor="#111827",
@@ -395,94 +401,118 @@ class StoryUIBuilderMixin(StoryPromptBuilderMixin):
 				pady=2,
 				cursor="hand2",
 			)
-			self.chk_story_overview_quick.pack(side=LEFT, padx=(0, 8))
+			self.chk_story_overview_quick.grid(row=0, column=1, sticky="w", padx=(0, 8))
 			self.btn_story_overview = tk.Button(
 				btn_frame,
 				text="🧭 总览预览",
 				command=self.on_generate_story_overview,
-				font=("", 11, "bold"),
+				font=action_font,
 				bg="#000000",
 				fg="#ffffff",
 				relief=tk.FLAT,
 				padx=10,
-				pady=8,
+				pady=5,
 				cursor="hand2",
 				activebackground="#000000",
 				activeforeground="#ffffff",
 			)
-			self.btn_story_overview.pack(side=LEFT, padx=(0, 8))
+			self.btn_story_overview.grid(row=0, column=2, sticky="we", padx=3)
 
-		self.btn_outline = tk.Button(btn_frame, text="📋 生成目录", command=self.on_generate_outline, 
-									  font=("", 13, "bold"), bg="#000000", fg="#ffffff", relief=tk.FLAT, 
-									  padx=12, pady=10, cursor="hand2",
+		self.btn_outline = tk.Button(btn_frame, text="📋 生成目录", command=self.on_generate_outline,
+									  font=action_font, bg="#000000", fg="#ffffff", relief=tk.FLAT,
+									  padx=10, pady=5, cursor="hand2",
 									  activebackground="#000000", activeforeground="#ffffff")
-		self.btn_outline.pack(side=LEFT, padx=4)
+		self.btn_outline.grid(row=0, column=3, sticky="we", padx=3)
 		self.btn_blueprint = tk.Button(
 			btn_frame, text="🗺️ 生成蓝图",
 			command=self.generate_chapter_blueprints_async,
-			font=("", 13, "bold"), bg="#000000", fg="#ffffff",
-			relief=tk.FLAT, padx=12, pady=10, cursor="hand2",
+			font=action_font, bg="#000000", fg="#ffffff",
+			relief=tk.FLAT, padx=10, pady=5, cursor="hand2",
 			activebackground="#000000", activeforeground="#ffffff",
 		)
-		self.btn_blueprint.pack(side=LEFT, padx=4)
-		self.btn_generate = tk.Button(btn_frame, text="🚀 生成故事", command=self.on_generate, 
-									   font=("", 13, "bold"), bg="#000000", fg="#ffffff", relief=tk.FLAT, 
-									   padx=12, pady=10, cursor="hand2",
+		self.btn_blueprint.grid(row=0, column=4, sticky="we", padx=3)
+		self.btn_generate = tk.Button(btn_frame, text="🚀 生成故事", command=self.on_generate,
+									   font=action_font, bg="#000000", fg="#ffffff", relief=tk.FLAT,
+									   padx=12, pady=5, cursor="hand2",
 									   activebackground="#000000", activeforeground="#ffffff")
-		self.btn_generate.pack(side=LEFT, padx=4)
+		self.btn_generate.grid(row=0, column=5, sticky="we", padx=3)
 		self.btn_save_as = tk.Button(
 			btn_frame,
 			text="💾 保存为…",
 			command=self.on_save_as,
-			font=("", 13, "bold"),
+			font=action_font,
 			bg="#000000",
 			fg="#ffffff",
 			relief=tk.FLAT,
-			padx=12,
-			pady=10,
+			padx=10,
+			pady=5,
 			cursor="hand2",
 			activebackground="#000000",
 			activeforeground="#ffffff",
 		)
-		self.btn_save_as.pack(side=LEFT, padx=4)
+		self.btn_save_as.grid(row=0, column=6, sticky="we", padx=(3, 0))
+		for col in range(7):
+			btn_frame.columnconfigure(col, weight=1, uniform="story_actions")
 
 		# 第二行：创作需求（改为多行文本框）
 		tk.Label(self.story_tab_create, text="💡 创作需求:", font=("", 12, "bold"), bg="#2b2b2b", fg="#ffffff").grid(row=1, column=0, sticky="nw", padx=(15, 10), pady=(0, 4))
-		
+
 		# 创建文本框容器
 		prompt_frame = tk.Frame(self.story_tab_create, bg="#2b2b2b")
 		prompt_frame.grid(row=1, column=1, sticky="we", padx=(0, 15), pady=(0, 12))
-		
+		prompt_frame.columnconfigure(0, weight=1)
+		prompt_frame.rowconfigure(0, weight=1)
+
+		prompt_text_frame = tk.Frame(prompt_frame, bg="#000000")
+		prompt_text_frame.grid(row=0, column=0, sticky="nsew")
+		prompt_text_frame.columnconfigure(0, weight=1)
+		prompt_text_frame.rowconfigure(0, weight=1)
+
 		# 多行文本框
-		self.prompt_text = tk.Text(prompt_frame, height=3, font=("", 14), wrap=tk.WORD, 
+		self.prompt_text = tk.Text(prompt_text_frame, height=5, font=("", 13), wrap=tk.WORD,
 								   relief=tk.FLAT, borderwidth=0, bg="#000000", fg="#ffffff",
 								   insertbackground="white", selectbackground="#ffffff", selectforeground="#000000",
-								   padx=10, pady=8, spacing1=3, spacing3=3, highlightthickness=0)
-		self.prompt_text.pack(side="left", fill="both", expand=True)
+								   padx=10, pady=8, spacing1=2, spacing3=2, highlightthickness=0)
+		self.prompt_text.grid(row=0, column=0, sticky="nsew")
 
 		self.btn_ai_expand = tk.Button(
 			prompt_frame, text="✨ AI补充", command=self._on_ai_expand_prompt,
 			font=("", 11, "bold"), bg="#2563eb", fg="#ffffff", relief=tk.FLAT,
-			padx=10, pady=6, cursor="hand2",
+			width=8, padx=8, pady=4, cursor="hand2",
 			activebackground="#1d4ed8", activeforeground="#ffffff",
 		)
-		self.btn_ai_expand.pack(side="right", padx=(6, 0), pady=4)
-		
+		self.btn_ai_expand.grid(row=0, column=1, sticky="n", padx=(6, 0), pady=0)
+
+		self.btn_expand_prompt = tk.Button(
+			prompt_text_frame,
+			text="⛶",
+			command=self._open_prompt_editor,
+			font=("", 10, "bold"),
+			bg="#1f2937",
+			fg="#ffffff",
+			relief=tk.FLAT,
+			width=3,
+			cursor="hand2",
+			activebackground="#374151",
+			activeforeground="#ffffff",
+		)
+		self.btn_expand_prompt.place(relx=1.0, y=6, x=-8, anchor="ne")
+
 		# 提示文字
 		self.prompt_text.insert("1.0", "例如：写一个惊悚短篇，要求特别惊奇感人，跌宕起伏...")
 		self.prompt_text.bind("<FocusIn>", self._clear_prompt_placeholder)
 		self.prompt_text.bind("<FocusOut>", self._restore_prompt_placeholder)
 		self.prompt_text.tag_configure("placeholder", foreground="#666666")
 		self.prompt_text.tag_add("placeholder", "1.0", "end")
-		
+
 		# 保持旧的self.prompt兼容性（用于读取）
 		self.prompt = tk.Entry(self.story_tab_create)  # 隐藏但保持引用
-		
+
 		# 第三行：章节控制
-		tk.Label(self.story_tab_create, text="📖 章节:", font=("", 12, "bold"), bg="#2b2b2b", fg="#ffffff").grid(row=2, column=0, sticky="nw", padx=(15, 10), pady=(0, 4))
-		
+		tk.Label(self.story_tab_create, text="📖 章节:", font=control_font, bg="#2b2b2b", fg="#ffffff").grid(row=2, column=0, sticky="nw", padx=(15, 10), pady=(0, 4))
+
 		self.current_section_index = tk.IntVar(value=0)
-		
+
 		# 创建一个样式来设置Combobox的颜色
 		style = ttk.Style()
 		style.configure(
@@ -510,42 +540,44 @@ class StoryUIBuilderMixin(StoryPromptBuilderMixin):
 			selectforeground=[('readonly', Theme.TEXT_PRIMARY), ('!readonly', Theme.TEXT_PRIMARY)],
 			arrowcolor=[('disabled', Theme.TEXT_DISABLED), ('!disabled', Theme.TEXT_SECONDARY)]
 		)
-		
+
 		chapter_frame = tk.Frame(self.story_tab_create, bg="#2b2b2b")
 		chapter_frame.grid(row=2, column=1, sticky="we", padx=(0, 15), pady=(0, 15))
-		
-		self.section_selector = ttk.Combobox(chapter_frame, textvariable=self.current_section_index, 
-											 state="readonly", font=("", 14), 
+		for col in range(4):
+			chapter_frame.columnconfigure(col, weight=1, uniform="chapter_actions")
+
+		self.section_selector = ttk.Combobox(chapter_frame, textvariable=self.current_section_index,
+											 state="readonly", font=ui_font,
 											 style='Chapter.TCombobox')
-		self.section_selector.pack(side=LEFT, fill="both", expand=True, padx=(0, 10))
+		self.section_selector.grid(row=0, column=0, sticky="we", padx=(0, 6))
 		self.section_selector['values'] = ["请先生成目录"]
-		
+
 		# 配置下拉列表的样式
-		self.option_add('*TCombobox*Listbox.font', ('', 14))
+		self.option_add('*TCombobox*Listbox.font', ui_font)
 		self.option_add('*TCombobox*Listbox.foreground', Theme.TEXT_PRIMARY)
 		self.option_add('*TCombobox*Listbox.background', Theme.SURFACE)
 		self.option_add('*TCombobox*Listbox.selectBackground', Theme.PRIMARY)
 		self.option_add('*TCombobox*Listbox.selectForeground', Theme.TEXT_PRIMARY)
-		
-		self.btn_generate_section = tk.Button(chapter_frame, text="📝 生成选中章节", command=self.on_generate_section, 
-											   state=DISABLED, font=("", 12, "bold"), bg="#000000", fg="#ffffff",
-											   relief=tk.FLAT, padx=15, pady=8, cursor="hand2",
+
+		self.btn_generate_section = tk.Button(chapter_frame, text="📝 生成选中章节", command=self.on_generate_section,
+											   state=DISABLED, font=action_font, bg="#000000", fg="#ffffff",
+											   relief=tk.FLAT, padx=10, pady=5, cursor="hand2",
 											   activebackground="#000000", activeforeground="#ffffff",
 											   disabledforeground="#666666")
-		self.btn_generate_section.pack(side=LEFT, padx=4)
-		self.btn_continue_next = tk.Button(chapter_frame, text="⏭️ 继续下一章", command=self.on_continue_next_section, 
-										   state=DISABLED, font=("", 12, "bold"), bg="#000000", fg="#ffffff",
-										   relief=tk.FLAT, padx=15, pady=8, cursor="hand2",
+		self.btn_generate_section.grid(row=0, column=1, sticky="we", padx=3)
+		self.btn_continue_next = tk.Button(chapter_frame, text="⏭️ 继续下一章", command=self.on_continue_next_section,
+										   state=DISABLED, font=action_font, bg="#000000", fg="#ffffff",
+										   relief=tk.FLAT, padx=10, pady=5, cursor="hand2",
 										   activebackground="#000000", activeforeground="#ffffff",
 										   disabledforeground="#666666")
-		self.btn_continue_next.pack(side=LEFT, padx=4)
-		self.btn_auto_generate = tk.Button(chapter_frame, text="🔄 自动连续生成", command=self.on_auto_generate_all, 
-											state=DISABLED, font=("", 12, "bold"), bg="#000000", fg="#ffffff",
-											relief=tk.FLAT, padx=15, pady=8, cursor="hand2",
+		self.btn_continue_next.grid(row=0, column=2, sticky="we", padx=3)
+		self.btn_auto_generate = tk.Button(chapter_frame, text="🔄 自动连续生成", command=self.on_auto_generate_all,
+											state=DISABLED, font=action_font, bg="#000000", fg="#ffffff",
+											relief=tk.FLAT, padx=10, pady=5, cursor="hand2",
 											activebackground="#000000", activeforeground="#ffffff",
 											disabledforeground="#666666")
-		self.btn_auto_generate.pack(side=LEFT, padx=4)
-		
+		self.btn_auto_generate.grid(row=0, column=3, sticky="we", padx=(3, 0))
+
 		# 预设风格标签（用于快速选择）
 		self.preset_styles = [
 			"情感起伏",
@@ -575,14 +607,14 @@ class StoryUIBuilderMixin(StoryPromptBuilderMixin):
 												 font=("", 13), bg="#000000", fg="#ffffff",
 												 insertbackground="white", selectbackground="#ffffff", selectforeground="#000000",
 												 relief=tk.FLAT, borderwidth=0, highlightthickness=0,
-												 padx=15, pady=15)
-		self.output.grid(row=3, column=0, columnspan=2, sticky="nsew", padx=0, pady=0)
+												 padx=15, pady=10)
+		self.output.grid(row=3, column=0, columnspan=2, sticky="nsew", padx=0, pady=(0, 2))
 
 		# 章节质量/记忆面板
 		diag_frame = tk.Frame(self.story_tab_create, bg="#2b2b2b")
-		diag_frame.grid(row=4, column=0, columnspan=2, sticky="we", padx=12, pady=(4, 4))
+		diag_frame.grid(row=4, column=0, columnspan=2, sticky="we", padx=12, pady=(2, 2))
 		diag_frame.columnconfigure(0, weight=1)
-		diag_frame.columnconfigure(1, weight=1)
+
 
 		self.story_quality_summary_var = tk.StringVar(value="质量评审：未开始")
 		self.story_memory_summary_var = tk.StringVar(value="记忆账本：暂无章节记忆")
@@ -596,9 +628,9 @@ class StoryUIBuilderMixin(StoryPromptBuilderMixin):
 			justify="left",
 			font=("", 10, "bold"),
 			padx=10,
-			pady=6,
+			pady=3,
 		)
-		self.lbl_story_quality_summary.grid(row=0, column=0, sticky="we", padx=(0, 6))
+		self.lbl_story_quality_summary.grid(row=0, column=0, sticky="we", pady=(0, 4))
 
 		self.lbl_story_memory_summary = tk.Label(
 			diag_frame,
@@ -609,27 +641,124 @@ class StoryUIBuilderMixin(StoryPromptBuilderMixin):
 			justify="left",
 			font=("", 10),
 			padx=10,
-			pady=6,
+			pady=3,
 		)
-		self.lbl_story_memory_summary.grid(row=0, column=1, sticky="we", padx=(6, 0))
+		self.lbl_story_memory_summary.grid(row=1, column=0, sticky="we")
 		self._update_story_diagnostics_panel()
 
 		# 知乎发布区域
 		zhihu_frame = tk.Frame(self.story_tab_create, bg="#2b2b2b")
-		zhihu_frame.grid(row=5, column=0, columnspan=2, sticky="we", padx=10, pady=(0, 4))
+		zhihu_frame.grid(row=5, column=0, columnspan=2, sticky="we", padx=10, pady=(0, 2))
 		if hasattr(self, "_build_zhihu_publish_ui"):
 			self._build_zhihu_publish_ui(zhihu_frame)
-		
+
 		self.status = tk.StringVar(value="就绪")
 		status_bar = ttk.Label(self.story_tab_create, textvariable=self.status, anchor="w")
-		status_bar.grid(row=6, column=0, columnspan=2, sticky="we", padx=10, pady=(0, 8))
-		
+		status_bar.grid(row=6, column=0, columnspan=2, sticky="we", padx=10, pady=(0, 4))
+
 		# 配置行列权重，让output区域可以扩展
 		self.story_tab_create.rowconfigure(3, weight=1)
 
-	# ------------------------------------------------------------------
+		# ------------------------------------------------------------------
 	# AI 补充创作需求
 	# ------------------------------------------------------------------
+
+	def _open_prompt_editor(self) -> None:
+		"""Open a larger editor for long story requirements."""
+		if hasattr(self, "_prompt_editor_window") and self._prompt_editor_window.winfo_exists():
+			self._prompt_editor_window.lift()
+			return
+
+		dialog = tk.Toplevel(self)
+		self._prompt_editor_window = dialog
+		dialog.title("放大编辑创作需求")
+		dialog.geometry("920x560")
+		dialog.minsize(720, 420)
+		dialog.configure(bg=Theme.BG_PRIMARY)
+		dialog.transient(self)
+
+		header = tk.Frame(dialog, bg=Theme.BG_PRIMARY)
+		header.pack(fill="x", padx=18, pady=(16, 8))
+		tk.Label(
+			header,
+			text="创作需求",
+			bg=Theme.BG_PRIMARY,
+			fg=Theme.TEXT_PRIMARY,
+			font=(Theme.FONT_FAMILY, Theme.FONT_SIZE_LARGE, "bold"),
+		).pack(side=LEFT)
+
+		editor_frame = tk.Frame(dialog, bg=Theme.SURFACE)
+		editor_frame.pack(fill="both", expand=True, padx=18, pady=(0, 12))
+		editor_frame.columnconfigure(0, weight=1)
+		editor_frame.rowconfigure(0, weight=1)
+
+		scrollbar = tk.Scrollbar(editor_frame, orient="vertical")
+		scrollbar.grid(row=0, column=1, sticky="ns")
+		editor = tk.Text(
+			editor_frame,
+			wrap=tk.WORD,
+			yscrollcommand=scrollbar.set,
+			bg=Theme.SURFACE,
+			fg=Theme.TEXT_PRIMARY,
+			insertbackground=Theme.TEXT_PRIMARY,
+			selectbackground=Theme.PRIMARY,
+			selectforeground="#ffffff",
+			relief=tk.FLAT,
+			borderwidth=0,
+			highlightthickness=0,
+			font=(Theme.FONT_FAMILY, Theme.FONT_SIZE_MEDIUM),
+			padx=14,
+			pady=14,
+			spacing1=3,
+			spacing3=3,
+		)
+		editor.grid(row=0, column=0, sticky="nsew")
+		scrollbar.config(command=editor.yview)
+
+		current = self._get_prompt_content() if hasattr(self, "_get_prompt_content") else self.prompt_text.get("1.0", "end-1c")
+		editor.insert("1.0", current)
+		editor.focus_set()
+
+		actions = tk.Frame(dialog, bg=Theme.BG_PRIMARY)
+		actions.pack(fill="x", padx=18, pady=(0, 16))
+
+		def apply_text() -> None:
+			value = editor.get("1.0", "end-1c").strip()
+			self.prompt_text.delete("1.0", "end")
+			self.prompt_text.insert("1.0", value)
+			self.prompt_text.tag_remove("placeholder", "1.0", "end")
+			if hasattr(self, "_on_prompt_text_changed"):
+				self._on_prompt_text_changed()
+			dialog.destroy()
+
+		def cancel() -> None:
+			dialog.destroy()
+
+		tk.Button(
+			actions,
+			text="取消",
+			command=cancel,
+			bg=Theme.SURFACE_DARK,
+			fg=Theme.TEXT_PRIMARY,
+			relief=tk.FLAT,
+			padx=18,
+			pady=8,
+			cursor="hand2",
+		).pack(side=RIGHT, padx=(8, 0))
+		tk.Button(
+			actions,
+			text="应用",
+			command=apply_text,
+			bg=Theme.PRIMARY,
+			fg="#ffffff",
+			relief=tk.FLAT,
+			padx=22,
+			pady=8,
+			cursor="hand2",
+		).pack(side=RIGHT)
+
+		dialog.bind("<Control-Return>", lambda _event: apply_text())
+		dialog.bind("<Escape>", lambda _event: cancel())
 
 	def _on_ai_expand_prompt(self) -> None:
 		"""根据用户输入的简短需求，用 AI 补充完善为更具体的创作需求。"""

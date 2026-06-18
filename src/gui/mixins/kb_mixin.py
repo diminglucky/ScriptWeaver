@@ -11,41 +11,69 @@ from tkinter import ttk
 
 class KbMixin:
 	"""Kb管理功能"""
+
+	def _rag_ingest_kwargs(self) -> dict:
+		def _read_int(name: str, default: int, min_value: int, max_value: int) -> int:
+			try:
+				var = getattr(self, name)
+				value = int(var.get() if hasattr(var, "get") else var)
+			except Exception:
+				value = default
+			return max(min_value, min(max_value, value))
+
+		paragraphs_per_chunk = _read_int("rag_paragraphs_per_chunk", 4, 1, 12)
+		overlap_paragraphs = _read_int("rag_overlap_paragraphs", 1, 0, paragraphs_per_chunk - 1)
+		return {
+			"max_chars": _read_int("rag_long_paragraph_chars", 800, 200, 4000),
+			"overlap_paragraphs": overlap_paragraphs,
+			"paragraphs_per_chunk": paragraphs_per_chunk,
+		}
 	
+	def on_ingest_incremental(self) -> None:
+		self._run_kb_ingest(rebuild=False)
+
+	def on_ingest_rebuild(self) -> None:
+		self._run_kb_ingest(rebuild=True)
+
 	def on_ingest(self) -> None:
-		# Preflight
-		if not Path(self.data_dir.get()).exists():
-			messagebox.showwarning("提示", "数据目录不存在，请先选择有效的数据目录")
+		self.on_ingest_rebuild()
+
+	def _run_kb_ingest(self, *, rebuild: bool) -> None:
+		data_root = Path(self.data_dir.get())
+		if not data_root.exists():
+			messagebox.showwarning("\u63d0\u793a", "\u6570\u636e\u76ee\u5f55\u4e0d\u5b58\u5728\uff0c\u8bf7\u5148\u9009\u62e9\u6709\u6548\u7684\u6570\u636e\u76ee\u5f55")
 			return
-		if (
-			not any(Path(self.data_dir.get()).rglob("*.txt"))
-			and not any(Path(self.data_dir.get()).rglob("*.md"))
-			and not any(Path(self.data_dir.get()).rglob("*.markdown"))
-			and not any(Path(self.data_dir.get()).rglob("*.json"))
-			and not any(Path(self.data_dir.get()).rglob("*.csv"))
-			and not any(Path(self.data_dir.get()).rglob("*.docx"))
-			and not any(Path(self.data_dir.get()).rglob("*.pdf"))
-		):
-			messagebox.showwarning("提示", "数据目录下未发现 .txt/.md/.markdown/.json/.csv/.docx/.pdf 文件")
+		patterns = ("*.txt", "*.md", "*.markdown", "*.json", "*.csv", "*.docx", "*.pdf")
+		if not any(any(data_root.rglob(pattern)) for pattern in patterns):
+			messagebox.showwarning("\u63d0\u793a", "\u6570\u636e\u76ee\u5f55\u4e0b\u672a\u53d1\u73b0 .txt/.md/.markdown/.json/.csv/.docx/.pdf \u6587\u4ef6")
 			return
+
 		def ui_call(func, *args, **kwargs):
 			if hasattr(self, '_ui'):
 				return self._ui(func, *args, **kwargs)
 			return func(*args, **kwargs)
+
 		def task():
+			mode = "\u5b8c\u5168\u91cd\u5efa" if rebuild else "\u589e\u91cf\u66f4\u65b0"
 			try:
 				ui_call(self.set_busy, True)
-				ui_call(self.status.set, "构建索引中...")
+				ui_call(self.status.set, f"{mode}\u7d22\u5f15\u4e2d...")
 				from src.kb.ingest import IngestConfig, KnowledgeBaseIngestor
-				cfg = IngestConfig(data_root=Path(self.data_dir.get()), index_dir=Path(self.index_dir.get()))
-				KnowledgeBaseIngestor(cfg).build()
-				ui_call(self.output.insert, END, f"索引已生成: {self.index_dir.get()}\n")
-				ui_call(self.status.set, "索引已生成")
+				cfg = IngestConfig(
+					data_root=Path(self.data_dir.get()),
+					index_dir=Path(self.index_dir.get()),
+					rebuild=rebuild,
+					**self._rag_ingest_kwargs(),
+				)
+				stats = KnowledgeBaseIngestor(cfg).build()
+				summary = stats.summary() if hasattr(stats, "summary") else "\u5df2\u5b8c\u6210"
+				ui_call(self.output.insert, END, f"{mode}\u5b8c\u6210\uff1a{summary}\n\u7d22\u5f15\u76ee\u5f55: {self.index_dir.get()}\n")
+				ui_call(self.status.set, f"{mode}\u5b8c\u6210")
 			except Exception as e:
 				brief = str(e).strip() or e.__class__.__name__
-				ui_call(self.output.insert, END, f"❌ 构建索引失败：{brief}\n")
-				ui_call(messagebox.showerror, "错误", brief)
-				ui_call(self.status.set, "构建索引失败")
+				ui_call(self.output.insert, END, f"\u274c \u6784\u5efa\u7d22\u5f15\u5931\u8d25\uff1a{brief}\n")
+				ui_call(messagebox.showerror, "\u9519\u8bef", brief)
+				ui_call(self.status.set, "\u6784\u5efa\u7d22\u5f15\u5931\u8d25")
 			finally:
 				ui_call(self.set_busy, False)
 		threading.Thread(target=task, daemon=True).start()
@@ -102,6 +130,8 @@ class KbMixin:
 			self.btn_test_api.configure(state=state)
 		if hasattr(self, 'btn_test_img_api'):
 			self.btn_test_img_api.configure(state=state)
+		if hasattr(self, 'btn_rebuild_index'):
+			self.btn_rebuild_index.configure(state=state)
 		if hasattr(self, 'btn_clear'):
 			self.btn_clear.configure(state=state)
 		if hasattr(self, 'btn_copy'):

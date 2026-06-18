@@ -45,6 +45,7 @@ class SettingsPageLayoutRoutingMixin:
         mode_frame = tk.Frame(grp_routing, bg=Theme.BG_SECONDARY)
         mode_frame.grid(row=2, column=0, sticky="we", padx=8, pady=(0, 6))
         mode_frame.columnconfigure(0, weight=1)
+        mode_frame.columnconfigure(1, weight=1)
 
         self.chk_model_route_advanced = ttk.Checkbutton(
             mode_frame,
@@ -65,7 +66,7 @@ class SettingsPageLayoutRoutingMixin:
             pady=4,
             cursor="hand2",
             font=("", 10, "bold"),
-        ).grid(row=0, column=1, sticky="e", padx=(10, 0))
+        ).grid(row=1, column=0, columnspan=2, sticky="we", pady=(6, 0))
 
         self.model_route_mode_hint_label = tk.Label(
             grp_routing,
@@ -74,18 +75,20 @@ class SettingsPageLayoutRoutingMixin:
             fg=Theme.TEXT_SECONDARY,
             font=("", 9),
         )
-        self.model_route_mode_hint_label.grid(row=3, column=0, sticky="w", padx=8, pady=(0, 8))
+        self.model_route_mode_hint_label.grid(row=3, column=0, sticky="we", padx=8, pady=(0, 8))
 
     def _build_model_routing_advanced_form(self, grp_routing: ttk.LabelFrame) -> None:
         """构建高级模型路由配置表格。"""
         self.model_routing_advanced_frame = tk.Frame(grp_routing, bg=Theme.BG_SECONDARY)
         self.model_routing_advanced_frame.grid(row=4, column=0, sticky="we")
+        self.model_routing_advanced_frame.columnconfigure(1, weight=0)
         self.model_routing_advanced_frame.columnconfigure(2, weight=1)
         self.model_route_vars = {}
         self._populate_model_routing_rows()
 
         route_btn_frame = tk.Frame(self.model_routing_advanced_frame, bg=Theme.BG_SECONDARY)
-        route_btn_frame.grid(row=len(MODEL_ROUTING_TASKS), column=0, columnspan=4, pady=(10, 5))
+        route_btn_frame.grid(row=len(MODEL_ROUTING_TASKS), column=0, columnspan=4, sticky="we", pady=(10, 5))
+        route_btn_frame.columnconfigure(0, weight=1)
         tk.Button(
             route_btn_frame,
             text="💾 保存模型路由",
@@ -97,7 +100,7 @@ class SettingsPageLayoutRoutingMixin:
             pady=8,
             cursor="hand2",
             font=("", 11, "bold"),
-        ).pack()
+        ).grid(row=0, column=0, sticky="we")
 
     def _populate_model_routing_rows(self) -> None:
         """填充模型路由任务行。"""
@@ -130,7 +133,7 @@ class SettingsPageLayoutRoutingMixin:
                 state="normal",
                 width=35,
             )
-            combo_model.grid(row=row, column=2, sticky="w", padx=(0, 8), pady=4)
+            combo_model.grid(row=row, column=2, sticky="we", padx=(0, 8), pady=4)
             tk.Label(
                 self.model_routing_advanced_frame,
                 text="(可手动输入)",

@@ -404,7 +404,7 @@ class SettingsRoutingProviderMixin:
         
         threading.Thread(target=task, daemon=True).start()
 
-    def _on_route_provider_change(self, task_key: str) -> None:
+    def _on_route_provider_change(self, task_key: str, *, refresh_models: bool = True) -> None:
         """模型路由提供商切换"""
         if not hasattr(self, 'model_route_vars'):
             return
@@ -438,7 +438,7 @@ class SettingsRoutingProviderMixin:
                 route_ui["model_var"].set(decorated)
 
         # 如果模型列表为空或占位，尝试从 API 获取
-        if self._models_need_refresh(models):
+        if refresh_models and self._models_need_refresh(models):
             key = ""
             base_url = ""
             if provider_cfg:
@@ -469,7 +469,7 @@ class SettingsRoutingProviderMixin:
             model = route.get("model", "")
             route_ui["provider_var"].set(provider)
             # 更新模型列表
-            self._on_route_provider_change(task_key)
+            self._on_route_provider_change(task_key, refresh_models=False)
             if model:
                 kind = "image" if str(task_key).startswith("image_") else "text"
                 route_ui["model_var"].set(self._decorate_model_value(model, kind))
@@ -576,7 +576,7 @@ class SettingsRoutingProviderMixin:
             if not route_ui:
                 continue
             route_ui["provider_var"].set(provider)
-            self._on_route_provider_change(task_key)
+            self._on_route_provider_change(task_key, refresh_models=False)
             route_ui["model_var"].set(self._decorate_model_value(model, "text"))
             updated += 1
 
@@ -630,10 +630,6 @@ class SettingsRoutingProviderMixin:
                 if not current_custom and saved_model:
                     self.settings_custom_model.delete(0, END)
                     self.settings_custom_model.insert(0, saved_model)
-            
-            # 强制刷新 Combobox 显示
-            if hasattr(self, 'settings_combo_model'):
-                self.settings_combo_model.update()
             
             # 更新Base URL
             self.settings_base_url.delete(0, END)

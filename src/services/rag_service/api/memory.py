@@ -40,7 +40,7 @@ async def write_memory(
         })
     if chunk_ids:
         vecs = await embedder.encode_async([m["text"] for m in metas])
-        shard.upsert(chunk_ids, vecs, metas)
+        shard.replace_sources(chunk_ids, vecs, metas)
     return MemoryListResponse(entries=[
         MemoryEntryOut(
             chunk_id=cid,

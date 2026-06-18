@@ -38,6 +38,9 @@ class _Output:
     def insert(self, *_args):
         self.text += str(_args[-1]) if _args else ""
 
+    def see(self, *_args):
+        return None
+
 
 class _ImmediateThread:
     def __init__(self, target=None, daemon=None, args=(), kwargs=None):
@@ -109,6 +112,50 @@ class _DummyApp(StoryInfraMixin, OutlineSectionGenerateMixin):
         self.called = (query, contexts, selected_index)
 
 
+class _AutoDummyApp(OutlineSectionGenerateMixin):
+    def __init__(self):
+        self.parsed_sections = [
+            {"title": "第一章", "purpose": "开局", "conflict": "秘密出现", "required_beats": ["发现线索"]},
+            {"title": "第二章", "purpose": "追问", "conflict": "关系错位", "required_beats": ["前文回响"]},
+        ]
+        self.section_selector = _Selector(0)
+        self.output = _Output()
+        self.generated_content = ""
+        self.story_memory_ledger = [{"summary": "第一章旧记忆"}]
+        self.calls = []
+        self.provider_calls = []
+        self.status = _Var("")
+
+    def _ui(self, fn, *args, **kwargs):
+        return fn(*args, **kwargs)
+
+    def _resolve_generation_api_config_safe(self, *_args, **_kwargs):
+        return {"provider": "Custom", "key": "k", "model": "mock-model"}
+
+    def _create_generation_client(self, _api_config):
+        return object()
+
+    def set_busy(self, _busy: bool):
+        return None
+
+    def _get_output_text_snapshot(self):
+        return self.generated_content
+
+    def _rebuild_generated_content_from_output(self, text: str) -> str:
+        return text
+
+    def _build_story_memory_context(self, section_index: int, max_items: int = 4):
+        return f"memory before {section_index}: 第一章旧记忆"
+
+    def _do_generate_section(self, _client, query, contexts, idx, **_kwargs):
+        self.calls.append((idx, list(contexts)))
+        self.generated_content += f"\nchapter {idx + 1} done"
+        return "replace"
+
+    def _auto_save_to_project(self):
+        return None
+
+
 def test_generate_section_rag_uses_existing_index(tmp_path: Path):
     idx_dir = tmp_path / "idx"
     idx_dir.mkdir(parents=True, exist_ok=True)
@@ -137,3 +184,30 @@ def test_generate_section_rag_uses_existing_index(tmp_path: Path):
     assert query == "测试需求"
     assert selected_index == 0
     assert contexts and contexts[0].startswith("ctx:")
+
+
+def test_auto_generate_all_sections_uses_dynamic_context_provider():
+    app = _AutoDummyApp()
+
+    def provider(idx):
+        app.provider_calls.append((idx, app._build_section_rag_query("总需求", idx)))
+        return [f"ctx-{idx}"]
+
+    with patch("src.gui.mixins.story_modules.outline_section_generate_mixin.threading.Thread", _ImmediateThread):
+        app._auto_generate_all_sections("总需求", ["initial"], start_index=0, context_provider=provider)
+
+    assert app.calls == [(0, ["ctx-0"]), (1, ["ctx-1"])]
+    assert [idx for idx, _query in app.provider_calls] == [0, 1]
+    assert "第一章" in app.provider_calls[0][1]
+    assert "第二章" in app.provider_calls[1][1]
+    assert "第一章旧记忆" in app.provider_calls[1][1]
+
+
+def test_auto_generate_all_sections_keeps_static_contexts_without_provider():
+    app = _AutoDummyApp()
+
+    with patch("src.gui.mixins.story_modules.outline_section_generate_mixin.threading.Thread", _ImmediateThread):
+        app._auto_generate_all_sections("总需求", ["static"], start_index=0)
+
+    assert app.calls == [(0, ["static"]), (1, ["static"])]
+    assert app.provider_calls == []

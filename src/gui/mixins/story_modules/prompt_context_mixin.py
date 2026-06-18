@@ -435,6 +435,68 @@ class StoryPromptContextMixin:
                 top_k = 6
         return accepted[: max(1, top_k)]
 
+    @staticmethod
+    def _rag_meta_source(meta) -> tuple[str, int | None]:
+        source = "未知来源"
+        position = None
+        if isinstance(meta, dict):
+            raw_source = meta.get("path") or meta.get("source_id") or meta.get("chunk_id") or source
+            try:
+                source = Path(str(raw_source)).name or str(raw_source)
+            except Exception:
+                source = str(raw_source)
+            try:
+                position = int(meta.get("position"))
+            except Exception:
+                position = None
+        elif isinstance(meta, (list, tuple)) and meta:
+            try:
+                source = Path(str(meta[0])).name or str(meta[0])
+            except Exception:
+                source = str(meta[0])
+            if len(meta) > 1:
+                try:
+                    position = int(meta[1])
+                except Exception:
+                    position = None
+        elif meta:
+            try:
+                source = Path(str(meta)).name or str(meta)
+            except Exception:
+                source = str(meta)
+        return source, position
+
+    @staticmethod
+    def _rag_preview_text(text: str, max_chars: int = 110) -> str:
+        preview = re.sub(r"\s+", " ", str(text or "")).strip()
+        if len(preview) > max_chars:
+            preview = preview[: max(1, max_chars - 3)].rstrip() + "..."
+        return preview
+
+    def _build_rag_evidence_block(
+        self,
+        rag_rows=None,
+        *,
+        section_index: int | None = None,
+        max_items: int = 4,
+        include_preview: bool = True,
+    ) -> str:
+        rows = list(rag_rows or [])
+        title = "RAG检索" if section_index is None else f"第 {section_index + 1} 章 RAG检索"
+        if not rows:
+            return f"🔎 {title}：未命中可用 Chunk（阈值≥{self._get_rag_min_score():.2f}）"
+
+        lines = [f"🔎 {title}：命中 {len(rows)} 条 Chunk（阈值≥{self._get_rag_min_score():.2f}）"]
+        for idx, (chunk, score, meta) in enumerate(rows[: max(1, int(max_items))], start=1):
+            source, position = self._rag_meta_source(meta)
+            position_text = f" #chunk-{position}" if position is not None else ""
+            lines.append(f"  {idx}. {source}{position_text}（score={float(score):.3f}）")
+            if include_preview:
+                preview = self._rag_preview_text(chunk)
+                if preview:
+                    lines.append(f"     片段：{preview}")
+        return "\n".join(lines)
+
     def _build_story_run_banner(self, requirement: str, category: str, rag_rows=None) -> str:
         effective_category, category_note = self._resolve_effective_story_category(requirement, category)
         template = self._get_story_template_profile(requirement=requirement, category=effective_category)
@@ -460,13 +522,5 @@ class StoryPromptContextMixin:
 
         rag_items = list(rag_rows or [])
         if rag_items:
-            lines.append(f"🔎 RAG检索：命中 {len(rag_items)} 条（阈值≥{self._get_rag_min_score():.2f}）")
-            for idx, (_chunk, score, meta) in enumerate(rag_items[:4], start=1):
-                source = "未知来源"
-                if isinstance(meta, (list, tuple)) and meta:
-                    try:
-                        source = Path(str(meta[0])).name or str(meta[0])
-                    except Exception:
-                        source = str(meta[0])
-                lines.append(f"  {idx}. {source}（score={float(score):.3f}）")
+            lines.append(self._build_rag_evidence_block(rag_items, max_items=4, include_preview=True))
         return "\n".join(lines)

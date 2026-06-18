@@ -166,6 +166,20 @@ class SettingsStoryEnvMixin:
         if hasattr(self, "rag_min_score"):
             rag_min_score_value = self._clamp_float(self.rag_min_score.get(), default=0.12, min_value=0.0, max_value=1.0)
             payload["RAG_MIN_SCORE"] = f"{rag_min_score_value:.2f}"
+        if hasattr(self, "rag_paragraphs_per_chunk"):
+            paragraphs_per_chunk = self._clamp_int(self.rag_paragraphs_per_chunk.get(), default=4, min_value=1, max_value=12)
+            payload["RAG_PARAGRAPHS_PER_CHUNK"] = str(paragraphs_per_chunk)
+            if hasattr(self, "rag_overlap_paragraphs"):
+                overlap_paragraphs = self._clamp_int(
+                    self.rag_overlap_paragraphs.get(),
+                    default=1,
+                    min_value=0,
+                    max_value=max(0, paragraphs_per_chunk - 1),
+                )
+                payload["RAG_OVERLAP_PARAGRAPHS"] = str(overlap_paragraphs)
+        if hasattr(self, "rag_long_paragraph_chars"):
+            long_paragraph_chars = self._clamp_int(self.rag_long_paragraph_chars.get(), default=800, min_value=200, max_value=4000)
+            payload["RAG_LONG_PARAGRAPH_CHARS"] = str(long_paragraph_chars)
         return payload
 
     def _read_mode_setting_value(self, key: str):
@@ -417,6 +431,24 @@ class SettingsStoryEnvMixin:
             rag_raw = (os.getenv("RAG_MIN_SCORE", "") or "").strip()
             if rag_raw:
                 self.rag_min_score.set(self._clamp_float(rag_raw, default=0.12, min_value=0.0, max_value=1.0))
+        if hasattr(self, "rag_paragraphs_per_chunk"):
+            paragraphs_raw = (os.getenv("RAG_PARAGRAPHS_PER_CHUNK", "") or "").strip()
+            if paragraphs_raw:
+                self.rag_paragraphs_per_chunk.set(self._clamp_int(paragraphs_raw, default=4, min_value=1, max_value=12))
+        if hasattr(self, "rag_overlap_paragraphs"):
+            overlap_raw = (os.getenv("RAG_OVERLAP_PARAGRAPHS", "") or "").strip()
+            max_overlap = 11
+            if hasattr(self, "rag_paragraphs_per_chunk"):
+                try:
+                    max_overlap = max(0, int(self.rag_paragraphs_per_chunk.get()) - 1)
+                except Exception:
+                    max_overlap = 3
+            if overlap_raw:
+                self.rag_overlap_paragraphs.set(self._clamp_int(overlap_raw, default=1, min_value=0, max_value=max_overlap))
+        if hasattr(self, "rag_long_paragraph_chars"):
+            long_paragraph_raw = (os.getenv("RAG_LONG_PARAGRAPH_CHARS", "") or "").strip()
+            if long_paragraph_raw:
+                self.rag_long_paragraph_chars.set(self._clamp_int(long_paragraph_raw, default=800, min_value=200, max_value=4000))
         if hasattr(self, "story_quality_review_enabled"):
             quality_review_raw = (os.getenv("STORY_QUALITY_REVIEW", "") or "").strip().lower()
             if quality_review_raw:

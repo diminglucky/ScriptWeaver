@@ -148,6 +148,9 @@ class ModernApp(
             "style",
             "top_k",
             "temperature",
+            "rag_paragraphs_per_chunk",
+            "rag_overlap_paragraphs",
+            "rag_long_paragraph_chars",
             "model_only",
             "story_global_overview_enabled",
             "story_overview_before_generate",
@@ -257,6 +260,27 @@ class ModernApp(
                 rag_min_score = 0.12
             rag_min_score = max(0.0, min(1.0, rag_min_score))
 
+            rag_paragraphs_per_chunk = 4
+            try:
+                rag_paragraphs_per_chunk = int(self.rag_paragraphs_per_chunk.get())
+            except Exception:
+                rag_paragraphs_per_chunk = 4
+            rag_paragraphs_per_chunk = max(1, min(12, rag_paragraphs_per_chunk))
+
+            rag_overlap_paragraphs = 1
+            try:
+                rag_overlap_paragraphs = int(self.rag_overlap_paragraphs.get())
+            except Exception:
+                rag_overlap_paragraphs = 1
+            rag_overlap_paragraphs = max(0, min(rag_paragraphs_per_chunk - 1, rag_overlap_paragraphs))
+
+            rag_long_paragraph_chars = 800
+            try:
+                rag_long_paragraph_chars = int(self.rag_long_paragraph_chars.get())
+            except Exception:
+                rag_long_paragraph_chars = 800
+            rag_long_paragraph_chars = max(200, min(4000, rag_long_paragraph_chars))
+
             model_only = False
             try:
                 model_only = bool(self.model_only.get())
@@ -284,6 +308,9 @@ class ModernApp(
                 ).strip()
                 or DEFAULT_STORY_GENERATION_MODE,
                 "RAG_MIN_SCORE": f"{rag_min_score:.2f}",
+                "RAG_PARAGRAPHS_PER_CHUNK": str(rag_paragraphs_per_chunk),
+                "RAG_OVERLAP_PARAGRAPHS": str(rag_overlap_paragraphs),
+                "RAG_LONG_PARAGRAPH_CHARS": str(rag_long_paragraph_chars),
                 "STORY_OUTLINE_ALIGNMENT_STRICT": "1"
                 if bool(self.story_outline_alignment_strict.get())
                 else "0",
@@ -406,6 +433,17 @@ class ModernApp(
         )
         self.rag_min_score = tk.DoubleVar(
             value=self._read_env_float("RAG_MIN_SCORE", 0.12, 0.0, 1.0)
+        )
+        self.rag_paragraphs_per_chunk = tk.IntVar(
+            value=self._read_env_int("RAG_PARAGRAPHS_PER_CHUNK", 4, 1, 12)
+        )
+        self.rag_overlap_paragraphs = tk.IntVar(
+            value=self._read_env_int("RAG_OVERLAP_PARAGRAPHS", 1, 0, 11)
+        )
+        if self.rag_overlap_paragraphs.get() >= self.rag_paragraphs_per_chunk.get():
+            self.rag_overlap_paragraphs.set(max(0, self.rag_paragraphs_per_chunk.get() - 1))
+        self.rag_long_paragraph_chars = tk.IntVar(
+            value=self._read_env_int("RAG_LONG_PARAGRAPH_CHARS", 800, 200, 4000)
         )
         self.category = tk.StringVar(value=self._read_env_text("STORY_CATEGORY", "职场"))
         self.style = tk.StringVar(

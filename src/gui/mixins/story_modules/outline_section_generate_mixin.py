@@ -182,12 +182,17 @@ class OutlineSectionGenerateMixin:
                     from src.kb.search import KnowledgeBaseSearcher, SearchConfig
                     load_dotenv()
                     if need_build:
-                        cfg = IngestConfig(data_root=Path(self._ui_get(self.data_dir.get)), index_dir=Path(self._ui_get(self.index_dir.get)))
+                        cfg = IngestConfig(
+                            data_root=Path(self._ui_get(self.data_dir.get)),
+                            index_dir=Path(self._ui_get(self.index_dir.get)),
+                            **self._rag_ingest_kwargs(),
+                        )
                         KnowledgeBaseIngestor(cfg).build()
                     searcher = KnowledgeBaseSearcher(SearchConfig(index_dir=Path(self._ui_get(self.index_dir.get)), top_k=self._ui_get(self.top_k.get)))
                     results = searcher.search(query, self._ui_get(self.top_k.get))
                     rag_rows = self._postprocess_rag_results(results) if hasattr(self, "_postprocess_rag_results") else results
                     contexts = [c for c, _s, _m in rag_rows]
+                    self._emit_section_rag_evidence(rag_rows, selected_index)
                     self._generate_single_section_with_contexts(query, contexts, selected_index)
                 except Exception as e:
                     self._report_section_generation_error(selected_index, e)
@@ -618,6 +623,69 @@ class OutlineSectionGenerateMixin:
         self._do_generate_section(client, query, contexts, section_index)
     
     
+    def _build_section_rag_query(self, query: str, section_index: int) -> str:
+        """Build a retrieval query that follows the current chapter and prior story state."""
+        section = self.parsed_sections[section_index] if 0 <= section_index < len(self.parsed_sections) else {}
+        title = str(section.get("title", "") if isinstance(section, dict) else "").strip()
+        purpose = str(section.get("purpose", "") if isinstance(section, dict) else "").strip()
+        conflict = str(section.get("conflict", "") if isinstance(section, dict) else "").strip()
+        required_beats = section.get("required_beats", []) if isinstance(section, dict) else []
+        if isinstance(required_beats, (list, tuple)):
+            beats_text = " ".join(str(x) for x in required_beats if str(x).strip())
+        else:
+            beats_text = str(required_beats or "")
+        try:
+            previous_tail = extract_last_sentence(getattr(self, "generated_content", "") or "", max_chars=500)
+        except Exception:
+            previous_tail = (getattr(self, "generated_content", "") or "")[-500:]
+        memory_text = ""
+        if hasattr(self, "_build_story_memory_context"):
+            try:
+                memory_text = str(self._build_story_memory_context(section_index, max_items=4) or "")
+            except Exception:
+                memory_text = ""
+        parts = [query, title, purpose, conflict, beats_text, memory_text, previous_tail]
+        return "\n".join(str(part).strip() for part in parts if str(part or "").strip())
+
+    def _search_section_rag_rows(self, searcher, query: str, section_index: int, top_k: int) -> list:
+        """Retrieve fresh RAG contexts for the specific chapter being generated."""
+        rag_query = self._build_section_rag_query(query, section_index)
+        results = searcher.search(rag_query or query, top_k)
+        return self._postprocess_rag_results(results) if hasattr(self, "_postprocess_rag_results") else results
+
+    def _search_section_rag_contexts(self, searcher, query: str, section_index: int, top_k: int) -> list[str]:
+        """Retrieve fresh RAG contexts for the specific chapter being generated."""
+        rag_rows = self._search_section_rag_rows(searcher, query, section_index, top_k)
+        return [c for c, _s, _m in rag_rows]
+
+    def _emit_section_rag_evidence(self, rag_rows, section_index: int) -> None:
+        if not hasattr(self, "_build_rag_evidence_block"):
+            return
+        block = self._build_rag_evidence_block(
+            rag_rows,
+            section_index=section_index,
+            max_items=4,
+            include_preview=True,
+        )
+        if not block:
+            return
+        self._ui(self.output.insert, END, "\n" + block + "\n\n")
+        self._ui(self.output.see, END)
+
+    @staticmethod
+    def _coerce_context_provider_result(provider_result) -> tuple[list[str], list | None]:
+        if isinstance(provider_result, dict):
+            contexts = provider_result.get("contexts", [])
+            rag_rows = provider_result.get("rag_rows")
+            return list(contexts or []), rag_rows
+        if (
+            isinstance(provider_result, tuple)
+            and len(provider_result) == 2
+            and isinstance(provider_result[0], (list, tuple))
+        ):
+            return list(provider_result[0] or []), list(provider_result[1] or [])
+        return list(provider_result or []), None
+
     def _do_generate_section(
         self,
         client,
@@ -1178,7 +1246,7 @@ class OutlineSectionGenerateMixin:
         raise last_exc  # type: ignore[misc]
     
     
-    def _auto_generate_all_sections(self, query, contexts, start_index=0):
+    def _auto_generate_all_sections(self, query, contexts, start_index=0, context_provider=None):
         """自动生成所有章节（无知识库）"""
         def task():
             try:
@@ -1207,8 +1275,17 @@ class OutlineSectionGenerateMixin:
                     chapter_ok = False
                     for ch_attempt in range(_PER_CHAPTER_RETRY_MAX):
                         try:
+                            chapter_contexts = contexts
+                            if context_provider is not None:
+                                self.generated_content = self._rebuild_generated_content_from_output(
+                                    self._get_output_text_snapshot()
+                                )
+                                chapter_contexts, rag_rows = self._coerce_context_provider_result(context_provider(idx))
+                                chapter_contexts = list(chapter_contexts or [])
+                                if rag_rows is not None:
+                                    self._emit_section_rag_evidence(rag_rows, idx)
                             result = self._do_generate_section(
-                                client, query, contexts, idx,
+                                client, query, chapter_contexts, idx,
                                 existing_chapter_policy="replace",
                                 skip_dialog=True,
                             )

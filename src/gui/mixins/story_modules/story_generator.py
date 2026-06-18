@@ -318,7 +318,11 @@ class StoryGeneratorMixin:
 				if need_build:
 					self._header_status("正在构建索引...", "⏳")
 					from src.kb.ingest import IngestConfig, KnowledgeBaseIngestor
-					cfg = IngestConfig(data_root=Path(data_dir_val), index_dir=Path(index_dir_val))
+					cfg = IngestConfig(
+						data_root=Path(data_dir_val),
+						index_dir=Path(index_dir_val),
+						**self._rag_ingest_kwargs(),
+					)
 					KnowledgeBaseIngestor(cfg).build()
 
 				self._header_status("检索资料中...", "🔍")
@@ -414,15 +418,36 @@ class StoryGeneratorMixin:
 					contexts = []
 					if need_build:
 						from src.kb.ingest import IngestConfig, KnowledgeBaseIngestor
-						cfg = IngestConfig(data_root=Path(data_dir_val), index_dir=Path(index_dir_val))
+						cfg = IngestConfig(
+							data_root=Path(data_dir_val),
+							index_dir=Path(index_dir_val),
+							**self._rag_ingest_kwargs(),
+						)
 						KnowledgeBaseIngestor(cfg).build()
 					from src.kb.search import KnowledgeBaseSearcher, SearchConfig
 					searcher = KnowledgeBaseSearcher(SearchConfig(index_dir=Path(index_dir_val), top_k=top_k_val))
-					results = searcher.search(query, top_k_val)
-					rag_rows = self._postprocess_rag_results(results) if hasattr(self, "_postprocess_rag_results") else results
-					contexts = [c for c, _s, _m in rag_rows]
+					def context_provider(section_index):
+						if hasattr(self, "_search_section_rag_rows"):
+							rag_rows = self._search_section_rag_rows(searcher, query, section_index, top_k_val)
+							return {
+								"contexts": [c for c, _s, _m in rag_rows],
+								"rag_rows": rag_rows,
+							}
+						if hasattr(self, "_search_section_rag_contexts"):
+							return self._search_section_rag_contexts(searcher, query, section_index, top_k_val)
+						results = searcher.search(query, top_k_val)
+						rag_rows = self._postprocess_rag_results(results) if hasattr(self, "_postprocess_rag_results") else results
+						return {
+							"contexts": [c for c, _s, _m in rag_rows],
+							"rag_rows": rag_rows,
+						}
+
+					if hasattr(self, "_coerce_context_provider_result"):
+						contexts, _rag_rows = self._coerce_context_provider_result(context_provider(start_index))
+					else:
+						contexts = context_provider(start_index)
 					# 修复：调用 _auto_generate_all_sections 而非未定义的方法
-					self._auto_generate_all_sections(query, contexts, start_index)
+					self._auto_generate_all_sections(query, contexts, start_index, context_provider=context_provider)
 				except Exception as e:
 					logger.exception("auto generate all with rag failed")
 					brief = _sanitize(str(e)) or e.__class__.__name__

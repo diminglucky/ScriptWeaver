@@ -135,6 +135,7 @@ class OutlineGenerateMixin:
             cfg = IngestConfig(
                 data_root=Path(self._ui_get(self.data_dir.get)),
                 index_dir=Path(self._ui_get(self.index_dir.get)),
+                **self._rag_ingest_kwargs(),
             )
             KnowledgeBaseIngestor(cfg).build()
 

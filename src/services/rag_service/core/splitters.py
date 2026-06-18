@@ -74,12 +74,14 @@ def split_text(
     chunk_size: int = 600,
     overlap: int = 80,
     overlap_paragraphs: int = 1,
+    paragraphs_per_chunk: int = 4,
 ) -> list[SplitChunk]:
-    """Split ``text`` into paragraph-aware chunks.
+    """Split ``text`` into paragraph-window chunks.
 
-    Non-empty lines are treated as prose paragraphs. Paragraphs are packed up
-    to ``chunk_size`` and the next chunk carries ``overlap_paragraphs`` from
-    the previous chunk. Overlong paragraphs fall back to sentence splitting.
+    Non-empty lines are treated as prose paragraphs. Normal chunks contain a
+    fixed number of paragraphs and the next chunk carries whole paragraphs
+    from the previous chunk. ``chunk_size`` is only a safety cap for splitting
+    a single overlong paragraph by sentence.
     """
     if not text or not text.strip():
         return []
@@ -89,6 +91,10 @@ def split_text(
         raise ValueError("overlap must satisfy 0 <= overlap < chunk_size")
     if overlap_paragraphs < 0:
         raise ValueError("overlap_paragraphs must be non-negative")
+    if paragraphs_per_chunk <= 0:
+        raise ValueError("paragraphs_per_chunk must be positive")
+    if overlap_paragraphs >= paragraphs_per_chunk:
+        raise ValueError("overlap_paragraphs must be less than paragraphs_per_chunk")
 
     paragraphs = _iter_paragraphs(text)
     if not paragraphs:
@@ -101,30 +107,14 @@ def split_text(
             units.append((start, end, paragraph))
 
     chunks: list[SplitChunk] = []
-    cur_units: list[tuple[int, int, str]] = []
-
-    def flush() -> None:
-        nonlocal cur_units
-        if not cur_units:
-            return
-        body = "\n\n".join(unit[2].strip() for unit in cur_units).strip()
+    step = paragraphs_per_chunk - overlap_paragraphs
+    index = 0
+    while index < len(units):
+        window = units[index:index + paragraphs_per_chunk]
+        body = "\n\n".join(unit[2].strip() for unit in window).strip()
         if len(body) > 20:
-            chunks.append(SplitChunk(text=body, start=cur_units[0][0], end=cur_units[-1][1]))
-        cur_units = []
-
-    for unit in units:
-        unit_len = len(unit[2])
-        current_len = len("\n\n".join(u[2] for u in cur_units)) if cur_units else 0
-        if cur_units and current_len + 2 + unit_len > chunk_size:
-            prev_units = cur_units[:]
-            flush()
-            if overlap_paragraphs:
-                cur_units = prev_units[-overlap_paragraphs:]
-            elif overlap > 0 and prev_units:
-                last = prev_units[-1]
-                fallback_start = max(last[0], last[1] - overlap)
-                cur_units = [(fallback_start, last[1], text[fallback_start:last[1]].strip())]
-        cur_units.append(unit)
-
-    flush()
+            chunks.append(SplitChunk(text=body, start=window[0][0], end=window[-1][1]))
+        if index + paragraphs_per_chunk >= len(units):
+            break
+        index += step
     return chunks

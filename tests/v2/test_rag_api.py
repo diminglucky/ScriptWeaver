@@ -12,6 +12,8 @@ from src.services.rag_service.core.retrievers import CreativeRetriever
 
 
 class _FakeEmbedder:
+    model_name = "fake"
+
     async def encode_async(self, texts: list[str]) -> list[list[float]]:
         return [self._vec(t) for t in texts]
 
@@ -70,6 +72,18 @@ def test_ingest_search_delete_reference_roundtrip(tmp_path: Path):
         assert ingest.status_code == 200
         assert ingest.json()["ingested"] == 2
         assert ingest.json()["chunks"] >= 2
+        docs = hub.shard("reference").store.fetch_documents(["book-1", "style-1"])
+        assert set(docs) == {"book-1", "style-1"}
+        assert docs["book-1"]["path"] == "/kb/book-1.txt"
+        assert docs["book-1"]["chunk_count"] >= 1
+        assert docs["book-1"]["chunk_settings"] == {
+            "max_chars": 200,
+            "overlap": 20,
+            "overlap_paragraphs": 1,
+            "paragraphs_per_chunk": 4,
+        }
+        assert docs["book-1"]["embedding_model"] == "fake"
+        assert docs["book-1"]["size_bytes"] > 0
 
         search = client.post(
             "/v1/kb/reference/search",
@@ -84,6 +98,7 @@ def test_ingest_search_delete_reference_roundtrip(tmp_path: Path):
         delete = client.delete("/v1/kb/reference/documents/book-1")
         assert delete.status_code == 200
         assert delete.json()["removed"] >= 1
+        assert hub.shard("reference").store.fetch_documents(["book-1"]) == {}
 
         after = client.post(
             "/v1/kb/reference/search",
@@ -91,6 +106,129 @@ def test_ingest_search_delete_reference_roundtrip(tmp_path: Path):
         )
         assert after.status_code == 200
         assert all(r["source"]["source_id"] != "book-1" for r in after.json()["results"])
+    finally:
+        hub.close()
+
+
+def test_ingest_replaces_same_source_chunks(tmp_path: Path):
+    client, hub = _client(tmp_path)
+    try:
+        first = client.post(
+            "/v1/kb/reference/documents",
+            json={
+                "documents": [{
+                    "source_id": "book-1",
+                    "path": "/kb/book-1.txt",
+                    "text": "Dragon old lore. " * 8,
+                    "tags": ["lore"],
+                }],
+                "chunk_size": 80,
+                "overlap": 10,
+                "overlap_paragraphs": 0,
+            },
+        )
+        assert first.status_code == 200
+
+        second = client.post(
+            "/v1/kb/reference/documents",
+            json={
+                "documents": [{
+                    "source_id": "book-1",
+                    "path": "/kb/book-1.txt",
+                    "text": "Style replacement note. " * 8,
+                    "tags": ["style"],
+                }],
+                "chunk_size": 80,
+                "overlap": 10,
+                "overlap_paragraphs": 0,
+            },
+        )
+        assert second.status_code == 200
+        rows = hub.shard("reference").store.list_chunks()
+        docs = hub.shard("reference").store.fetch_documents(["book-1"])
+        assert {row["source_id"] for row in rows} == {"book-1"}
+        assert all("old lore" not in row["text"] for row in rows)
+        assert any("replacement" in row["text"] for row in rows)
+        assert docs["book-1"]["chunk_count"] == len(rows)
+        assert docs["book-1"]["content_hash"]
+        assert docs["book-1"]["chunk_settings"]["paragraphs_per_chunk"] == 4
+    finally:
+        hub.close()
+
+
+def test_ingest_invalid_chunk_window_returns_422(tmp_path: Path):
+    client, hub = _client(tmp_path)
+    try:
+        response = client.post(
+            "/v1/kb/reference/documents",
+            json={
+                "documents": [{
+                    "source_id": "book-1",
+                    "path": "/kb/book-1.txt",
+                    "text": "Dragon lore. " * 8,
+                    "tags": ["lore"],
+                }],
+                "chunk_size": 50,
+                "overlap": 50,
+            },
+        )
+        assert response.status_code == 422
+    finally:
+        hub.close()
+
+
+def test_ingest_duplicate_source_id_returns_422(tmp_path: Path):
+    client, hub = _client(tmp_path)
+    try:
+        response = client.post(
+            "/v1/kb/reference/documents",
+            json={
+                "documents": [
+                    {
+                        "source_id": "book-1",
+                        "path": "/kb/book-a.txt",
+                        "text": "Dragon first version. " * 8,
+                    },
+                    {
+                        "source_id": "book-1",
+                        "path": "/kb/book-b.txt",
+                        "text": "Dragon second version. " * 8,
+                    },
+                ],
+            },
+        )
+        assert response.status_code == 422
+    finally:
+        hub.close()
+
+
+def test_ingest_counts_only_chunkable_documents(tmp_path: Path):
+    client, hub = _client(tmp_path)
+    try:
+        response = client.post(
+            "/v1/kb/reference/documents",
+            json={
+                "documents": [
+                    {
+                        "source_id": "too-short",
+                        "path": "/kb/too-short.txt",
+                        "text": "short",
+                    },
+                    {
+                        "source_id": "book-1",
+                        "path": "/kb/book-1.txt",
+                        "text": "Dragon usable reference. " * 8,
+                    },
+                ],
+                "chunk_size": 120,
+                "overlap": 20,
+                "overlap_paragraphs": 0,
+            },
+        )
+        assert response.status_code == 200
+        assert response.json()["ingested"] == 1
+        docs = hub.shard("reference").store.fetch_documents(["too-short", "book-1"])
+        assert set(docs) == {"book-1"}
     finally:
         hub.close()
 
@@ -132,6 +270,28 @@ def test_project_memory_crud_and_search_is_project_scoped(tmp_path: Path):
         assert cleared.status_code == 200
         assert cleared.json()["removed"] == 2
         assert client.get("/v1/projects/proj-a/memory").json()["entries"] == []
+    finally:
+        hub.close()
+
+
+def test_project_memory_replaces_same_source(tmp_path: Path):
+    client, hub = _client(tmp_path)
+    try:
+        first = client.post(
+            "/v1/projects/proj-a/memory",
+            json={"entries": [{"source_id": "chapter-1", "text": "Old dragon memory. " * 3, "tags": ["continuity"]}]},
+        )
+        assert first.status_code == 200
+        second = client.post(
+            "/v1/projects/proj-a/memory",
+            json={"entries": [{"source_id": "chapter-1", "text": "Fresh style memory. " * 3, "tags": ["continuity"]}]},
+        )
+        assert second.status_code == 200
+        listed = client.get("/v1/projects/proj-a/memory")
+        entries = listed.json()["entries"]
+        assert len(entries) == 1
+        assert entries[0]["source_id"] == "chapter-1"
+        assert "Fresh style memory" in entries[0]["text"]
     finally:
         hub.close()
 

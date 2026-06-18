@@ -39,7 +39,7 @@ def test_overlap_creates_continuity_across_chunks():
         "第三段揭示门锁没有坏却总是自动反锁。" * 2,
         "第四段把旧照片和错位记忆联系起来。" * 2,
     ])
-    chunks = split_text(text, chunk_size=70, overlap=12, overlap_paragraphs=1)
+    chunks = split_text(text, chunk_size=70, overlap=12, overlap_paragraphs=1, paragraphs_per_chunk=2)
     assert len(chunks) >= 2
     first_paragraph_of_second = chunks[1].text.split("\n\n", 1)[0]
     assert first_paragraph_of_second in chunks[0].text
@@ -65,10 +65,43 @@ def test_single_newline_lines_are_treated_as_paragraphs():
         "beta paragraph has enough detail to be indexed",
         "gamma paragraph has enough detail to be indexed",
     ])
-    chunks = split_text(text, chunk_size=95, overlap=10, overlap_paragraphs=1)
+    chunks = split_text(text, chunk_size=95, overlap=10, overlap_paragraphs=1, paragraphs_per_chunk=2)
     assert len(chunks) >= 2
     assert chunks[0].text.split("\n\n") == [
         "alpha paragraph has enough detail to be indexed",
         "beta paragraph has enough detail to be indexed",
     ]
     assert chunks[1].text.startswith("beta paragraph")
+
+
+def test_chunking_uses_paragraph_count_not_character_budget():
+    text = "\n".join([
+        "paragraph one is intentionally longer than the tiny character budget",
+        "paragraph two is also longer than the tiny character budget",
+        "paragraph three remains its own paragraph",
+        "paragraph four remains its own paragraph",
+    ])
+    chunks = split_text(
+        text,
+        chunk_size=30,
+        overlap=5,
+        overlap_paragraphs=1,
+        paragraphs_per_chunk=3,
+    )
+    assert len(chunks) == 2
+    assert chunks[0].text.split("\n\n") == [
+        "paragraph one is intentionally longer than the tiny character budget",
+        "paragraph two is also longer than the tiny character budget",
+        "paragraph three remains its own paragraph",
+    ]
+    assert chunks[1].text.split("\n\n") == [
+        "paragraph three remains its own paragraph",
+        "paragraph four remains its own paragraph",
+    ]
+
+
+def test_invalid_paragraph_window_raises():
+    with pytest.raises(ValueError):
+        split_text("x" * 30, paragraphs_per_chunk=0)
+    with pytest.raises(ValueError):
+        split_text("x" * 30, paragraphs_per_chunk=2, overlap_paragraphs=2)

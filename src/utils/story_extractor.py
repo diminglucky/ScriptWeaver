@@ -48,6 +48,8 @@ class StoryExtractor:
         fixed_prefixes = (
             "🎭 本次模版：",
             "🔎 RAG检索：",
+            "🔎 第 ",
+            "片段：",
             "🧠 创新引擎",
             "📊 RAG检索：",
             "🧭 题材纠偏：",
@@ -71,6 +73,7 @@ class StoryExtractor:
             r"^正在构建索引[\.。…]*$",
             r"^正在生成第\s*\d+/\d+\s*段.*$",
             r"^正在生成第\s*\d+/\d+\s*章.*$",
+            r"^第\s*\d+\s*章\s*RAG检索[:：].*$",
             r"^No text-like files found under .+$",
             r"^未找到索引.*$",
             r"^目录对齐不足.*$",

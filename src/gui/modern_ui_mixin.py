@@ -487,27 +487,27 @@ class ModernUiMixin:
 
     def _build_header_status_card(self, right_container: tk.Frame) -> None:
         """构建顶部栏状态卡片。"""
-        status_card = tk.Frame(
+        self.header_status_card = tk.Frame(
             right_container,
             bg=Theme.SURFACE,
             relief="flat"
         )
-        status_card.pack(side="left", padx=(0, 12))
+        self.header_status_card.pack(side="left", padx=(0, 12))
 
-        status_inner = tk.Frame(status_card, bg=Theme.SURFACE)
-        status_inner.pack(padx=16, pady=8)
+        self.header_status_inner = tk.Frame(self.header_status_card, bg=Theme.SURFACE)
+        self.header_status_inner.pack(padx=16, pady=8)
 
         self.header_status_icon = tk.Label(
-            status_inner,
+            self.header_status_inner,
             text="✅",
             font=(Theme.FONT_FAMILY, 14),
             bg=Theme.SURFACE,
-            fg=Theme.TEXT_SECONDARY
+            fg=Theme.SUCCESS
         )
         self.header_status_icon.pack(side="left", padx=(0, 8))
 
         self.header_status_text = tk.Label(
-            status_inner,
+            self.header_status_inner,
             text="就绪",
             font=(Theme.FONT_FAMILY, Theme.FONT_SIZE_NORMAL),
             bg=Theme.SURFACE,
@@ -517,31 +517,33 @@ class ModernUiMixin:
 
     def _build_header_user_card(self, right_container: tk.Frame) -> None:
         """构建顶部栏用户卡片。"""
-        user_card = tk.Frame(
+        self.header_user_card = tk.Frame(
             right_container,
             bg=Theme.SURFACE,
             relief="flat"
         )
-        user_card.pack(side="left")
+        self.header_user_card.pack(side="left")
 
-        user_inner = tk.Frame(user_card, bg=Theme.SURFACE)
-        user_inner.pack(padx=16, pady=8)
+        self.header_user_inner = tk.Frame(self.header_user_card, bg=Theme.SURFACE)
+        self.header_user_inner.pack(padx=16, pady=8)
 
-        tk.Label(
-            user_inner,
+        self.header_user_icon = tk.Label(
+            self.header_user_inner,
             text="👤",
             font=(Theme.FONT_FAMILY, 16),
             bg=Theme.SURFACE,
             fg=Theme.TEXT_SECONDARY
-        ).pack(side="left", padx=(0, 10))
+        )
+        self.header_user_icon.pack(side="left", padx=(0, 10))
         
-        tk.Label(
-            user_inner,
+        self.header_user_name = tk.Label(
+            self.header_user_inner,
             text="diming",
-            font=(Theme.FONT_FAMILY, Theme.FONT_SIZE_NORMAL),
+            font=(Theme.FONT_FAMILY, Theme.FONT_SIZE_NORMAL, "bold"),
             bg=Theme.SURFACE,
             fg=Theme.TEXT_PRIMARY
-        ).pack(side="left")
+        )
+        self.header_user_name.pack(side="left")
 
     def _build_header_separator(self) -> None:
         """构建顶部栏底部分隔线。"""
@@ -552,6 +554,7 @@ class ModernUiMixin:
         """将现代化主题应用到已创建的组件"""
         # 应用到主notebook
         self._apply_theme_to_root_chrome()
+        self._apply_header_theme()
         if hasattr(self, 'notebook'):
             self.notebook.configure(style="TNotebook")
             # 添加边距，让选项卡更有呼吸感
@@ -565,6 +568,36 @@ class ModernUiMixin:
         # 优化内部notebook（story_notebook等）
         if hasattr(self, 'story_notebook'):
             self.story_notebook.configure(style="TNotebook")
+
+    def _apply_header_theme(self) -> None:
+        """Keep the top status/user cards readable in both themes."""
+        surface_widgets = (
+            "header_status_card",
+            "header_status_inner",
+            "header_status_text",
+            "header_status_icon",
+            "header_user_card",
+            "header_user_inner",
+            "header_user_icon",
+            "header_user_name",
+        )
+        for attr in surface_widgets:
+            widget = getattr(self, attr, None)
+            if widget is None:
+                continue
+            try:
+                widget.configure(bg=Theme.SURFACE)
+            except Exception:
+                pass
+
+        if hasattr(self, "header_status_icon"):
+            self.header_status_icon.configure(fg=Theme.SUCCESS)
+        if hasattr(self, "header_status_text"):
+            self.header_status_text.configure(fg=Theme.TEXT_PRIMARY)
+        if hasattr(self, "header_user_icon"):
+            self.header_user_icon.configure(fg=Theme.TEXT_SECONDARY)
+        if hasattr(self, "header_user_name"):
+            self.header_user_name.configure(fg=Theme.TEXT_PRIMARY)
 
     def _apply_theme_to_root_chrome(self) -> None:
         """Recolor header/status widgets that live outside the main notebook."""

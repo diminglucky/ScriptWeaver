@@ -4,7 +4,9 @@ from pathlib import Path
 
 from src.gui.mixins.kb_enhancements import _clear_known_index_artifacts
 from src.gui.mixins.kb_enhancements import _discover_supported_files
+from src.gui.mixins.kb_enhancements import _discover_index_shards
 from src.gui.mixins.kb_enhancements import _has_valid_index_artifacts
+from src.gui.mixins.kb_enhancements import _load_index_chunks
 from src.gui.mixins.kb_enhancements import _search_text_matches
 
 
@@ -86,6 +88,53 @@ class KBPreviewHelperTests(unittest.TestCase):
             (root / "notes.txt").write_text("not an index", encoding="utf-8")
             (root / "manifest.json").write_text("{}", encoding="utf-8")
             self.assertFalse(_has_valid_index_artifacts(root))
+
+    def test_discover_index_shards_and_load_chunks(self):
+        import json
+        import sqlite3
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            shard = root / "v2" / "reference" / "_global"
+            shard.mkdir(parents=True)
+            db = shard / "meta.sqlite"
+            conn = sqlite3.connect(db)
+            try:
+                conn.execute(
+                    """
+                    CREATE TABLE chunks (
+                        chunk_id TEXT PRIMARY KEY,
+                        source_id TEXT NOT NULL,
+                        path TEXT NOT NULL,
+                        position INTEGER NOT NULL DEFAULT 0,
+                        text TEXT NOT NULL,
+                        kb_type TEXT NOT NULL,
+                        project_id TEXT,
+                        tags_json TEXT NOT NULL DEFAULT '[]',
+                        ordinal INTEGER NOT NULL UNIQUE
+                    )
+                    """
+                )
+                conn.execute(
+                    """
+                    INSERT INTO chunks
+                        (chunk_id, source_id, path, position, text, kb_type, project_id, tags_json, ordinal)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    ("c1", "novel", "novel.txt", 0, "chunk text", "reference", None, json.dumps(["tag"]), 0),
+                )
+                conn.commit()
+            finally:
+                conn.close()
+
+            shards = _discover_index_shards(root)
+            self.assertEqual(len(shards), 1)
+            self.assertEqual(shards[0]["label"], "reference/_global")
+            self.assertEqual(shards[0]["count"], 1)
+
+            chunks = _load_index_chunks(shards[0]["db_path"])
+            self.assertEqual(chunks[0]["text"], "chunk text")
+            self.assertEqual(chunks[0]["tags"], ["tag"])
 
 
 if __name__ == "__main__":

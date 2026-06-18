@@ -62,6 +62,18 @@ class StoryRagPostprocessTests(unittest.TestCase):
         self.assertIn("本次模版", banner)
         self.assertIn("RAG检索", banner)
         self.assertIn("a.txt", banner)
+        self.assertIn("片段：内容A", banner)
+
+    def test_build_section_rag_evidence_block_contains_chunk_preview(self):
+        obj = self._make_obj()
+        block = obj._build_rag_evidence_block(
+            [("这是一段用于验证展示的知识库内容", 0.88, {"path": "docs/story.md", "position": 3})],
+            section_index=1,
+        )
+        self.assertIn("第 2 章 RAG检索", block)
+        self.assertIn("story.md #chunk-3", block)
+        self.assertIn("score=0.880", block)
+        self.assertIn("片段：这是一段用于验证展示的知识库内容", block)
 
 
 if __name__ == "__main__":

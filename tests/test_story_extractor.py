@@ -51,6 +51,19 @@ class StoryExtractorTests(unittest.TestCase):
         self.assertNotIn("RAG检索", pure)
         self.assertNotIn("score=", pure)
 
+    def test_extract_pure_story_filters_section_rag_evidence_preview(self):
+        text = (
+            "🔎 第 2 章 RAG检索：命中 1 条 Chunk（阈值≥0.40）\n"
+            "  1. source.md #chunk-3（score=0.880）\n"
+            "     片段：这是知识库片段，不应该进入正文。\n\n"
+            "这是正文第一段。\n"
+            "这是正文第二段。"
+        )
+        pure = StoryExtractor.extract_pure_story(text)
+        self.assertIn("这是正文第一段。", pure)
+        self.assertNotIn("RAG检索", pure)
+        self.assertNotIn("知识库片段", pure)
+
     def test_sanitize_for_publish_removes_control_chars(self):
         text = "这是正文\u200b第一段。\n这是正文第二段。\x07"
         cleaned = StoryExtractor.sanitize_for_publish(text)

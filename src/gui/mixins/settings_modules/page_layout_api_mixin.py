@@ -26,6 +26,7 @@ class SettingsPageLayoutApiMixin:
         grp_quick_switch = ttk.LabelFrame(scrollable_frame, text="⚡ 快速 API 切换", padding=(15, 10))
         grp_quick_switch.pack(fill="x", padx=15, pady=(10, 10))
         grp_quick_switch.columnconfigure(1, weight=1)
+        grp_quick_switch.columnconfigure(2, weight=0)
         
         # 说明文字
         tk.Label(grp_quick_switch, text="💡 在这里快速选择生成时使用的 API（无需切换页面）", 
@@ -36,7 +37,7 @@ class SettingsPageLayoutApiMixin:
         self.quick_story_api = tk.StringVar(value="DeepSeek")
         self.combo_quick_story_api = ttk.Combobox(grp_quick_switch, textvariable=self.quick_story_api,
                                                    values=["DeepSeek"], state="readonly", width=30)
-        self.combo_quick_story_api.grid(row=1, column=1, sticky="w", padx=(0, 8), pady=8)
+        self.combo_quick_story_api.grid(row=1, column=1, sticky="we", padx=(0, 8), pady=8)
         tk.Label(grp_quick_switch, text="← 用于生成目录和故事", bg=Theme.BG_SECONDARY, fg=Theme.TEXT_SECONDARY, font=("", 9)).grid(row=1, column=2, sticky="w")
         
         # 图片生成 API 选择
@@ -44,15 +45,16 @@ class SettingsPageLayoutApiMixin:
         self.quick_image_api = tk.StringVar(value="OpenAI (DALL-E)")
         self.combo_quick_image_api = ttk.Combobox(grp_quick_switch, textvariable=self.quick_image_api,
                                                    values=["OpenAI (DALL-E)"], state="readonly", width=30)
-        self.combo_quick_image_api.grid(row=2, column=1, sticky="w", padx=(0, 8), pady=8)
+        self.combo_quick_image_api.grid(row=2, column=1, sticky="we", padx=(0, 8), pady=8)
         tk.Label(grp_quick_switch, text="← 用于生成图片", bg=Theme.BG_SECONDARY, fg=Theme.TEXT_SECONDARY, font=("", 9)).grid(row=2, column=2, sticky="w")
         
         # 保存按钮
         quick_btn_frame = tk.Frame(grp_quick_switch, bg=Theme.BG_SECONDARY)
-        quick_btn_frame.grid(row=3, column=0, columnspan=3, pady=(10, 5))
+        quick_btn_frame.grid(row=3, column=0, columnspan=3, sticky="we", pady=(10, 5))
+        quick_btn_frame.columnconfigure(0, weight=1)
         tk.Button(quick_btn_frame, text="💾 保存 API 选择", command=self._save_quick_api_switch, 
                   bg="#10B981", fg=Theme.TEXT_PRIMARY, relief=tk.FLAT, padx=20, pady=8, cursor="hand2",
-                  font=("", 11, "bold")).pack()
+                  font=("", 11, "bold")).grid(row=0, column=0, sticky="we")
 
         # ========== 7. 测试日志 ==========
         grp_log = ttk.LabelFrame(scrollable_frame, text="📋 测试日志", padding=(15, 10))
@@ -128,6 +130,7 @@ class SettingsPageLayoutApiMixin:
         group = ttk.LabelFrame(scrollable_frame, text=title, padding=(15, 10))
         group.pack(fill="x", padx=15, pady=10)
         group.columnconfigure(1, weight=1)
+        group.columnconfigure(2, weight=0)
         return group
 
     def _get_story_provider_names(self) -> list[str]:
@@ -155,7 +158,7 @@ class SettingsPageLayoutApiMixin:
             state="readonly",
             width=25,
         )
-        self.settings_combo_provider.grid(row=0, column=1, sticky="w", padx=(0, 8), pady=8)
+        self.settings_combo_provider.grid(row=0, column=1, sticky="we", padx=(0, 8), pady=8)
         self.settings_combo_provider.bind("<<ComboboxSelected>>", self._on_settings_provider_change)
 
     def _build_story_api_model_row(self, group: ttk.LabelFrame) -> None:
@@ -170,7 +173,7 @@ class SettingsPageLayoutApiMixin:
             state="normal",
             width=35,
         )
-        self.settings_combo_model.grid(row=1, column=1, sticky="w", padx=(0, 8), pady=4)
+        self.settings_combo_model.grid(row=1, column=1, sticky="we", padx=(0, 8), pady=4)
         tk.Label(group, text="(可手动输入)", bg=Theme.BG_SECONDARY, fg=Theme.TEXT_SECONDARY, font=("", 9)).grid(
             row=1, column=2, sticky="w"
         )
@@ -180,7 +183,7 @@ class SettingsPageLayoutApiMixin:
             row=2, column=0, sticky="e", padx=(8, 4), pady=4
         )
         self.settings_api_key = self._create_settings_entry(group, width=50, show="•")
-        self.settings_api_key.grid(row=2, column=1, sticky="w", padx=(0, 8), pady=4)
+        self.settings_api_key.grid(row=2, column=1, sticky="we", padx=(0, 8), pady=4)
 
         self.show_key_var = tk.BooleanVar(value=False)
         tk.Checkbutton(
@@ -198,20 +201,22 @@ class SettingsPageLayoutApiMixin:
             row=3, column=0, sticky="e", padx=(8, 4), pady=4
         )
         self.settings_base_url = self._create_settings_entry(group, width=50)
-        self.settings_base_url.grid(row=3, column=1, sticky="w", padx=(0, 8), pady=4)
+        self.settings_base_url.grid(row=3, column=1, sticky="we", padx=(0, 8), pady=4)
 
         tk.Label(group, text="自定义模型:", bg=Theme.BG_SECONDARY, fg=Theme.TEXT_SECONDARY).grid(
             row=4, column=0, sticky="e", padx=(8, 4), pady=4
         )
         self.settings_custom_model = self._create_settings_entry(group, width=50)
-        self.settings_custom_model.grid(row=4, column=1, sticky="w", padx=(0, 8), pady=4)
+        self.settings_custom_model.grid(row=4, column=1, sticky="we", padx=(0, 8), pady=4)
         tk.Label(group, text="(仅自定义时使用)", bg=Theme.BG_SECONDARY, fg=Theme.TEXT_SECONDARY, font=("", 9)).grid(
             row=4, column=2, sticky="w"
         )
 
     def _build_story_api_buttons(self, group: ttk.LabelFrame) -> None:
         btn_frame = tk.Frame(group, bg=Theme.BG_SECONDARY)
-        btn_frame.grid(row=5, column=0, columnspan=3, pady=(10, 5))
+        btn_frame.grid(row=5, column=0, columnspan=3, sticky="we", pady=(10, 5))
+        btn_frame.columnconfigure(0, weight=1)
+        btn_frame.columnconfigure(1, weight=1)
         tk.Button(
             btn_frame,
             text="🔍 测试连接",
@@ -222,7 +227,7 @@ class SettingsPageLayoutApiMixin:
             padx=15,
             pady=6,
             cursor="hand2",
-        ).pack(side="left", padx=5)
+        ).grid(row=0, column=0, sticky="we", padx=5)
         tk.Button(
             btn_frame,
             text="💾 保存配置",
@@ -233,7 +238,7 @@ class SettingsPageLayoutApiMixin:
             padx=15,
             pady=6,
             cursor="hand2",
-        ).pack(side="left", padx=5)
+        ).grid(row=0, column=1, sticky="we", padx=5)
 
     def _build_image_api_provider_row(self, group: ttk.LabelFrame) -> None:
         tk.Label(group, text="API提供商:", bg=Theme.BG_SECONDARY, fg=Theme.TEXT_PRIMARY, font=("", 11, "bold")).grid(
@@ -247,7 +252,7 @@ class SettingsPageLayoutApiMixin:
             state="readonly",
             width=25,
         )
-        self.settings_combo_img_provider.grid(row=0, column=1, sticky="w", padx=(0, 8), pady=8)
+        self.settings_combo_img_provider.grid(row=0, column=1, sticky="we", padx=(0, 8), pady=8)
         self.settings_combo_img_provider.bind("<<ComboboxSelected>>", self._on_settings_img_provider_change)
 
     def _build_image_api_model_row(self, group: ttk.LabelFrame) -> None:
@@ -262,7 +267,7 @@ class SettingsPageLayoutApiMixin:
             state="normal",
             width=35,
         )
-        self.settings_combo_img_model.grid(row=1, column=1, sticky="w", padx=(0, 8), pady=4)
+        self.settings_combo_img_model.grid(row=1, column=1, sticky="we", padx=(0, 8), pady=4)
         tk.Label(group, text="(可手动输入)", bg=Theme.BG_SECONDARY, fg=Theme.TEXT_SECONDARY, font=("", 9)).grid(
             row=1, column=2, sticky="w"
         )
@@ -272,7 +277,7 @@ class SettingsPageLayoutApiMixin:
             row=2, column=0, sticky="e", padx=(8, 4), pady=4
         )
         self.settings_img_api_key = self._create_settings_entry(group, width=50, show="•")
-        self.settings_img_api_key.grid(row=2, column=1, sticky="w", padx=(0, 8), pady=4)
+        self.settings_img_api_key.grid(row=2, column=1, sticky="we", padx=(0, 8), pady=4)
 
         self.show_img_key_var = tk.BooleanVar(value=False)
         tk.Checkbutton(
@@ -290,20 +295,22 @@ class SettingsPageLayoutApiMixin:
             row=3, column=0, sticky="e", padx=(8, 4), pady=4
         )
         self.settings_img_base_url = self._create_settings_entry(group, width=50)
-        self.settings_img_base_url.grid(row=3, column=1, sticky="w", padx=(0, 8), pady=4)
+        self.settings_img_base_url.grid(row=3, column=1, sticky="we", padx=(0, 8), pady=4)
 
         tk.Label(group, text="自定义模型:", bg=Theme.BG_SECONDARY, fg=Theme.TEXT_SECONDARY).grid(
             row=4, column=0, sticky="e", padx=(8, 4), pady=4
         )
         self.settings_img_custom_model = self._create_settings_entry(group, width=50)
-        self.settings_img_custom_model.grid(row=4, column=1, sticky="w", padx=(0, 8), pady=4)
+        self.settings_img_custom_model.grid(row=4, column=1, sticky="we", padx=(0, 8), pady=4)
         tk.Label(group, text="(仅自定义时使用)", bg=Theme.BG_SECONDARY, fg=Theme.TEXT_SECONDARY, font=("", 9)).grid(
             row=4, column=2, sticky="w"
         )
 
     def _build_image_api_buttons(self, group: ttk.LabelFrame) -> None:
         img_btn_frame = tk.Frame(group, bg=Theme.BG_SECONDARY)
-        img_btn_frame.grid(row=5, column=0, columnspan=3, pady=(10, 5))
+        img_btn_frame.grid(row=5, column=0, columnspan=3, sticky="we", pady=(10, 5))
+        img_btn_frame.columnconfigure(0, weight=1)
+        img_btn_frame.columnconfigure(1, weight=1)
         tk.Button(
             img_btn_frame,
             text="🔍 测试连接",
@@ -314,7 +321,7 @@ class SettingsPageLayoutApiMixin:
             padx=15,
             pady=6,
             cursor="hand2",
-        ).pack(side="left", padx=5)
+        ).grid(row=0, column=0, sticky="we", padx=5)
         tk.Button(
             img_btn_frame,
             text="💾 保存配置",
@@ -325,5 +332,5 @@ class SettingsPageLayoutApiMixin:
             padx=15,
             pady=6,
             cursor="hand2",
-        ).pack(side="left", padx=5)
+        ).grid(row=0, column=1, sticky="we", padx=5)
 

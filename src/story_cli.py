@@ -28,9 +28,21 @@ def ingest(
 	embedding_model: str = typer.Option("sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"),
 	max_chars: int = typer.Option(800),
 	overlap: int = typer.Option(120),
+	paragraphs_per_chunk: int = typer.Option(4),
+	overlap_paragraphs: int = typer.Option(1),
+	incremental: bool = typer.Option(False, "--incremental", help="只更新新增或变化的文档"),
 ):
 	"""从本地文本构建 Chroma 向量索引。"""
-	cfg = IngestConfig(data_root=Path(data_root), index_dir=Path(index_dir), embedding_model_name=embedding_model, max_chars=max_chars, overlap=overlap)
+	cfg = IngestConfig(
+		data_root=Path(data_root),
+		index_dir=Path(index_dir),
+		embedding_model_name=embedding_model,
+		max_chars=max_chars,
+		overlap=overlap,
+		paragraphs_per_chunk=paragraphs_per_chunk,
+		overlap_paragraphs=overlap_paragraphs,
+		rebuild=not incremental,
+	)
 	KnowledgeBaseIngestor(cfg).build()
 
 

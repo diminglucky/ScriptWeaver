@@ -1,7 +1,8 @@
 ﻿"""SQLite metadata store, one per shard. See docs/technical_architecture.md.3.
 
-Schema (single ``chunks`` table) is the source of truth for chunk identity,
-metadata, and deterministic insertion order. ChromaDB stores the vectors.
+The ``chunks`` table is the source of truth for retrievable chunk text and
+ordering. The ``documents`` table is the source manifest used for incremental
+sync, source lifecycle, and index previews. ChromaDB stores the vectors.
 """
 
 from __future__ import annotations
@@ -25,6 +26,19 @@ CREATE TABLE IF NOT EXISTS chunks (
 );
 CREATE INDEX IF NOT EXISTS idx_chunks_source   ON chunks(source_id);
 CREATE INDEX IF NOT EXISTS idx_chunks_ordinal  ON chunks(ordinal);
+
+CREATE TABLE IF NOT EXISTS documents (
+    source_id           TEXT PRIMARY KEY,
+    path                TEXT NOT NULL,
+    content_hash        TEXT NOT NULL,
+    mtime_ns            INTEGER NOT NULL DEFAULT 0,
+    size_bytes          INTEGER NOT NULL DEFAULT 0,
+    chunk_count         INTEGER NOT NULL DEFAULT 0,
+    chunk_settings_json TEXT NOT NULL DEFAULT '{}',
+    embedding_model     TEXT NOT NULL DEFAULT '',
+    indexed_at          TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_documents_path ON documents(path);
 """
 
 
@@ -117,10 +131,51 @@ class SqliteStore:
             "SELECT ordinal FROM chunks WHERE source_id = ?", (source_id,)
         )
         ords = [int(row[0]) for row in cur.fetchall()]
-        if ords:
-            self.conn.execute("DELETE FROM chunks WHERE source_id = ?", (source_id,))
+        doc_cur = self.conn.execute(
+            "SELECT 1 FROM documents WHERE source_id = ? LIMIT 1", (source_id,)
+        )
+        has_document = doc_cur.fetchone() is not None
+        if ords or has_document:
+            if ords:
+                self.conn.execute("DELETE FROM chunks WHERE source_id = ?", (source_id,))
+            if has_document:
+                self.conn.execute("DELETE FROM documents WHERE source_id = ?", (source_id,))
             self.conn.commit()
         return ords
+
+    def clear(self) -> int:
+        """Delete all chunk metadata. Returns the removed row count."""
+        removed = self.count()
+        self.conn.execute("DELETE FROM chunks")
+        self.conn.execute("DELETE FROM documents")
+        self.conn.commit()
+        return removed
+
+    def upsert_documents(self, rows: Iterable[dict]) -> None:
+        payload = []
+        for row in rows:
+            payload.append((
+                row["source_id"],
+                row["path"],
+                row["content_hash"],
+                int(row.get("mtime_ns", 0)),
+                int(row.get("size_bytes", 0)),
+                int(row.get("chunk_count", 0)),
+                json.dumps(dict(row.get("chunk_settings") or {}), ensure_ascii=False, sort_keys=True),
+                str(row.get("embedding_model", "")),
+            ))
+        if not payload:
+            return
+        self.conn.executemany(
+            """
+            INSERT OR REPLACE INTO documents
+                (source_id, path, content_hash, mtime_ns, size_bytes, chunk_count,
+                 chunk_settings_json, embedding_model, indexed_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            """,
+            payload,
+        )
+        self.conn.commit()
 
     def reassign_ordinals(self, mapping: dict[int, int]) -> None:
         """Apply ``{old_ordinal: new_ordinal}`` updates atomically."""
@@ -166,6 +221,28 @@ class SqliteStore:
         """Return all chunks ordered by insertion ordinal."""
         cur = self.conn.execute("SELECT * FROM chunks ORDER BY ordinal ASC")
         return [_row_to_dict(row) for row in cur.fetchall()]
+
+    def fetch_documents(self, source_ids: list[str]) -> dict[str, dict]:
+        if not source_ids:
+            return {}
+        placeholders = ",".join("?" * len(source_ids))
+        cur = self.conn.execute(
+            f"SELECT * FROM documents WHERE source_id IN ({placeholders})", source_ids
+        )
+        return {str(row["source_id"]): self._document_row_to_dict(row) for row in cur.fetchall()}
+
+    def list_documents(self) -> list[dict]:
+        cur = self.conn.execute("SELECT * FROM documents ORDER BY path ASC")
+        return [self._document_row_to_dict(row) for row in cur.fetchall()]
+
+    def _document_row_to_dict(self, row: sqlite3.Row) -> dict:
+        data = dict(row)
+        raw = data.pop("chunk_settings_json", "{}")
+        try:
+            data["chunk_settings"] = json.loads(raw) if raw else {}
+        except json.JSONDecodeError:
+            data["chunk_settings"] = {}
+        return data
 
     def count(self) -> int:
         cur = self.conn.execute("SELECT COUNT(*) FROM chunks")

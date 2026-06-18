@@ -69,6 +69,88 @@ def test_delete_source_returns_ordinals(tmp_path: Path):
         assert store.delete_source("missing") == []
 
 
+def test_document_manifest_tracks_source_lifecycle(tmp_path: Path):
+    with SqliteStore(tmp_path / "meta.sqlite") as store:
+        store.upsert_chunks([
+            {
+                "chunk_id": "c1",
+                "source_id": "s1",
+                "path": "/s1.txt",
+                "position": 0,
+                "text": "chunk text",
+                "kb_type": "reference",
+                "ordinal": 0,
+            }
+        ])
+        store.upsert_documents([
+            {
+                "source_id": "s1",
+                "path": "/s1.txt",
+                "content_hash": "hash-1",
+                "chunk_count": 1,
+                "chunk_settings": {"paragraphs_per_chunk": 4},
+                "embedding_model": "m",
+            }
+        ])
+        assert store.fetch_documents(["s1"])["s1"]["content_hash"] == "hash-1"
+
+        store.delete_source("s1")
+        assert store.fetch_documents(["s1"]) == {}
+
+        store.upsert_chunks([
+            {
+                "chunk_id": "c2",
+                "source_id": "s2",
+                "path": "/s2.txt",
+                "position": 0,
+                "text": "chunk text",
+                "kb_type": "reference",
+                "ordinal": 1,
+            }
+        ])
+        store.upsert_documents([
+            {
+                "source_id": "s2",
+                "path": "/s2.txt",
+                "content_hash": "hash-2",
+                "chunk_count": 1,
+                "chunk_settings": {"paragraphs_per_chunk": 4},
+                "embedding_model": "m",
+            }
+        ])
+        store.clear()
+        assert store.list_documents() == []
+
+
+def test_delete_source_removes_orphan_document_manifest(tmp_path: Path):
+    with SqliteStore(tmp_path / "meta.sqlite") as store:
+        store.upsert_documents([
+            {
+                "source_id": "orphan",
+                "path": "/orphan.txt",
+                "content_hash": "hash-orphan",
+                "chunk_count": 0,
+                "chunk_settings": {"paragraphs_per_chunk": 4},
+                "embedding_model": "m",
+            }
+        ])
+        assert store.fetch_documents(["orphan"])
+
+        assert store.delete_source("orphan") == []
+        assert store.fetch_documents(["orphan"]) == {}
+
+
+def test_clear_removes_all_rows(tmp_path: Path):
+    with SqliteStore(tmp_path / "m.sqlite") as store:
+        store.upsert_chunks([
+            _row("c1", "s1", 0),
+            _row("c2", "s2", 1),
+        ])
+        assert store.clear() == 2
+        assert store.count() == 0
+        assert store.clear() == 0
+
+
 def test_fetch_by_ordinals(tmp_path: Path):
     with SqliteStore(tmp_path / "m.sqlite") as store:
         store.upsert_chunks([

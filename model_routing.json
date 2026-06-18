@@ -42,5 +42,8 @@
   "director_script_generate": {
     "provider": "DeepSeek",
     "model": "deepseek-chat"
+  },
+  "__meta__": {
+    "advanced_mode": false
   }
 }

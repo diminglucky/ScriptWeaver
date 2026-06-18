@@ -50,7 +50,7 @@ class ZhihuPublisherMixin:
 
     def _build_zhihu_publish_ui(self, parent_frame) -> None:
         publish_frame = ttk.Frame(parent_frame)
-        publish_frame.pack(fill="x", padx=10, pady=6)
+        publish_frame.pack(fill="x", padx=8, pady=2)
 
         ttk.Label(
             publish_frame,

@@ -37,17 +37,26 @@ index/
         meta.sqlite
 ```
 
-`meta.sqlite` is the source of truth for chunk text, source id, path, tags,
-project id, and deterministic insertion order. ChromaDB stores normalized
-embedding vectors and performs cosine search.
+`meta.sqlite` contains two coordinated tables:
+
+- `chunks`: source of truth for retrievable chunk text, source id, path, tags,
+  project id, chunk position, and deterministic insertion order.
+- `documents`: source manifest for each indexed document, including path,
+  content hash, size, chunk count, chunk settings, embedding model, and indexed
+  timestamp.
+
+ChromaDB stores normalized embedding vectors and performs cosine search. SQLite
+keeps the auditable text/provenance layer so the GUI can preview built chunks
+and document-level index state without reading Chroma internals.
 
 ## Ingestion
 
-Documents are read through shared loaders and split by paragraphs, not fixed
-character windows. The splitter treats each non-empty line as a prose paragraph,
-packs paragraphs up to `chunk_size`, and carries `overlap_paragraphs` from the
-previous chunk into the next. Very long paragraphs fall back to sentence-aware
-splitting.
+Documents are read through shared loaders and split by paragraph windows, not
+fixed character windows. The splitter treats each non-empty line as a prose
+paragraph, groups `paragraphs_per_chunk` whole paragraphs per chunk, and carries
+`overlap_paragraphs` whole paragraphs from the previous chunk into the next.
+`chunk_size` is only a safety cap for sentence-aware fallback when a single
+paragraph is extremely long.
 
 Ingest writes:
 
@@ -58,6 +67,18 @@ Ingest writes:
 - `project_id`: set only for project memory.
 - `tags`: retrieval filters such as `reference`, `chapter_summary`, and `continuity`.
 - Chroma embedding vector.
+- Document manifest row in `documents`, keyed by `source_id`.
+
+Incremental ingestion compares the current file hash, embedding model, and chunk
+settings against the `documents` manifest:
+
+- Unchanged documents are skipped.
+- Changed documents replace all chunks for that source and refresh the manifest row.
+- New documents append new chunks and a new manifest row.
+- Missing source files are pruned when deleted-document pruning is enabled.
+
+The HTTP ingestion API writes the same document manifest as the GUI/CLI ingestion
+path, so API-added documents can also be inspected and deleted consistently.
 
 ## Retrieval
 

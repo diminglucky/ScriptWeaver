@@ -144,6 +144,27 @@ class Shard:
                 raise ValueError(f"vector dim mismatch: shard={self._dim}, batch={dim}")
             self._chroma_upsert(chunk_ids, _normalize_vectors(vectors), metadata)
 
+    def replace_sources(self, chunk_ids: list[str], vectors: list[list[float]], metadata: list[dict]) -> int:
+        """Replace all existing chunks for the incoming source ids, then insert new chunks."""
+        if not chunk_ids:
+            return 0
+        if not (len(chunk_ids) == len(metadata) == len(vectors)):
+            raise ValueError("chunk_ids, vectors, metadata length mismatch")
+        if any(not isinstance(v, list) or not v for v in vectors):
+            raise ValueError("vectors must be non-empty lists")
+        dim = len(vectors[0])
+        if any(len(v) != dim for v in vectors):
+            raise ValueError("all vectors must have the same dimension")
+        source_ids = sorted({str(row.get("source_id", "")) for row in metadata if row.get("source_id")})
+        removed = 0
+        with self._lock:
+            if self._dim is not None and dim != self._dim:
+                raise ValueError(f"vector dim mismatch: shard={self._dim}, batch={dim}")
+            for source_id in source_ids:
+                removed += self.delete_source(source_id)
+            self.upsert(chunk_ids, vectors, metadata)
+        return removed
+
     def _chroma_upsert(self, chunk_ids: list[str], vectors: list[list[float]], metadata: list[dict]) -> None:
         if self._chroma_collection is None:
             raise RuntimeError("Chroma collection is not initialised")
@@ -191,13 +212,29 @@ class Shard:
     def delete_source(self, source_id: str) -> int:
         with self._lock:
             existing = self._store.fetch_source(source_id)
-            if not existing:
-                return 0
             if self._chroma_collection is None:
                 raise RuntimeError("Chroma collection is not initialised")
-            self._chroma_collection.delete(ids=[row["chunk_id"] for row in existing])
+            if existing:
+                self._chroma_collection.delete(ids=[row["chunk_id"] for row in existing])
             ords = self._store.delete_source(source_id)
             return len(ords)
+
+    def clear(self) -> int:
+        """Remove every vector and metadata row from this shard."""
+        with self._lock:
+            rows = self._store.list_chunks()
+            if self._chroma_collection is None or self._chroma_client is None:
+                raise RuntimeError("Chroma collection is not initialised")
+            try:
+                self._chroma_client.delete_collection("chunks")
+            except Exception as exc:
+                logger.debug("failed to delete chroma collection for shard %s: %s", self.root, exc)
+                if rows:
+                    self._chroma_collection.delete(ids=[row["chunk_id"] for row in rows])
+            removed = self._store.clear()
+            self._dim = None
+            self._init_chroma()
+            return removed
 
     def search(self, query_vec: list[float], *, top_k: int = 8) -> list[SearchHit]:
         if top_k <= 0 or len(self) == 0:
