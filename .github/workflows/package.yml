@@ -149,7 +149,27 @@ jobs:
           path: packaged
           merge-multiple: true
 
+      - name: Prepare release assets
+        shell: bash
+        run: |
+          mkdir -p release-assets
+          find packaged -type f -name '*.zip' -print0 | while IFS= read -r -d '' file; do
+            size=$(wc -c < "$file")
+            base=$(basename "$file")
+            if [ "$size" -gt 2000000000 ]; then
+              split -b 1900M -d -a 2 "$file" "release-assets/${base}.part-"
+            else
+              cp "$file" "release-assets/${base}"
+            fi
+          done
+
       - name: Publish GitHub release
         uses: softprops/action-gh-release@v2
         with:
-          files: packaged/*.zip
+          files: release-assets/*
+          body: |
+            Windows, macOS, and source packages are attached directly.
+
+            Large packages are split into numbered parts because GitHub Release assets have a per-file size limit. Reassemble split packages with:
+
+            cat ScriptWeaver-linux.zip.part-* > ScriptWeaver-linux.zip
