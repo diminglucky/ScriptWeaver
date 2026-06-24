@@ -1,0 +1,153 @@
+name: Package
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  source-package:
+    name: Source package
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Create source archive
+        run: |
+          mkdir -p packaged
+          git archive --format=zip --output packaged/ScriptWeaver-source.zip HEAD
+
+      - name: Upload source package
+        uses: actions/upload-artifact@v4
+        with:
+          name: ScriptWeaver-source
+          path: packaged/ScriptWeaver-source.zip
+          if-no-files-found: error
+
+  desktop-package:
+    name: Desktop package (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest, ubuntu-latest]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install Linux desktop runtime
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3-tk libgl1 libglib2.0-0
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+          python -m pip install pyinstaller
+
+      - name: Build desktop bundle
+        shell: bash
+        run: |
+          python - <<'PY'
+          import os
+          import subprocess
+          import sys
+          from pathlib import Path
+
+          args = [
+              sys.executable,
+              "-m",
+              "PyInstaller",
+              "--name",
+              "ScriptWeaver",
+              "--onedir",
+              "--windowed",
+              "--clean",
+              "--noconfirm",
+              "--collect-submodules",
+              "src",
+          ]
+
+          for package in ("chromadb", "sentence_transformers", "transformers", "langgraph"):
+              args.extend(["--collect-submodules", package, "--collect-data", package])
+
+          data_paths = [
+              ("README.md", "."),
+              ("config/theme_config.json", "config"),
+              ("config/story_pipeline_profile.json", "config"),
+              ("config/story_guardrails.json", "config"),
+              ("config/story_prompt_profile.json", "config"),
+              ("docs/使用说明.txt", "docs"),
+              ("docs/使用指南.md", "docs"),
+              ("docs/technical_architecture.md", "docs"),
+          ]
+          for src, dest in data_paths:
+              if Path(src).exists():
+                  args.extend(["--add-data", f"{src}{os.pathsep}{dest}"])
+
+          args.append("run_modern_app.py")
+          subprocess.check_call(args)
+          PY
+
+      - name: Compress desktop bundle
+        shell: bash
+        run: |
+          python - <<'PY'
+          import os
+          import shutil
+          from pathlib import Path
+
+          runner_os = os.environ["RUNNER_OS"].lower()
+          dist = Path("dist")
+          target = dist / ("ScriptWeaver.app" if runner_os == "macos" else "ScriptWeaver")
+          if not target.exists():
+              raise SystemExit(f"Missing PyInstaller output: {target}")
+
+          out_dir = Path("packaged")
+          out_dir.mkdir(exist_ok=True)
+          shutil.make_archive(
+              str(out_dir / f"ScriptWeaver-{runner_os}"),
+              "zip",
+              root_dir=target.parent,
+              base_dir=target.name,
+          )
+          PY
+
+      - name: Upload desktop package
+        uses: actions/upload-artifact@v4
+        with:
+          name: ScriptWeaver-${{ runner.os }}
+          path: packaged/*.zip
+          if-no-files-found: error
+
+  release:
+    name: Attach packages to release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [source-package, desktop-package]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download packages
+        uses: actions/download-artifact@v4
+        with:
+          path: packaged
+          merge-multiple: true
+
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: packaged/*.zip
