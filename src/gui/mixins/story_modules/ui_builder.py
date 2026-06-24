@@ -477,9 +477,10 @@ class StoryUIBuilderMixin(StoryPromptBuilderMixin):
 
 		self.btn_ai_expand = tk.Button(
 			prompt_frame, text="✨ AI补充", command=self._on_ai_expand_prompt,
-			font=("", 11, "bold"), bg="#2563eb", fg="#ffffff", relief=tk.FLAT,
+			font=("", 11, "bold"), bg="#dbeafe", fg="#1d4ed8", relief=tk.FLAT,
 			width=8, padx=8, pady=4, cursor="hand2",
-			activebackground="#1d4ed8", activeforeground="#ffffff",
+			activebackground="#bfdbfe", activeforeground="#1e3a8a",
+			disabledforeground="#6b7280",
 		)
 		self.btn_ai_expand.grid(row=0, column=1, sticky="n", padx=(6, 0), pady=0)
 

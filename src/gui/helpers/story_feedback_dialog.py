@@ -28,6 +28,52 @@ def _font(family: str, size: int, weight: str = "normal") -> tkfont.Font:
     return tkfont.Font(family=family, size=size, weight=weight)
 
 
+def _plain_inline_markdown(text: str) -> str:
+    """Remove common inline Markdown markers from generated story plans."""
+    clean = str(text or "").strip()
+    for marker in ("**", "__", "`"):
+        clean = clean.replace(marker, "")
+    return clean
+
+
+def _iter_readable_story_segments(text: str) -> list[tuple[str, str]]:
+    """Convert simple Markdown-like story output into readable text segments."""
+    segments: list[tuple[str, str]] = []
+    for raw_line in str(text or "").strip().splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+
+        if line in {"---", "——", "***"}:
+            segments.append(("separator", ""))
+            continue
+        if line.startswith("### "):
+            segments.append(("h3", _plain_inline_markdown(line[4:])))
+            continue
+        if line.startswith("## "):
+            segments.append(("h2", _plain_inline_markdown(line[3:])))
+            continue
+        if line.startswith("# "):
+            segments.append(("h1", _plain_inline_markdown(line[2:])))
+            continue
+        if line.startswith(("- ", "* ")):
+            segments.append(("list", "• " + _plain_inline_markdown(line[2:])))
+            continue
+
+        segments.append(("body", _plain_inline_markdown(line)))
+    return segments
+
+
+def _insert_readable_story_text(widget: tk.Text, text: str) -> None:
+    """Insert story overview text with lightweight visual formatting."""
+    segments = _iter_readable_story_segments(text)
+    for kind, value in segments:
+        if kind == "separator":
+            widget.insert("end", "─" * 28 + "\n", "md_separator")
+        else:
+            widget.insert("end", value + "\n", f"md_{kind}")
+
+
 def show_story_feedback_dialog(
     parent,
     *,
@@ -72,17 +118,22 @@ def show_story_feedback_dialog(
     dialog.geometry(geometry)
     dialog.minsize(*min_size)
     dialog.configure(bg="#f5f5f5")
+    dialog.grid_columnconfigure(0, weight=1)
+    dialog.grid_rowconfigure(1, weight=1)
 
     ui_font = "Microsoft YaHei UI"
     title_font = _font(ui_font, 13, "bold")
     subtitle_font = _font(ui_font, 10)
     body_font = _font(ui_font, 11)
+    h1_font = _font(ui_font, 15, "bold")
+    h2_font = _font(ui_font, 13, "bold")
+    h3_font = _font(ui_font, 12, "bold")
     feedback_font = _font(ui_font, 10)
     label_font = _font(ui_font, 10, "bold")
 
     # --- header ---
     header = tk.Frame(dialog, bg="#f5f5f5")
-    header.pack(fill="x", padx=12, pady=(12, 8))
+    header.grid(row=0, column=0, sticky="ew", padx=12, pady=(12, 8))
     tk.Label(
         header,
         text=header_text,
@@ -104,6 +155,7 @@ def show_story_feedback_dialog(
     editor = scrolledtext.ScrolledText(
         dialog,
         wrap="word",
+        height=12,
         font=body_font,
         bg="#ffffff",
         fg="#111827",
@@ -115,16 +167,28 @@ def show_story_feedback_dialog(
         spacing2=2,
         spacing3=8,
     )
-    editor.pack(fill="both", expand=True, padx=12, pady=(0, 8))
-    editor.insert("1.0", result["content"])
+    editor.grid(row=1, column=0, sticky="nsew", padx=12, pady=(0, 8))
+    editor.tag_configure("md_h1", font=h1_font, foreground="#111827", spacing1=6, spacing3=3)
+    editor.tag_configure("md_h2", font=h2_font, foreground="#1f2937", spacing1=7, spacing3=3)
+    editor.tag_configure("md_h3", font=h3_font, foreground="#374151", spacing1=5, spacing3=2)
+    editor.tag_configure("md_body", font=body_font, foreground="#111827", spacing1=1, spacing3=3, lmargin1=0, lmargin2=0)
+    editor.tag_configure("md_list", font=body_font, foreground="#111827", spacing1=1, spacing3=2, lmargin1=20, lmargin2=20)
+    editor.tag_configure("md_separator", foreground="#d1d5db", spacing1=5, spacing3=4)
+    _insert_readable_story_text(editor, result["content"])
     if editor_readonly:
         editor.configure(state="disabled")
+
+    footer = tk.Frame(dialog, bg="#f5f5f5")
+    footer.grid(row=2, column=0, sticky="ew", padx=12, pady=(0, 12))
+    footer.grid_columnconfigure(0, weight=1)
+    footer_row = 0
 
     # --- feedback (only shown when regeneration is available) ---
     feedback_box = None
     if regenerate_fn is not None:
-        feedback_frame = tk.Frame(dialog, bg="#f5f5f5")
-        feedback_frame.pack(fill="x", padx=12, pady=(0, 6))
+        feedback_frame = tk.Frame(footer, bg="#f5f5f5")
+        feedback_frame.grid(row=footer_row, column=0, sticky="ew", pady=(0, 6))
+        feedback_frame.grid_columnconfigure(0, weight=1)
         tk.Label(
             feedback_frame,
             text="修改意见：",
@@ -132,11 +196,11 @@ def show_story_feedback_dialog(
             fg="#1f2937",
             font=label_font,
             anchor="w",
-        ).pack(anchor="w", pady=(0, 4))
+        ).grid(row=0, column=0, sticky="w", pady=(0, 4))
         feedback_box = scrolledtext.ScrolledText(
             feedback_frame,
             wrap="word",
-            height=4,
+            height=3,
             font=feedback_font,
             bg="#ffffff",
             fg="#111827",
@@ -148,22 +212,24 @@ def show_story_feedback_dialog(
             spacing2=1,
             spacing3=5,
         )
-        feedback_box.pack(fill="x")
+        feedback_box.grid(row=1, column=0, sticky="ew")
+        footer_row += 1
 
     # --- status ---
     status_var = tk.StringVar(value=default_status or "可多次重生成，直到满意后再采用。")
     tk.Label(
-        dialog,
+        footer,
         textvariable=status_var,
         bg="#f5f5f5",
         fg="#4b5563",
         font=subtitle_font,
         anchor="w",
-    ).pack(fill="x", padx=12, pady=(0, 8))
+    ).grid(row=footer_row, column=0, sticky="ew", pady=(0, 8))
+    footer_row += 1
 
     # --- buttons ---
-    action_row = tk.Frame(dialog, bg="#f5f5f5")
-    action_row.pack(fill="x", padx=12, pady=(0, 12))
+    action_row = tk.Frame(footer, bg="#f5f5f5")
+    action_row.grid(row=footer_row, column=0, sticky="ew")
     busy = {"flag": False}
     regen_round = {"count": 0}
 
@@ -171,7 +237,7 @@ def show_story_feedback_dialog(
         if editor_readonly:
             editor.configure(state="normal")
         editor.delete("1.0", "end")
-        editor.insert("1.0", text)
+        _insert_readable_story_text(editor, text)
         if editor_readonly:
             editor.configure(state="disabled")
 
@@ -252,8 +318,11 @@ def show_story_feedback_dialog(
         action_row,
         text=accept_label,
         command=_accept,
-        bg="#16a34a",
-        fg="#ffffff",
+        bg="#dcfce7",
+        fg="#166534",
+        activebackground="#bbf7d0",
+        activeforeground="#14532d",
+        disabledforeground="#6b7280",
         relief=tk.FLAT,
         padx=16,
         pady=8,
@@ -264,8 +333,11 @@ def show_story_feedback_dialog(
         action_row,
         text=discard_label,
         command=_discard,
-        bg="#6b7280",
-        fg="#ffffff",
+        bg="#f3f4f6",
+        fg="#374151",
+        activebackground="#e5e7eb",
+        activeforeground="#111827",
+        disabledforeground="#9ca3af",
         relief=tk.FLAT,
         padx=16,
         pady=8,
@@ -279,8 +351,11 @@ def show_story_feedback_dialog(
             action_row,
             text=regen_label,
             command=_regenerate,
-            bg="#2563eb",
-            fg="#ffffff",
+            bg="#dbeafe",
+            fg="#1d4ed8",
+            activebackground="#bfdbfe",
+            activeforeground="#1e3a8a",
+            disabledforeground="#6b7280",
             relief=tk.FLAT,
             padx=16,
             pady=8,
