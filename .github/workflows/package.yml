@@ -34,7 +34,7 @@ jobs:
   desktop-package:
     name: Desktop package (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 60
+    timeout-minutes: 90
     strategy:
       fail-fast: false
       matrix:
@@ -77,13 +77,15 @@ jobs:
               "PyInstaller",
               "--name",
               "ScriptWeaver",
-              "--onedir",
+          ]
+          args.append("--onedir" if os.environ["RUNNER_OS"] == "macOS" else "--onefile")
+          args.extend([
               "--windowed",
               "--clean",
               "--noconfirm",
               "--collect-submodules",
               "src",
-          ]
+          ])
 
           for package in ("chromadb", "sentence_transformers", "transformers", "langgraph"):
               args.extend(["--collect-submodules", package, "--collect-data", package])
@@ -106,35 +108,37 @@ jobs:
           subprocess.check_call(args)
           PY
 
-      - name: Compress desktop bundle
+      - name: Package desktop app
         shell: bash
         run: |
-          python - <<'PY'
-          import os
-          import shutil
-          from pathlib import Path
+          set -euo pipefail
+          mkdir -p packaged
 
-          runner_os = os.environ["RUNNER_OS"].lower()
-          dist = Path("dist")
-          target = dist / ("ScriptWeaver.app" if runner_os == "macos" else "ScriptWeaver")
-          if not target.exists():
-              raise SystemExit(f"Missing PyInstaller output: {target}")
-
-          out_dir = Path("packaged")
-          out_dir.mkdir(exist_ok=True)
-          shutil.make_archive(
-              str(out_dir / f"ScriptWeaver-{runner_os}"),
-              "zip",
-              root_dir=target.parent,
-              base_dir=target.name,
-          )
-          PY
+          case "$RUNNER_OS" in
+            Windows)
+              test -f dist/ScriptWeaver.exe
+              cp dist/ScriptWeaver.exe packaged/ScriptWeaver-windows.exe
+              ;;
+            macOS)
+              test -d dist/ScriptWeaver.app
+              hdiutil create -volname "ScriptWeaver" -srcfolder dist/ScriptWeaver.app -ov -format UDZO packaged/ScriptWeaver-macos.dmg
+              ;;
+            Linux)
+              test -f dist/ScriptWeaver
+              cp dist/ScriptWeaver packaged/ScriptWeaver-linux
+              chmod +x packaged/ScriptWeaver-linux
+              ;;
+            *)
+              echo "Unsupported runner OS: $RUNNER_OS" >&2
+              exit 1
+              ;;
+          esac
 
       - name: Upload desktop package
         uses: actions/upload-artifact@v4
         with:
           name: ScriptWeaver-${{ runner.os }}
-          path: packaged/*.zip
+          path: packaged/*
           if-no-files-found: error
 
   release:
@@ -153,7 +157,7 @@ jobs:
         shell: bash
         run: |
           mkdir -p release-assets
-          find packaged -type f -name '*.zip' -print0 | while IFS= read -r -d '' file; do
+          find packaged -type f -print0 | while IFS= read -r -d '' file; do
             size=$(wc -c < "$file")
             base=$(basename "$file")
             if [ "$size" -gt 2000000000 ]; then
@@ -168,8 +172,17 @@ jobs:
         with:
           files: release-assets/*
           body: |
-            Windows, macOS, and source packages are attached directly.
+            Download the matching desktop package:
 
-            Large packages are split into numbered parts because GitHub Release assets have a per-file size limit. Reassemble split packages with:
+            - Windows: `ScriptWeaver-windows.exe`
+            - macOS: `ScriptWeaver-macos.dmg`
+            - Linux: `ScriptWeaver-linux` or `ScriptWeaver-linux.part-*` if split
+            - Source archive: `ScriptWeaver-source.zip`
 
-            cat ScriptWeaver-linux.zip.part-* > ScriptWeaver-linux.zip
+            Large packages are split into numbered parts because GitHub Release assets have a per-file size limit. Reassemble any split asset with:
+
+            `cat <asset>.part-* > <asset>`
+
+            On Linux, make the downloaded binary executable before running it:
+
+            `chmod +x ScriptWeaver-linux`
