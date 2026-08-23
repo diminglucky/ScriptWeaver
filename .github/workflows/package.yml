@@ -1,0 +1,188 @@
+name: Package
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  source-package:
+    name: Source package
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Create source archive
+        run: |
+          mkdir -p packaged
+          git archive --format=zip --output packaged/ScriptWeaver-source.zip HEAD
+
+      - name: Upload source package
+        uses: actions/upload-artifact@v4
+        with:
+          name: ScriptWeaver-source
+          path: packaged/ScriptWeaver-source.zip
+          if-no-files-found: error
+
+  desktop-package:
+    name: Desktop package (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest, ubuntu-latest]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install Linux desktop runtime
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3-tk libgl1 libglib2.0-0
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+          python -m pip install pyinstaller
+
+      - name: Build desktop bundle
+        shell: bash
+        run: |
+          python - <<'PY'
+          import os
+          import subprocess
+          import sys
+          from pathlib import Path
+
+          args = [
+              sys.executable,
+              "-m",
+              "PyInstaller",
+              "--name",
+              "ScriptWeaver",
+          ]
+          args.append("--onedir" if os.environ["RUNNER_OS"] == "macOS" else "--onefile")
+          args.extend([
+              "--windowed",
+              "--clean",
+              "--noconfirm",
+              "--collect-submodules",
+              "src",
+          ])
+
+          for package in ("chromadb", "sentence_transformers", "transformers", "langgraph"):
+              args.extend(["--collect-submodules", package, "--collect-data", package])
+
+          data_paths = [
+              ("README.md", "."),
+              ("config/theme_config.json", "config"),
+              ("config/story_pipeline_profile.json", "config"),
+              ("config/story_guardrails.json", "config"),
+              ("config/story_prompt_profile.json", "config"),
+              ("docs/使用说明.txt", "docs"),
+              ("docs/使用指南.md", "docs"),
+              ("docs/technical_architecture.md", "docs"),
+          ]
+          for src, dest in data_paths:
+              if Path(src).exists():
+                  args.extend(["--add-data", f"{src}{os.pathsep}{dest}"])
+
+          args.append("run_modern_app.py")
+          subprocess.check_call(args)
+          PY
+
+      - name: Package desktop app
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p packaged
+
+          case "$RUNNER_OS" in
+            Windows)
+              test -f dist/ScriptWeaver.exe
+              cp dist/ScriptWeaver.exe packaged/ScriptWeaver-windows.exe
+              ;;
+            macOS)
+              test -d dist/ScriptWeaver.app
+              hdiutil create -volname "ScriptWeaver" -srcfolder dist/ScriptWeaver.app -ov -format UDZO packaged/ScriptWeaver-macos.dmg
+              ;;
+            Linux)
+              test -f dist/ScriptWeaver
+              cp dist/ScriptWeaver packaged/ScriptWeaver-linux
+              chmod +x packaged/ScriptWeaver-linux
+              ;;
+            *)
+              echo "Unsupported runner OS: $RUNNER_OS" >&2
+              exit 1
+              ;;
+          esac
+
+      - name: Upload desktop package
+        uses: actions/upload-artifact@v4
+        with:
+          name: ScriptWeaver-${{ runner.os }}
+          path: packaged/*
+          if-no-files-found: error
+
+  release:
+    name: Attach packages to release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [source-package, desktop-package]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download packages
+        uses: actions/download-artifact@v4
+        with:
+          path: packaged
+          merge-multiple: true
+
+      - name: Prepare release assets
+        shell: bash
+        run: |
+          mkdir -p release-assets
+          find packaged -type f -print0 | while IFS= read -r -d '' file; do
+            size=$(wc -c < "$file")
+            base=$(basename "$file")
+            if [ "$size" -gt 2000000000 ]; then
+              split -b 1900M -d -a 2 "$file" "release-assets/${base}.part-"
+            else
+              cp "$file" "release-assets/${base}"
+            fi
+          done
+
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release-assets/*
+          body: |
+            Download the matching desktop package:
+
+            - Windows: `ScriptWeaver-windows.exe`
+            - macOS: `ScriptWeaver-macos.dmg`
+            - Linux: `ScriptWeaver-linux` or `ScriptWeaver-linux.part-*` if split
+            - Source archive: `ScriptWeaver-source.zip`
+
+            Large packages are split into numbered parts because GitHub Release assets have a per-file size limit. Reassemble any split asset with:
+
+            `cat <asset>.part-* > <asset>`
+
+            On Linux, make the downloaded binary executable before running it:
+
+            `chmod +x ScriptWeaver-linux`

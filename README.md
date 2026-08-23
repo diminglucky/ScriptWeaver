@@ -103,6 +103,21 @@ python3.11 -m pip install -r requirements.txt
 
 主要依赖包括 FastAPI、uvicorn、httpx、Pydantic v2、LangGraph、ChromaDB、transformers、sentence-transformers、requests、Pillow、tqdm、playwright。
 
+## GitHub 打包
+
+仓库提供 GitHub Actions 工作流，可直接在 GitHub 页面打包：
+
+1. 进入仓库的 **Actions** 页面。
+2. 选择 **Package** 工作流。
+3. 点击 **Run workflow**。
+4. 运行完成后，在本次 workflow 的 **Artifacts** 下载：
+   - `ScriptWeaver-source`：源码包
+   - `ScriptWeaver-Windows`：Windows 桌面包
+   - `ScriptWeaver-macOS`：macOS 桌面包
+   - `ScriptWeaver-Linux`：Linux 桌面包
+
+推送 `v*` 标签（例如 `v1.0.0`）时，工作流还会自动创建 GitHub Release 并上传这些打包产物。
+
 ## 项目结构
 
 ```text
