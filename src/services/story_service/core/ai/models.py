@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
+from src.clients.chat_response import extract_chat_content
 from src.shared.domain.errors import DependencyMissing, ModelProviderError
 
 
@@ -107,7 +108,7 @@ class _OpenAICompatibleChatModel:
             )
         except Exception as exc:
             raise ModelProviderError(str(exc), detail={"model": self.model, "base_url": self.base_url}) from exc
-        return resp.choices[0].message.content or ""
+        return extract_chat_content(resp)
 
 
 _TASK_FALLBACKS = {

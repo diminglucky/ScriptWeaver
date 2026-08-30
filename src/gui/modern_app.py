@@ -9,6 +9,8 @@ from tkinter import ttk
 import logging
 import os
 from pathlib import Path
+
+from src.clients.chat_response import is_html_page
 from datetime import datetime
 from typing import Optional
 
@@ -198,6 +200,9 @@ class ModernApp(
         saved = (os.getenv("STORY_REQUIREMENT", "") or "").strip()
         if not saved:
             return
+        if is_html_page(saved):
+            logger.warning("ignore HTML page accidentally saved as STORY_REQUIREMENT")
+            return
         try:
             self.prompt_text.delete("1.0", "end")
             self.prompt_text.insert("1.0", saved)
@@ -222,6 +227,9 @@ class ModernApp(
                 return str(self._get_prompt_content() or "").strip()
             raw = self.prompt_text.get("1.0", "end-1c").strip()
             if raw.startswith("例如："):
+                return ""
+            if is_html_page(raw):
+                logger.warning("ignore HTML page accidentally present in story requirement")
                 return ""
             return raw
         except Exception:
