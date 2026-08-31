@@ -21,6 +21,16 @@ logger = logging.getLogger(__name__)
 
 class OutlineGenerateMixin:
     """Generate story outline via RAG or model-only paths."""
+
+    @staticmethod
+    def _is_missing_rag_dependency_error(exc: BaseException) -> bool:
+        """识别可选 RAG 依赖缺失，允许目录生成回退到纯模型模式。"""
+        message = str(exc)
+        return (
+            "知识库依赖缺失" in message
+            or "chromadb" in message.lower() and "sentence-transformers" in message.lower()
+        )
+
     def on_generate_outline(self) -> None:
         requirement = self._get_prompt_content()
         if not requirement:
@@ -346,7 +356,19 @@ class OutlineGenerateMixin:
             if hasattr(self, "update_header_status"):
                 self._ui(self.update_header_status, "正在生成目录...", "📝")
 
-            contexts, rag_rows = self._collect_outline_rag_contexts(requirement, need_build)
+            try:
+                contexts, rag_rows = self._collect_outline_rag_contexts(requirement, need_build)
+            except Exception as exc:
+                if not self._is_missing_rag_dependency_error(exc):
+                    raise
+                logger.warning("outline RAG dependencies unavailable; falling back to model-only", exc_info=True)
+                contexts, rag_rows = [], []
+                self._ui(self.status.set, "知识库依赖未安装，已跳过资料检索，直接生成目录")
+                self._ui(
+                    self.output.insert,
+                    END,
+                    "\n⚠️ 未安装知识库依赖，已跳过 RAG 检索并继续生成目录。\n",
+                )
             if hasattr(self, "update_header_status"):
                 self._ui(self.update_header_status, "AI生成目录中...", "📝")
 
