@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import unittest
 
-from src.gui.helpers.story_templates import get_story_template
+from src.gui.helpers.story_templates import get_story_template, resolve_story_template
 
 
 class StoryTemplatesTests(unittest.TestCase):
@@ -38,6 +38,27 @@ class StoryTemplatesTests(unittest.TestCase):
         self.assertIn("手术刀", combined)
         self.assertIn("审讯室", combined)
         self.assertIn("禁止", combined)
+
+    def test_default_template_adapts_to_suspense_request(self):
+        resolved = resolve_story_template(
+            "zhihu_realistic",
+            "fixed",
+            requirement="写一个收到死亡通知的灵异悬疑故事",
+            category="悬疑",
+        )
+
+        self.assertEqual(resolved["key"], "suspense_thriller")
+        self.assertEqual(resolved["base_key"], "suspense_thriller")
+
+    def test_explicit_non_default_template_is_preserved(self):
+        resolved = resolve_story_template(
+            "urban_power",
+            "fixed",
+            requirement="写一个悬疑故事里的逆袭主角",
+            category="悬疑",
+        )
+
+        self.assertEqual(resolved["key"], "urban_power")
 
 
 if __name__ == "__main__":

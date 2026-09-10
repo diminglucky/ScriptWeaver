@@ -2,6 +2,7 @@
 
 from tkinter import END, messagebox
 import logging
+import re
 import threading
 import time
 from pathlib import Path
@@ -30,6 +31,66 @@ class OutlineGenerateMixin:
             "知识库依赖缺失" in message
             or "chromadb" in message.lower() and "sentence-transformers" in message.lower()
         )
+
+    @staticmethod
+    def _is_outline_transient_error(error_text: str) -> bool:
+        """识别可由重试恢复的上游网关/网络错误。"""
+        text = str(error_text or "").strip().lower()
+        if not text:
+            return False
+        markers = (
+            "connection error", "connection reset", "connection aborted",
+            "network error", "timed out", "timeout", "temporarily unavailable",
+            "remote protocol", "econnreset", "broken pipe", "service unavailable",
+            "server error", "internal server error", "upstream request failed",
+            "upstream failed", "bad gateway", "gateway timeout", "too many requests",
+            "rate limit", "rate-limit", "请求频率", "调用频率", "请求过于频繁",
+            "429", "500", "502", "503", "504",
+        )
+        return any(marker in text for marker in markers)
+
+    @staticmethod
+    def _is_outline_rate_limit_error(error_text: str) -> bool:
+        text = str(error_text or "").strip().lower()
+        return any(marker in text for marker in (
+            "429", "too many requests", "rate limit", "rate-limit",
+            "upstream rate", "请求频率", "调用频率", "请求过于频繁",
+        ))
+
+    @staticmethod
+    def _outline_retry_after_seconds(error: Exception, default: float) -> float:
+        """读取兼容客户端暴露的 Retry-After，异常时使用默认退避。"""
+        values = []
+        for attr in ("response", "http_response"):
+            response = getattr(error, attr, None)
+            headers = getattr(response, "headers", None)
+            if headers:
+                try:
+                    values.append(headers.get("retry-after") or headers.get("Retry-After"))
+                except Exception:
+                    pass
+        values.append(str(error))
+        for value in values:
+            if value is None:
+                continue
+            raw = str(value).strip()
+            match = re.fullmatch(r"\d+(?:\.\d+)?", raw) or re.search(
+                r"retry[- _]?after\s*[:= ]\s*(\d+(?:\.\d+)?)", raw, re.I
+            )
+            if match:
+                try:
+                    number = match.group(0) if match.lastindex is None else match.group(1)
+                    return max(0.5, min(60.0, float(number)))
+                except (TypeError, ValueError):
+                    pass
+        return max(0.5, min(60.0, float(default)))
+
+    @classmethod
+    def _outline_retry_delay(cls, error: Exception, attempt: int) -> float:
+        base = 1.0 * (2 ** attempt)
+        if cls._is_outline_rate_limit_error(str(error)):
+            return cls._outline_retry_after_seconds(error, base)
+        return min(30.0, base)
 
     def on_generate_outline(self) -> None:
         requirement = self._get_prompt_content()
@@ -163,8 +224,7 @@ class OutlineGenerateMixin:
         contexts = [c for c, _s, _m in rag_rows]
         return contexts, rag_rows
 
-    _OUTLINE_RETRY_MAX = 2
-    _OUTLINE_RETRY_DELAYS = (0.5, 1.0)
+    _OUTLINE_RETRY_MAX = 3
 
     def _chat_with_connection_retry(
         self,
@@ -176,11 +236,6 @@ class OutlineGenerateMixin:
         stage_label: str = "目录生成",
     ) -> str:
         """Wrap client.chat with automatic retry on transient connection errors."""
-        _CONNECTION_MARKERS = (
-            "connection error", "connection reset", "connection aborted",
-            "network error", "timed out", "timeout", "temporarily unavailable",
-            "remote protocol", "econnreset", "broken pipe",
-        )
         last_exc: Optional[Exception] = None
         for attempt in range(self._OUTLINE_RETRY_MAX):
             try:
@@ -191,15 +246,15 @@ class OutlineGenerateMixin:
                 )
             except Exception as exc:
                 err_text = str(exc).lower()
-                if not any(m in err_text for m in _CONNECTION_MARKERS):
+                if not self._is_outline_transient_error(err_text):
                     raise
                 last_exc = exc
                 if attempt < self._OUTLINE_RETRY_MAX - 1:
-                    delay = self._OUTLINE_RETRY_DELAYS[attempt]
+                    delay = self._outline_retry_delay(exc, attempt)
                     try:
                         self._ui(
                             self.status.set,
-                            f"{stage_label}网络波动，{delay:.0f}s 后自动重试（{attempt+1}/{self._OUTLINE_RETRY_MAX-1}）...",
+                            f"{stage_label}{'上游限流' if self._is_outline_rate_limit_error(err_text) else '网络波动'}，{delay:g}s 后自动重试（{attempt+1}/{self._OUTLINE_RETRY_MAX-1}）...",
                         )
                     except Exception:
                         pass
@@ -239,12 +294,8 @@ class OutlineGenerateMixin:
                 self._ui(self.output.see, END)
         except Exception as exc:
             err_text = str(exc).lower()
-            _CONNECTION_MARKERS = (
-                "connection error", "connection reset", "timed out",
-                "timeout", "temporarily unavailable", "broken pipe",
-            )
-            if any(m in err_text for m in _CONNECTION_MARKERS) and not outline_text.strip():
-                self._ui(self.status.set, f"{stage_label}网络波动，回退到阻塞调用...")
+            if self._is_outline_transient_error(err_text) and not outline_text.strip():
+                self._ui(self.status.set, f"{stage_label}上游请求暂时失败，回退到阻塞调用并自动重试...")
                 return self._chat_with_connection_retry(
                     client, messages,
                     temperature=temperature,
@@ -272,6 +323,7 @@ class OutlineGenerateMixin:
         self.parsed_sections = self._parse_outline_sections(self.current_outline)
         self.story_memory_ledger = []
         self.chapter_quality_reports = []
+        self.story_branch_revision = getattr(self, "story_branch_revision", 0) + 1
         if hasattr(self, "_invalidate_chapter_blueprints"):
             self._invalidate_chapter_blueprints()
 

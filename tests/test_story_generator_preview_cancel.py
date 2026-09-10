@@ -141,6 +141,41 @@ class _DummyStoryGeneratorSingleShot(StoryInfraMixin, StoryGeneratorMixin):
         self._saved = True
 
 
+class _QualityLoopHarness(StoryGeneratorMixin):
+    def __init__(self):
+        self.reviews = [
+            {"scores": {"realism": 5, "detail": 5, "coherence": 5, "continuity": 5, "escalation": 5, "hook_density": 5, "naturalness": 5}, "verdict": "rewrite", "issues": ["结构空泛"]},
+            {"scores": {"realism": 8, "detail": 8, "coherence": 8, "continuity": 8, "escalation": 8, "hook_density": 8, "naturalness": 8}, "verdict": "pass", "issues": []},
+        ]
+        self.report = None
+        self.polish_calls = 0
+
+    def _post_stream_quality_review(self, **_kwargs):
+        return self.reviews.pop(0)
+
+    def _is_auto_polish_enabled(self):
+        return True
+
+    def _get_story_quality_thresholds(self):
+        return 7.4, 6.8
+
+    def _update_chapter_quality_report(self, _index, _title, review):
+        self.report = review
+
+    def _polish_section_text(self, *_args, **_kwargs):
+        self.polish_calls += 1
+        return "精修后的正文"
+
+
+def test_full_story_quality_review_polishes_and_rescores_output():
+    app = _QualityLoopHarness()
+    result = app._review_and_polish_full_story(None, "原始正文", "悬疑故事", "悬疑", 1200)
+
+    assert result == "精修后的正文"
+    assert app.polish_calls == 1
+    assert app.report["verdict"] == "pass"
+
+
 def test_model_only_segmented_generation_cancelled_by_preview_sets_stopped_status():
     app = _DummyStoryGenerator()
 

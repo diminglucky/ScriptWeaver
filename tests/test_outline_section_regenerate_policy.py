@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import time
+import threading
 from unittest.mock import patch
 
 from src.gui.mixins.story_modules.outline_section_generate_mixin import OutlineSectionGenerateMixin
@@ -71,6 +73,20 @@ class _BlueprintClient:
             "【伏笔线索】埋伏笔→第2章回收。\n"
             "【连续性禁区】不得跳过雨夜电话后的即时行动。\n"
         )
+
+
+class _RetryBlueprintClient(_BlueprintClient):
+    def __init__(self):
+        super().__init__()
+        self.stream_calls = 0
+
+    def stream(self, messages, **kwargs):
+        self.stream_calls += 1
+        self.last_messages = messages
+        if self.stream_calls == 1:
+            yield "=== 第1章 ===\n【承接点】残片"
+            raise RuntimeError("peer closed connection without sending complete message body")
+        yield from super().stream(messages, **kwargs)
 
 
 class _DummyApp(StoryInfraMixin, OutlineSectionGenerateMixin):
@@ -240,9 +256,43 @@ class _QualityFallbackDummy(_GeneratePreviewDummy):
         return None
 
 
+class _SingleFinalReviewDummy(_QualityFallbackDummy):
+    def __init__(self):
+        super().__init__()
+        self.review_contents = []
+        self.quality_reports = []
+
+    def _post_stream_quality_review(self, *, section_content, **_kwargs):
+        self.review_contents.append(section_content)
+        return {
+            "avg_score": 6.0,
+            "scores": {"realism": 6.0},
+            "verdict": "polish",
+            "issues": ["待修订"],
+        }
+
+    def _preview_generated_section_before_apply(self, **_kwargs):
+        return "accept", "用户预览后修改的最终正文。"
+
+    def _update_chapter_quality_report(self, chapter_index, chapter_title, review):
+        self.quality_reports.append((chapter_index, chapter_title, review))
+
+
 class _FinalMemoryDummy(_QualityFallbackDummy):
     def _preview_generated_section_before_apply(self, **_kwargs):
         return "accept", "用户最终改稿正文。"
+
+
+class _RateLimitedPreviewDummy(_FinalMemoryDummy):
+    def _stream_section_content(self, **_kwargs):
+        self._last_stream_rate_limited = True
+        return "限流后成功生成的正文。"
+
+    def _parallel_post_stream_repairs(self, *_args, **_kwargs):
+        raise AssertionError("rate-limited chapter must skip optional repairs")
+
+    def _post_stream_quality_review(self, *_args, **_kwargs):
+        raise AssertionError("rate-limited chapter must skip quality review")
 
 
 class _ParallelReviewDummy(StoryInfraMixin, OutlineSectionGenerateMixin):
@@ -271,6 +321,17 @@ class _ParallelReviewDummy(StoryInfraMixin, OutlineSectionGenerateMixin):
 class _SegmentClient:
     def stream(self, *_args, **_kwargs):
         yield "分段正文"
+
+
+class _OverloadedSectionClient:
+    def __init__(self):
+        self.stream_calls = 0
+
+    def stream(self, *_args, **_kwargs):
+        self.stream_calls += 1
+        if self.stream_calls == 1:
+            raise RuntimeError("Our servers are currently overloaded. Please try again later.")
+        yield "服务恢复后的章节正文。"
 
 
 class _SegmentOverviewDummy(StoryInfraMixin, OutlineSectionGenerateMixin):
@@ -332,6 +393,54 @@ class _SegmentOverviewDummy(StoryInfraMixin, OutlineSectionGenerateMixin):
 class _SegmentFinalMemoryDummy(_SegmentOverviewDummy):
     def _preview_generated_section_before_apply(self, **_kwargs):
         return "accept", "分段最终预览正文。"
+
+
+class _SegmentRetryReviewDummy(_SegmentOverviewDummy):
+    def __init__(self):
+        super().__init__()
+        self.review_results = [
+            {"avg_score": 6.0, "scores": {"realism": 6.0}, "verdict": "polish", "issues": ["首轮问题"]},
+            {"avg_score": 6.0, "scores": {"realism": 6.0}, "verdict": "polish", "issues": ["二轮问题"]},
+            {"avg_score": 9.0, "scores": {"realism": 9.0}, "verdict": "pass", "issues": []},
+        ]
+        self.polish_calls = 0
+        self.quality_reports = []
+
+    def _is_story_quality_review_enabled(self):
+        return True
+
+    def _is_auto_polish_enabled(self):
+        return True
+
+    def _get_story_quality_thresholds(self):
+        return 8.0, 7.5
+
+    def _needs_continuity_polish(self, *_args, **_kwargs):
+        return False
+
+    def _needs_structural_rewrite(self, *_args, **_kwargs):
+        return False
+
+    def _review_section_quality(self, *_args, **_kwargs):
+        return self.review_results.pop(0)
+
+    def _polish_section_text(self, *_args, **_kwargs):
+        self.polish_calls += 1
+        return f"第{self.polish_calls}次精修后的正文。"
+
+    def _update_chapter_quality_report(self, chapter_index, chapter_title, review):
+        self.quality_reports.append((chapter_index, chapter_title, review))
+
+
+class _SegmentRetryReviewFailureDummy(_SegmentRetryReviewDummy):
+    def __init__(self):
+        super().__init__()
+        self.review_results[-1] = None
+
+
+class _NonTransientReviewFailureDummy(_ParallelReviewDummy):
+    def _review_section_quality(self, *_args):
+        raise ValueError("malformed review payload")
 
 
 class _GlobalOverviewDummy(StoryInfraMixin, OutlineOverviewMixin, OutlineSectionGenerateMixin):
@@ -520,6 +629,19 @@ def test_report_error_does_not_dump_traceback_to_output():
     assert "network timeout" in app.output.text
 
 
+def test_report_error_translates_provider_overload_message():
+    app = _DummyApp()
+
+    with patch("tkinter.messagebox.showerror", lambda *args, **kwargs: None):
+        app._report_section_generation_error(
+            1,
+            RuntimeError("Our servers are currently overloaded. Please try again later."),
+        )
+
+    assert "上游服务当前繁忙" in app.output.text
+    assert "overloaded" not in app.output.text
+
+
 def test_regenerate_preview_uses_feedback_and_continuity_context():
     app = _PreviewDummy()
     client = _PreviewClient(
@@ -619,6 +741,22 @@ def test_do_generate_section_falls_back_to_polish_when_structure_rewrite_noops()
     assert app.apply_payload["section_content"] == "普通润色后的章节正文。"
 
 
+def test_do_generate_section_reviews_final_preview_text_after_polish():
+    app = _SingleFinalReviewDummy()
+
+    result = app._do_generate_section(
+        client=None,
+        query="测试需求",
+        contexts=[],
+        section_index=0,
+        existing_chapter_policy="replace",
+    )
+
+    assert result == "append"
+    assert app.review_contents[-1] == "用户预览后修改的最终正文。"
+    assert app.quality_reports[-1][2]["avg_score"] == 6.0
+
+
 def test_post_stream_quality_review_receives_repaired_text_and_section_overview_plan():
     app = _ParallelReviewDummy()
 
@@ -637,6 +775,65 @@ def test_post_stream_quality_review_receives_repaired_text_and_section_overview_
     assert app.review_args is not None
     assert app.review_args[2] == "修复后的完整章节正文。"
     assert app.review_args[-1].startswith("【本章目标】确认送信人")
+
+
+def test_non_transient_review_error_does_not_start_cooldown():
+    app = _NonTransientReviewFailureDummy()
+
+    review = app._post_stream_quality_review(
+        client=object(),
+        section_content="正文。",
+        section_title="第一章",
+        section_index=0,
+        previous_content="",
+        requirement="测试需求",
+        category="悬疑",
+    )
+
+    assert review is None
+    assert not app._post_stream_requests_deferred()
+
+
+def test_post_stream_task_runs_on_daemon_worker():
+    started = threading.Event()
+    release = threading.Event()
+
+    def slow_task():
+        started.set()
+        release.wait(1.0)
+        return "完成"
+
+    future = OutlineSectionGenerateMixin._submit_post_stream_task(slow_task)
+    try:
+        assert started.wait(1.0)
+        assert future.done() is False
+        assert any(
+            thread.name == "story-post-stream" and thread.daemon
+            for thread in threading.enumerate()
+        )
+    finally:
+        release.set()
+
+    assert future.result(timeout=1.0) == "完成"
+
+
+def test_stream_retries_provider_overload_message():
+    app = _SegmentOverviewDummy()
+    client = _OverloadedSectionClient()
+
+    with patch(
+        "src.gui.mixins.story_modules.outline_section_generate_mixin.time.sleep",
+        lambda *_args, **_kwargs: None,
+    ):
+        result = app._stream_section_content(
+            client=client,
+            story_system_prompt="system",
+            section_prompt="prompt",
+            target_per_section=900,
+        )
+
+    assert result == "服务恢复后的章节正文。"
+    assert client.stream_calls == 2
 
 
 def test_do_generate_section_extracts_memory_from_final_accepted_text():
@@ -672,6 +869,38 @@ def test_final_memory_extraction_still_runs_when_quality_review_disabled():
     assert app.memory_contents == ["最终入稿正文。"]
 
 
+def test_rate_limited_chapter_skips_optional_post_stream_requests():
+    app = _RateLimitedPreviewDummy()
+
+    result = app._do_generate_section(
+        client=object(),
+        query="校园悬疑",
+        contexts=[],
+        section_index=0,
+        existing_chapter_policy="replace",
+        skip_dialog=True,
+    )
+
+    assert result == "append"
+    assert app.memory_contents == []
+
+
+def test_memory_extraction_skips_while_post_stream_requests_are_deferred():
+    app = _ParallelReviewDummy()
+    app._post_stream_defer_until = time.monotonic() + 10
+
+    result = app._extract_final_memory_entry(
+        client=object(),
+        section_index=0,
+        section_title="第一章",
+        section_content="正文。",
+        include_memory=True,
+    )
+
+    assert result is None
+    assert app.memory_args is None
+
+
 def test_generate_in_sections_uses_section_overview_plan():
     app = _SegmentOverviewDummy()
     client = _SegmentClient()
@@ -701,6 +930,37 @@ def test_generate_in_sections_extracts_memory_from_final_preview_text():
 
     assert ok is True
     assert app.memory_contents == ["分段最终预览正文。"]
+
+
+def test_generate_in_sections_rescores_after_bounded_retry_polish():
+    app = _SegmentRetryReviewDummy()
+    ok = app._generate_in_sections(
+        client=_SegmentClient(),
+        requirement="测试需求",
+        contexts=[],
+        sections=[{"title": "第一段", "items": []}],
+        target_chars=1200,
+    )
+
+    assert ok is True
+    assert app.polish_calls == 2
+    assert len(app.quality_reports) == 3
+    assert app.quality_reports[-1][2]["verdict"] == "pass"
+
+
+def test_generate_in_sections_marks_report_when_retry_review_fails():
+    app = _SegmentRetryReviewFailureDummy()
+    ok = app._generate_in_sections(
+        client=_SegmentClient(),
+        requirement="测试需求",
+        contexts=[],
+        sections=[{"title": "第一段", "items": []}],
+        target_chars=1200,
+    )
+
+    assert ok is True
+    assert app.quality_reports[-1][2]["review_complete"] is False
+    assert "二次精修后的质量评审未完成" in app.quality_reports[-1][2]["issues"]
 
 
 def test_global_overview_signature_mismatch_triggers_review():
@@ -769,6 +1029,23 @@ def test_generate_all_chapter_blueprints_requests_scene_execution_cards():
     assert "目标/阻力/行动/结果/新问题" in prompt
     assert "连续性禁区" in prompt
     assert "静态说明" not in prompt
+
+
+def test_generate_all_chapter_blueprints_retries_partial_stream():
+    app = _OverviewOnlyDummy()
+    client = _RetryBlueprintClient()
+
+    blueprints = app.generate_all_chapter_blueprints(
+        client=client,
+        requirement="写一个校园悬疑故事",
+        category="校园",
+        outline_text="1. 匿名信",
+        sections=[{"title": "匿名信"}],
+    )
+
+    assert client.stream_calls == 2
+    assert len(blueprints) == 1
+    assert blueprints[0]["blueprint"].startswith("【承接点】从雨夜电话开篇。")
 
 
 def test_section_overview_draft_includes_story_state_contract():

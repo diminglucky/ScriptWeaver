@@ -127,6 +127,17 @@ class SettingsRoutingProviderMixin:
         return key, base_url, model
 
     def _find_configured_story_provider(self, provider: str, fallback_provider: Optional[str]) -> tuple[str, dict, str, str]:
+        # An explicit fallback is authoritative for this call.  Check it
+        # first so a stale route cannot keep an empty/unconfigured provider.
+        explicit = str(fallback_provider or "").strip()
+        if explicit and explicit != provider:
+            cfg = self._get_provider_config(explicit)
+            key = str(cfg.get("key", "") or "").strip()
+            base_url = str(cfg.get("base_url", "") or "").strip()
+            key, base_url, _env_model = self._apply_story_env_fallbacks(explicit, key, base_url, "")
+            if key:
+                return explicit, cfg, key, base_url
+
         candidates = []
         for raw in (
             fallback_provider,
@@ -165,12 +176,26 @@ class SettingsRoutingProviderMixin:
             provider = "DeepSeek"
 
         provider_cfg = self._get_provider_config(provider)
+        route_provider = provider
 
         key = str(provider_cfg.get("key", "") or "").strip()
         base_url = str(provider_cfg.get("base_url", "") or "").strip()
         env_model = ""
+        # A route that names a provider with no saved endpoint or credential is
+        # incomplete.  Resolve the caller's selected provider before applying
+        # environment fallbacks, otherwise a stale env key can mask the
+        # explicit fallback choice.
+        route_is_empty = not key and not base_url
+        if route_is_empty and fallback_provider and provider != fallback_provider:
+            alt_provider, alt_cfg, alt_key, alt_base_url = self._find_configured_story_provider(
+                provider, fallback_provider
+            )
+            if alt_key:
+                provider = alt_provider
+                provider_cfg = alt_cfg
+                key = alt_key
+                base_url = alt_base_url
         key, base_url, env_model = self._apply_story_env_fallbacks(provider, key, base_url, "")
-        route_provider = provider
 
         # If an advanced route points to an unconfigured provider, prefer the
         # currently selected story provider so "Save API config" is enough.

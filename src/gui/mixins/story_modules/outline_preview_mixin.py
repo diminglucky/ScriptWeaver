@@ -37,6 +37,11 @@ class OutlinePreviewMixin:
         report = reports[section_index]
         if not isinstance(report, dict) or not report:
             return False
+        if report.get("review_complete") is False:
+            return False
+        verdict = str(report.get("verdict", "") or "").strip().lower()
+        if verdict in {"polish", "rewrite", "reject"}:
+            return False
         avg = float(report.get("avg_score", 0.0) or 0.0)
         # 平均分 >= 7.5 自动通过
         auto_threshold = 7.5

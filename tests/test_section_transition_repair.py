@@ -22,9 +22,18 @@ class _FakeClient:
         return self.reply
 
 
+class _FailingClient:
+    def chat(self, *_args, **_kwargs):
+        raise RuntimeError("offline")
+
+
 class _Dummy(OutlineQualityMixin):
     def __init__(self):
         self.temperature = _Var(0.7)
+        self.blueprints_invalidated = 0
+
+    def _invalidate_chapter_blueprints(self):
+        self.blueprints_invalidated += 1
 
     def _build_section_transition_context(self, section_index: int, previous_content: str) -> str:
         _ = (section_index, previous_content)
@@ -37,6 +46,20 @@ class _Dummy(OutlineQualityMixin):
     def _build_story_state_contract(self, section_index: int, previous_content: str = "") -> str:
         _ = (section_index, previous_content)
         return "【事实锁定】\n- 主角已经拿到证据但尚未公开。\n【未回收钩子队列】\n- 内鬼身份未明。"
+
+
+def test_replacing_a_chapter_invalidates_later_derived_state():
+    obj = _Dummy()
+    obj.story_memory_ledger = [{"chapter_index": 0}, {"chapter_index": 1}, {"chapter_index": 2}]
+    obj.chapter_quality_reports = [{"chapter_index": 0}, {"chapter_index": 1}, {"chapter_index": 2}]
+    obj.story_branch_revision = 3
+
+    obj._invalidate_story_state_after_section(0)
+
+    assert len(obj.story_memory_ledger) == 1
+    assert len(obj.chapter_quality_reports) == 1
+    assert obj.story_branch_revision == 4
+    assert obj.blueprints_invalidated == 1
 
 
 def test_transition_repair_rewrites_redundant_opening():
@@ -129,6 +152,43 @@ def test_quality_review_prompt_includes_scene_card_contract():
     assert "当众证明证据被调包" in prompt
     assert "未兑现" not in prompt
     assert "escalation/hook_density/coherence 必须低于7" in prompt
+
+
+def test_zhihu_shape_gate_merges_into_suspense_review():
+    obj = _Dummy()
+    client = _FakeClient(
+        '{"scores":{"realism":9,"detail":9,"coherence":9,"continuity":9,'
+        '"escalation":9,"hook_density":9,"naturalness":9},'
+        '"strengths":["语言顺畅"],"issues":[],"key_fix":""}'
+    )
+
+    review = obj._review_section_quality(
+        client,
+        section_title="第一章",
+        section_content="我感到恐怖和不安，空气里满是诡异的气息。",
+        requirement="写一个知乎风悬疑故事",
+        category="悬疑",
+        section_index=0,
+    )
+
+    assert review["scores"]["detail"] < 9
+    assert review["issues"]
+    assert "证据" in review["key_fix"]
+
+
+def test_zhihu_shape_gate_still_runs_when_model_review_is_unavailable():
+    obj = _Dummy()
+    review = obj._review_section_quality(
+        _FailingClient(),
+        section_title="第一章",
+        section_content="我感到恐怖和不安，空气里满是诡异的气息。",
+        requirement="写一个知乎风悬疑故事",
+        category="悬疑",
+        section_index=0,
+    )
+
+    assert review["scores"]["detail"] < 5
+    assert any("证据" in issue for issue in review["issues"])
 
 
 def test_polish_prompt_includes_continuity_context_for_middle_section():

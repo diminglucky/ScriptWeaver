@@ -9,10 +9,14 @@
 
 from tkinter import DISABLED, NORMAL, END, messagebox
 import threading
+import logging
 
 from ...models.character import Character, CharacterProfile, VisualFeatures, CharacterDNA
 from ...services.ai_service import create_ai_service
 from ...helpers.character_prompt_builder import CharacterPromptBuilder
+
+
+logger = logging.getLogger(__name__)
 
 
 class CharacterDescriptionMixin:
@@ -29,7 +33,7 @@ class CharacterDescriptionMixin:
         api_config = self._resolve_character_description_api_config()
         selected_model = api_config.get("model", "")
         if selected_model:
-            print(f"🤖 使用模型: {selected_model}")
+            logger.info("using model: %s", selected_model)
 
         ai_service = create_ai_service({"__route__": api_config}, "__route__")
         if not ai_service:

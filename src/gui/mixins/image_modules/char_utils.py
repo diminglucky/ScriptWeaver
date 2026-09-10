@@ -5,6 +5,7 @@ import tkinter as tk
 from tkinter import ttk
 import os
 import threading
+import logging
 from pathlib import Path
 from PIL import Image, ImageTk
 
@@ -14,6 +15,14 @@ from src.utils.text import sanitize as _sanitize
 from ...helpers.character_prompt_builder import CharacterPromptBuilder
 from ...widgets.character_manager import CharacterPhotoGallery
 from ...helpers.character_sheet_builder import CharacterSheetBuilder
+
+
+logger = logging.getLogger(__name__)
+
+
+def print(*args, **kwargs):  # type: ignore[override]
+	"""Route diagnostic output through logging for GBK-safe Windows consoles."""
+	logger.info(" ".join(str(arg) for arg in args))
 
 
 class CharacterUtilsMixin:
@@ -300,7 +309,6 @@ class CharacterUtilsMixin:
 			)
 		except Exception as e:
 			messagebox.showerror("错误", f"打开照片画廊失败：{str(e)}")
-	
 	
 	
 	

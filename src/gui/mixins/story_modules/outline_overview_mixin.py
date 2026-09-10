@@ -1277,41 +1277,60 @@ class OutlineOverviewMixin:
             {"role": "user", "content": prompt},
         ]
 
-        # 流式生成蓝图，让用户实时看到进度
+        # 流式生成蓝图，让用户实时看到进度。流中途断开时，残片通常不完整，
+        # 因此重试整次请求；只有重试仍失败才使用阻塞调用兜底。
         result = ""
-        _buf = ""
-        _last_t = 0.0
+        stream_error = None
         _FLUSH = 0.08
-        try:
-            import time as _time
-            _last_t = _time.time()
-            for delta in client.stream(messages, temperature=temp, max_tokens=max_tokens):
-                result += delta
-                _buf += delta
-                now = _time.time()
-                if now - _last_t >= _FLUSH or "\n" in delta:
+        for attempt in range(2):
+            current = ""
+            _buf = ""
+            _last_t = 0.0
+            try:
+                import time as _time
+                _last_t = _time.time()
+                for delta in client.stream(messages, temperature=temp, max_tokens=max_tokens):
+                    current += delta
+                    _buf += delta
+                    now = _time.time()
+                    if now - _last_t >= _FLUSH or "\n" in delta:
+                        try:
+                            self._ui(self.output.insert, "end", _buf)
+                            self._ui(self.output.see, "end")
+                        except Exception:
+                            pass
+                        _buf = ""
+                        _last_t = now
+                if _buf:
                     try:
                         self._ui(self.output.insert, "end", _buf)
                         self._ui(self.output.see, "end")
                     except Exception:
                         pass
-                    _buf = ""
-                    _last_t = now
-            if _buf:
-                try:
-                    self._ui(self.output.insert, "end", _buf)
-                    self._ui(self.output.see, "end")
-                except Exception:
-                    pass
-        except Exception as exc:
-            logger.warning("generate chapter blueprints stream failed: %s", exc)
-            if not result.strip():
-                # 流式失败，回退到阻塞调用
-                try:
-                    result = client.chat(messages, temperature=temp, max_tokens=max_tokens)
-                except Exception as exc2:
-                    logger.warning("generate chapter blueprints fallback failed: %s", exc2)
-                    return []
+                result = current
+                stream_error = None
+                break
+            except Exception as exc:
+                stream_error = exc
+                logger.warning(
+                    "generate chapter blueprints stream failed (attempt %d/2): %s",
+                    attempt + 1,
+                    exc,
+                )
+                if attempt == 0:
+                    try:
+                        self._ui(self.status.set, "蓝图流式连接中断，正在自动重试完整请求...")
+                    except Exception:
+                        pass
+                    continue
+
+        if stream_error is not None and not result.strip():
+            # 流式失败，回退到阻塞调用
+            try:
+                result = client.chat(messages, temperature=temp, max_tokens=max_tokens)
+            except Exception as exc2:
+                logger.warning("generate chapter blueprints fallback failed: %s", exc2)
+                return []
 
         if not result or not result.strip():
             return []

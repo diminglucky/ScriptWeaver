@@ -156,6 +156,20 @@ class _AutoDummyApp(OutlineSectionGenerateMixin):
         return None
 
 
+class _RateLimitedAutoApp(_AutoDummyApp):
+    def __init__(self, failures: int = 2):
+        super().__init__()
+        self.remaining_failures = failures
+        self.generation_attempts = 0
+
+    def _do_generate_section(self, _client, query, contexts, idx, **_kwargs):
+        self.generation_attempts += 1
+        if self.remaining_failures:
+            self.remaining_failures -= 1
+            raise RuntimeError("Upstream rate limit exceeded, please retry later")
+        return super()._do_generate_section(_client, query, contexts, idx, **_kwargs)
+
+
 def test_generate_section_rag_uses_existing_index(tmp_path: Path):
     idx_dir = tmp_path / "idx"
     idx_dir.mkdir(parents=True, exist_ok=True)
@@ -211,3 +225,41 @@ def test_auto_generate_all_sections_keeps_static_contexts_without_provider():
 
     assert app.calls == [(0, ["static"]), (1, ["static"])]
     assert app.provider_calls == []
+
+
+def test_auto_generate_retries_upstream_rate_limit(monkeypatch):
+    app = _RateLimitedAutoApp(failures=2)
+    delays = []
+
+    monkeypatch.setattr(
+        "src.gui.mixins.story_modules.outline_section_generate_mixin.time.sleep",
+        lambda delay: delays.append(delay),
+    )
+    monkeypatch.setattr("tkinter.messagebox.showinfo", lambda *args, **kwargs: None)
+
+    with patch("src.gui.mixins.story_modules.outline_section_generate_mixin.threading.Thread", _ImmediateThread):
+        app._auto_generate_all_sections("总需求", ["static"], start_index=0)
+
+    assert app.generation_attempts == 4  # two throttled attempts, then two chapters
+    assert delays == [2.0, 4.0]
+    assert "全部章节生成完成" in app.output.text
+
+
+def test_auto_generate_does_not_retry_non_transient_errors(monkeypatch):
+    app = _RateLimitedAutoApp(failures=1)
+    sleeps = []
+    monkeypatch.setattr(
+        "src.gui.mixins.story_modules.outline_section_generate_mixin.time.sleep",
+        lambda delay: sleeps.append(delay),
+    )
+
+    def fail_hard(*_args, **_kwargs):
+        raise RuntimeError("invalid request parameters")
+
+    app._do_generate_section = fail_hard
+    with patch("src.gui.mixins.story_modules.outline_section_generate_mixin.threading.Thread", _ImmediateThread), \
+         patch.object(app, "_report_section_generation_error") as report:
+        app._auto_generate_all_sections("总需求", ["static"], start_index=0)
+
+    report.assert_called_once()
+    assert sleeps == []

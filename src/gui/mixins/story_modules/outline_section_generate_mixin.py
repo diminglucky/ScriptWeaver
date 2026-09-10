@@ -7,7 +7,7 @@ import os
 import re
 import threading
 import time
-from concurrent.futures import ThreadPoolExecutor, Future
+from concurrent.futures import Future
 import tkinter as tk
 from pathlib import Path
 
@@ -45,6 +45,71 @@ class OutlineSectionGenerateMixin:
     # 流式输出缓冲配置（优化性能）
     STREAM_BUFFER_SIZE = 30      # 累积 30 个字符或
     STREAM_FLUSH_INTERVAL = 0.1  # 100ms 刷新一次
+    _POST_STREAM_COOLDOWN_SECONDS = 60.0
+
+    @staticmethod
+    def _submit_post_stream_task(func, *args, **kwargs) -> Future:
+        """Run optional provider work on a daemon thread.
+
+        A timed-out HTTP call cannot always be cancelled at the socket layer;
+        using a daemon worker prevents it from keeping the GUI process alive
+        while the cooldown blocks new optional requests.
+        """
+        future: Future = Future()
+
+        def runner() -> None:
+            if future.set_running_or_notify_cancel():
+                try:
+                    future.set_result(func(*args, **kwargs))
+                except BaseException as exc:
+                    future.set_exception(exc)
+
+        threading.Thread(target=runner, name="story-post-stream", daemon=True).start()
+        return future
+
+    def _post_stream_timeout_seconds(self) -> float:
+        """Return the local wait budget for optional provider calls.
+
+        The provider client has its own network timeout; this budget only controls
+        how long the UI worker waits before accepting the generated text as-is.
+        """
+        try:
+            value = float(os.getenv("STORY_POST_STREAM_TIMEOUT_SECONDS", "90"))
+        except (TypeError, ValueError):
+            value = 90.0
+        return max(15.0, min(300.0, value))
+
+    def _post_stream_requests_deferred(self) -> bool:
+        """Avoid stacking optional requests after a provider timeout."""
+        return time.monotonic() < float(getattr(self, "_post_stream_defer_until", 0.0) or 0.0)
+
+    def _defer_post_stream_requests(self, error: Exception | None = None) -> None:
+        """Put optional post-processing on cooldown while a timed-out call unwinds."""
+        delay = self._POST_STREAM_COOLDOWN_SECONDS
+        if error is not None and self._is_rate_limit_error(str(error)):
+            delay = max(delay, self._retry_delay_for_error(error, 0, base_delay=2.0))
+        self._post_stream_defer_until = time.monotonic() + delay
+
+    @classmethod
+    def _should_defer_post_stream_error(cls, error: Exception) -> bool:
+        """Cooldown only errors likely to clear without a code/prompt change."""
+        return isinstance(error, TimeoutError) or cls._is_connection_like_error(str(error))
+
+    @staticmethod
+    def _quality_review_unavailable(reason: str = "质量评审未完成") -> dict:
+        """Represent an unknown final score without retaining a stale draft score."""
+        detail = str(reason or "质量评审未完成").strip()
+        return {
+            "scores": {},
+            "avg_score": 0.0,
+            "strengths": [],
+            "issues": [detail],
+            "key_fix": "评审恢复后重新检查最终入稿正文",
+            "review_complete": False,
+            "quality_gate_passed": False,
+            "verdict": "polish",
+            "confidence": 0.0,
+        }
 
     def _run_modal_ui_call(self, func, *args, **kwargs):
         """Execute modal UI call with compatibility fallback for tests/stubs."""
@@ -78,8 +143,72 @@ class OutlineSectionGenerateMixin:
             "service unavailable",
             "server error",
             "internal server error",
+            "overloaded",
+            "temporarily overloaded",
+            "server is busy",
+            "服务器繁忙",
+            "服务过载",
+            "upstream request failed",
+            "upstream failed",
+            "gateway timeout",
         )
         return any(mark in text for mark in markers)
+
+    @staticmethod
+    def _is_rate_limit_error(error_text: str) -> bool:
+        """Return whether an error indicates a temporary provider throttle."""
+        text = str(error_text or "").strip().lower()
+        if not text:
+            return False
+        markers = (
+            "429",
+            "rate limit",
+            "rate-limit",
+            "too many requests",
+            "upstream rate",
+            "请求频率",
+            "调用频率",
+            "请求过于频繁",
+        )
+        return any(mark in text for mark in markers)
+
+    @staticmethod
+    def _retry_after_seconds(error: Exception, default: float) -> float:
+        """Read Retry-After when a compatible client exposes it, with a safe fallback."""
+        candidates = []
+        for attr in ("response", "http_response"):
+            response = getattr(error, attr, None)
+            headers = getattr(response, "headers", None)
+            if headers:
+                try:
+                    candidates.append(headers.get("retry-after") or headers.get("Retry-After"))
+                except Exception:
+                    pass
+        candidates.append(str(error))
+        for value in candidates:
+            if value is None:
+                continue
+            raw_value = str(value).strip()
+            if re.fullmatch(r"\d+(?:\.\d+)?", raw_value):
+                try:
+                    return max(0.5, min(60.0, float(raw_value)))
+                except ValueError:
+                    pass
+            match = re.search(r"retry[- _]?after\s*[:= ]\s*(\d+(?:\.\d+)?)", raw_value, re.I)
+            if match:
+                try:
+                    return max(0.5, min(60.0, float(match.group(1))))
+                except ValueError:
+                    pass
+        return max(0.5, float(default))
+
+    @classmethod
+    def _retry_delay_for_error(cls, error: Exception, attempt: int, *, base_delay: float) -> float:
+        """Use provider guidance when present, otherwise exponential backoff for throttles."""
+        if cls._is_rate_limit_error(str(error)):
+            suggested = cls._retry_after_seconds(error, base_delay * (2 ** attempt))
+            return min(60.0, suggested)
+        return max(0.5, min(30.0, float(base_delay)))
 
     @staticmethod
     def _build_token_candidates(max_tokens: int, *, floor: int = 600) -> list[int]:
@@ -103,6 +232,7 @@ class OutlineSectionGenerateMixin:
     ) -> tuple[str, str]:
         """Call chat with retries and smaller token budgets for unstable gateways."""
         last_error = ""
+        last_exception: Exception | None = None
         token_candidates = self._build_token_candidates(max_tokens)
         for idx, tokens in enumerate(token_candidates):
             try:
@@ -115,6 +245,7 @@ class OutlineSectionGenerateMixin:
                     return text, ""
                 last_error = "empty response"
             except Exception as exc:
+                last_exception = exc
                 last_error = _sanitize(str(exc)) or exc.__class__.__name__
                 if not self._is_connection_like_error(last_error):
                     raise
@@ -127,7 +258,10 @@ class OutlineSectionGenerateMixin:
                         )
                 except Exception:
                     pass
-                time.sleep(min(1.2, 0.45 * (idx + 1)))
+                delay = self._retry_delay_for_error(
+                    last_exception or RuntimeError(last_error), idx, base_delay=0.45
+                )
+                time.sleep(min(60.0, delay))
         return "", last_error
 
     def on_generate_section(self) -> None:
@@ -247,14 +381,12 @@ class OutlineSectionGenerateMixin:
         if tasks_needed == 0:
             return "", section_content
 
-        pool = ThreadPoolExecutor(max_workers=max(1, tasks_needed))
-        try:
-            ft_tail = pool.submit(
+        ft_tail = self._submit_post_stream_task(
                 self._repair_section_tail_if_needed,
                 client, section_title, section_content,
             ) if need_tail else None
 
-            ft_transition = pool.submit(
+        ft_transition = self._submit_post_stream_task(
                 self._repair_section_transition_if_needed,
                 client,
                 section_index=section_index,
@@ -263,23 +395,27 @@ class OutlineSectionGenerateMixin:
                 section_content=section_content,
             ) if need_transition else None
 
-            _REPAIR_TIMEOUT = 45  # 单个后处理任务最多等 45 秒
+        _REPAIR_TIMEOUT = self._post_stream_timeout_seconds()
 
-            def _safe_result(ft, default, label: str = ""):
-                if ft is None:
-                    return default
-                try:
-                    return ft.result(timeout=_REPAIR_TIMEOUT)
-                except Exception as exc:
-                    logger.warning("post-stream %s timed out or failed: %s", label, str(exc)[:60])
-                    return default
+        def _safe_result(ft, default, label: str = ""):
+            if ft is None:
+                return default
+            if self._post_stream_requests_deferred():
+                logger.info("post-stream %s skipped while cooldown is active", label)
+                return default
+            try:
+                return ft.result(timeout=_REPAIR_TIMEOUT)
+            except Exception as exc:
+                if self._should_defer_post_stream_error(exc):
+                    self._defer_post_stream_requests(exc)
+                detail = str(exc).strip() or exc.__class__.__name__
+                logger.warning("post-stream %s timed out or failed: %s", label, detail[:60])
+                return default
 
-            tail_patch = _safe_result(ft_tail, "", "tail_repair")
-            transition_result = _safe_result(ft_transition, section_content, "transition_repair")
+        tail_patch = _safe_result(ft_tail, "", "tail_repair")
+        transition_result = _safe_result(ft_transition, section_content, "transition_repair")
 
-            return tail_patch, transition_result
-        finally:
-            pool.shutdown(wait=False, cancel_futures=True)
+        return tail_patch, transition_result
 
     def _post_stream_quality_review(
         self,
@@ -296,33 +432,35 @@ class OutlineSectionGenerateMixin:
         """Run quality review against the repaired section text."""
         fast = hasattr(self, '_is_story_fast_mode') and self._is_story_fast_mode()
         quality_enabled = (not fast) and self._is_story_quality_review_enabled()
-        if not quality_enabled:
+        if not quality_enabled or self._post_stream_requests_deferred():
             return None
 
-        pool = ThreadPoolExecutor(max_workers=1)
-        try:
-            ft_review = pool.submit(
+        ft_review = self._submit_post_stream_task(
                 self._review_section_quality,
                 client, section_title, section_content,
                 requirement, category,
                 section_index, previous_content, section_overview_plan,
             )
 
-            _REPAIR_TIMEOUT = 45
+        _REPAIR_TIMEOUT = self._post_stream_timeout_seconds()
 
-            def _safe_result(ft, default, label: str = ""):
-                if ft is None:
-                    return default
-                try:
-                    return ft.result(timeout=_REPAIR_TIMEOUT)
-                except Exception as exc:
-                    logger.warning("post-stream %s timed out or failed: %s", label, str(exc)[:60])
-                    return default
+        def _safe_result(ft, default, label: str = ""):
+            if ft is None:
+                return default
+            if self._post_stream_requests_deferred():
+                logger.info("post-stream %s skipped while cooldown is active", label)
+                return default
+            try:
+                return ft.result(timeout=_REPAIR_TIMEOUT)
+            except Exception as exc:
+                if self._should_defer_post_stream_error(exc):
+                    self._defer_post_stream_requests(exc)
+                detail = str(exc).strip() or exc.__class__.__name__
+                logger.warning("post-stream %s timed out or failed: %s", label, detail[:60])
+                return default
 
-            review = _safe_result(ft_review, None, "quality_review")
-            return review
-        finally:
-            pool.shutdown(wait=False, cancel_futures=True)
+        review = _safe_result(ft_review, None, "quality_review")
+        return review
 
     def _is_story_memory_ledger_enabled(self) -> bool:
         fast = hasattr(self, '_is_story_fast_mode') and self._is_story_fast_mode()
@@ -338,12 +476,14 @@ class OutlineSectionGenerateMixin:
         include_memory: bool = False,
     ) -> "dict | None":
         """Extract memory only from the final accepted section text."""
-        if not include_memory or not self._is_story_memory_ledger_enabled():
+        if (
+            not include_memory
+            or not self._is_story_memory_ledger_enabled()
+            or self._post_stream_requests_deferred()
+        ):
             return None
 
-        pool = ThreadPoolExecutor(max_workers=1)
-        try:
-            ft_memory = pool.submit(
+        ft_memory = self._submit_post_stream_task(
                 self._extract_memory_entry,
                 client,
                 section_index=section_index,
@@ -351,15 +491,16 @@ class OutlineSectionGenerateMixin:
                 section_content=section_content,
             )
 
-            _REPAIR_TIMEOUT = 45
+        _REPAIR_TIMEOUT = self._post_stream_timeout_seconds()
 
-            try:
-                return ft_memory.result(timeout=_REPAIR_TIMEOUT)
-            except Exception as exc:
-                logger.warning("post-stream memory_extract timed out or failed: %s", str(exc)[:60])
-                return None
-        finally:
-            pool.shutdown(wait=False, cancel_futures=True)
+        try:
+            return ft_memory.result(timeout=_REPAIR_TIMEOUT)
+        except Exception as exc:
+            if self._should_defer_post_stream_error(exc):
+                self._defer_post_stream_requests(exc)
+            detail = str(exc).strip() or exc.__class__.__name__
+            logger.warning("post-stream memory_extract timed out or failed: %s", detail[:60])
+            return None
 
     @staticmethod
     def _merge_post_stream_repairs(
@@ -386,6 +527,7 @@ class OutlineSectionGenerateMixin:
         self._ui(self.output.insert, END, "=" * 50 + "\n\n")
         
         accumulated_content = ""
+        self.generated_content = ""
         style_part = self.style.get().strip()
         category = self.category.get()
         stopped_by_preview = False
@@ -454,18 +596,25 @@ class OutlineSectionGenerateMixin:
                 target_per_section=target_per_section,
             )
 
+            stream_rate_limited = bool(getattr(self, "_last_stream_rate_limited", False))
+            skip_optional_post_stream = stream_rate_limited or self._post_stream_requests_deferred()
+
             # 先并行执行文本修复；质量评审基于修复后的正文。
             original_content = section_content
-            tail_patch, transition_result = self._parallel_post_stream_repairs(
-                client=client,
-                section_content=section_content,
-                section_title=section.get("title", ""),
-                section_index=idx,
-                previous_content=accumulated_content,
-                requirement=requirement,
-                category=category,
-                section_overview_plan=section_overview_plan,
-            )
+            if skip_optional_post_stream:
+                logger.info("skipping optional post-stream calls for segment %d", idx + 1)
+                tail_patch, transition_result = "", section_content
+            else:
+                tail_patch, transition_result = self._parallel_post_stream_repairs(
+                    client=client,
+                    section_content=section_content,
+                    section_title=section.get("title", ""),
+                    section_index=idx,
+                    previous_content=accumulated_content,
+                    requirement=requirement,
+                    category=category,
+                    section_overview_plan=section_overview_plan,
+                )
             section_content = self._merge_post_stream_repairs(
                 section_content, tail_patch, transition_result,
             )
@@ -473,7 +622,7 @@ class OutlineSectionGenerateMixin:
                 self._ui(self.output.delete, section_start_pos, "end-1c")
                 self._ui(self.output.insert, END, section_content)
                 self._ui(self.output.see, END)
-            review = self._post_stream_quality_review(
+            review = None if skip_optional_post_stream else self._post_stream_quality_review(
                 client=client,
                 section_content=section_content,
                 section_title=section.get("title", ""),
@@ -483,6 +632,14 @@ class OutlineSectionGenerateMixin:
                 category=category,
                 section_overview_plan=section_overview_plan,
             )
+
+            quality_requested = (
+                not fast
+                and hasattr(self, "_is_story_quality_review_enabled")
+                and self._is_story_quality_review_enabled()
+            )
+            if review is None and quality_requested:
+                review = self._quality_review_unavailable("首轮质量评审未完成")
 
             # 质量评审结果 → 自动精修（优化④由环境变量控制）
             if review is not None:
@@ -528,6 +685,76 @@ class OutlineSectionGenerateMixin:
                             self._ui(self.output.see, END)
                             section_content = polished
 
+                    # Re-score the text after rewriting. This keeps the saved
+                    # quality report honest and gives one bounded retry when
+                    # the first repair did not address the core defect.
+                    if section_content != original_content and not skip_optional_post_stream:
+                        try:
+                            final_review = self._post_stream_quality_review(
+                                client=client,
+                                section_content=section_content,
+                                section_title=section.get("title", ""),
+                                section_index=idx,
+                                previous_content=accumulated_content,
+                                requirement=requirement,
+                                category=category,
+                                section_overview_plan=section_overview_plan,
+                            )
+                            if isinstance(final_review, dict):
+                                review = final_review
+                                self._update_chapter_quality_report(idx, section.get("title", ""), review)
+                                min_avg, min_dim = self._get_story_quality_thresholds()
+                                if should_polish(review, min_avg_score=min_avg, min_dimension_score=min_dim):
+                                    retry_text = self._polish_section_text(
+                                        client,
+                                        section.get("title", ""),
+                                        section_content,
+                                        review,
+                                        target_per_section,
+                                        section_index=idx,
+                                        previous_content=accumulated_content,
+                                    )
+                                    if retry_text and retry_text != section_content:
+                                        section_content = retry_text
+                                        self._ui(self.output.delete, section_start_pos, "end-1c")
+                                        self._ui(self.output.insert, END, section_content)
+                                        self._ui(self.output.see, END)
+                                        # The bounded retry changes the accepted text, so
+                                        # score that exact version and replace the report.
+                                        retry_review = self._post_stream_quality_review(
+                                            client=client,
+                                            section_content=section_content,
+                                            section_title=section.get("title", ""),
+                                            section_index=idx,
+                                            previous_content=accumulated_content,
+                                            requirement=requirement,
+                                            category=category,
+                                            section_overview_plan=section_overview_plan,
+                                        )
+                                        if isinstance(retry_review, dict):
+                                            review = retry_review
+                                            self._update_chapter_quality_report(
+                                                idx, section.get("title", ""), retry_review,
+                                            )
+                                        else:
+                                            review = self._quality_review_unavailable(
+                                                "二次精修后的质量评审未完成",
+                                            )
+                                            self._update_chapter_quality_report(
+                                                idx, section.get("title", ""), review,
+                                            )
+                            else:
+                                review = self._quality_review_unavailable()
+                                self._update_chapter_quality_report(
+                                    idx, section.get("title", ""), review,
+                                )
+                        except Exception as exc:
+                            review = self._quality_review_unavailable()
+                            self._update_chapter_quality_report(
+                                idx, section.get("title", ""), review,
+                            )
+                            logger.debug("post-polish section review failed: %s", exc)
+
             preview_action = self._preview_generated_section_before_apply(
                 client=client,
                 section_index=idx,
@@ -563,7 +790,7 @@ class OutlineSectionGenerateMixin:
                 section_index=idx,
                 section_title=section.get("title", ""),
                 section_content=section_content,
-                include_memory=not fast,
+                include_memory=(not fast and not skip_optional_post_stream),
             )
             if memory_entry:
                 self._update_story_memory_ledger(idx, section.get("title", ""), memory_entry)
@@ -571,7 +798,8 @@ class OutlineSectionGenerateMixin:
                 self._ui(self._update_story_diagnostics_panel)
             
             # 累积内容（用于下一段的上下文）
-            accumulated_content += section_content
+            accumulated_content += ("\n\n" if accumulated_content else "") + section_content.strip()
+            self.generated_content = accumulated_content
             
             # 段落分隔
             if idx < total_sections - 1:
@@ -582,6 +810,7 @@ class OutlineSectionGenerateMixin:
         if stopped_by_preview:
             return False
         final_length = len(accumulated_content)
+        self.generated_content = accumulated_content.strip()
         self._ui(self.output.insert, END, f"\n\n" + "=" * 50 + "\n")
         self._ui(self.output.insert, END, f"✅ 生成完成！总字数：{final_length} 字\n")
         self._ui(self.status.set, f"生成完成（{final_length} 字）")
@@ -741,19 +970,29 @@ class OutlineSectionGenerateMixin:
                 target_per_section=target_per_section,
             )
 
+            # If the provider throttled this chapter, avoid immediately issuing
+            # more optional calls (tail repair/review/memory) into the same
+            # cooldown window. The accepted chapter remains usable without them.
+            stream_rate_limited = bool(getattr(self, "_last_stream_rate_limited", False))
+            skip_optional_post_stream = stream_rate_limited or self._post_stream_requests_deferred()
+
             # 先并行执行文本修复；质量评审基于修复后的正文。
             fast = hasattr(self, '_is_story_fast_mode') and self._is_story_fast_mode()
             original_content = section_content
-            tail_patch, transition_result = self._parallel_post_stream_repairs(
-                client=client,
-                section_content=section_content,
-                section_title=section.get("title", ""),
-                section_index=section_index,
-                previous_content=self.generated_content,
-                requirement=query,
-                category=self.category.get(),
-                section_overview_plan=section_overview_plan,
-            )
+            if skip_optional_post_stream:
+                logger.info("skipping optional post-stream calls for chapter %d", section_index + 1)
+                tail_patch, transition_result = "", section_content
+            else:
+                tail_patch, transition_result = self._parallel_post_stream_repairs(
+                    client=client,
+                    section_content=section_content,
+                    section_title=section.get("title", ""),
+                    section_index=section_index,
+                    previous_content=self.generated_content,
+                    requirement=query,
+                    category=self.category.get(),
+                    section_overview_plan=section_overview_plan,
+                )
             section_content = self._merge_post_stream_repairs(
                 section_content, tail_patch, transition_result,
             )
@@ -761,7 +1000,12 @@ class OutlineSectionGenerateMixin:
                 self._ui(self.output.delete, section_start_pos, "end-1c")
                 self._ui(self.output.insert, END, section_content)
                 self._ui(self.output.see, END)
-            review = self._post_stream_quality_review(
+            quality_requested = (
+                not fast
+                and hasattr(self, "_is_story_quality_review_enabled")
+                and self._is_story_quality_review_enabled()
+            )
+            review = None if skip_optional_post_stream else self._post_stream_quality_review(
                 client=client,
                 section_content=section_content,
                 section_title=section.get("title", ""),
@@ -771,6 +1015,9 @@ class OutlineSectionGenerateMixin:
                 category=self.category.get(),
                 section_overview_plan=section_overview_plan,
             )
+            if review is None and quality_requested:
+                review = self._quality_review_unavailable("首轮质量评审未完成")
+            reviewed_content = section_content
 
             # 质量评审结果 → 自动精修（优化④由环境变量控制）
             if review is not None:
@@ -842,6 +1089,29 @@ class OutlineSectionGenerateMixin:
                     self._ui(self.update_header_status, f"第 {section_index+1} 章已丢弃", "↩️")
                 return "preview_discard"
 
+            # Re-score any text changed by polishing or the interactive preview.
+            # The report must describe the exact text that is about to be saved.
+            if review is not None and not skip_optional_post_stream and section_content != reviewed_content:
+                try:
+                    final_review = self._post_stream_quality_review(
+                        client=client,
+                        section_content=section_content,
+                        section_title=section.get("title", ""),
+                        section_index=section_index,
+                        previous_content=self.generated_content,
+                        requirement=query,
+                        category=self.category.get(),
+                        section_overview_plan=section_overview_plan,
+                    )
+                    review = (
+                        final_review
+                        if isinstance(final_review, dict)
+                        else self._quality_review_unavailable()
+                    )
+                except Exception as exc:
+                    review = self._quality_review_unavailable()
+                    logger.debug("final section review failed: %s", exc)
+
             action, final_output_text = self._apply_generated_section_output(
                 base_output_text=base_output_text,
                 section_index=section_index,
@@ -854,6 +1124,8 @@ class OutlineSectionGenerateMixin:
             self.generated_content = self._rebuild_generated_content_from_output(final_output_text)
 
             if action in {"append", "replace"}:
+                if action == "replace":
+                    self._invalidate_story_state_after_section(section_index)
                 if review is not None:
                     self._update_chapter_quality_report(section_index, section.get("title", ""), review)
                 memory_entry = self._extract_final_memory_entry(
@@ -861,7 +1133,7 @@ class OutlineSectionGenerateMixin:
                     section_index=section_index,
                     section_title=section.get("title", ""),
                     section_content=section_content,
-                    include_memory=not fast,
+                    include_memory=(not fast and not skip_optional_post_stream),
                 )
                 if memory_entry:
                     self._update_story_memory_ledger(section_index, section.get("title", ""), memory_entry)
@@ -1130,6 +1402,8 @@ class OutlineSectionGenerateMixin:
         """统一错误提示：不把 traceback 写入正文区。"""
         chapter_no = max(1, int(section_index) + 1)
         brief = _sanitize(str(error)) or error.__class__.__name__
+        if "overloaded" in brief.lower() or "服务过载" in brief or "服务器繁忙" in brief:
+            brief = "上游服务当前繁忙，自动重试仍未成功，请稍后重试。"
         self._ui(self.output.insert, END, f"\n❌ {prefix}（第 {chapter_no} 章）：{brief}\n")
         self._ui(self.status.set, f"第 {chapter_no} 章生成失败")
         if hasattr(self, "update_header_status"):
@@ -1169,6 +1443,7 @@ class OutlineSectionGenerateMixin:
             {"role": "user", "content": section_prompt},
         ]
         last_exc: Exception | None = None
+        self._last_stream_rate_limited = False
 
         for attempt in range(self._STREAM_RETRY_MAX):
             section_content = ""
@@ -1212,13 +1487,9 @@ class OutlineSectionGenerateMixin:
             except Exception as exc:
                 last_exc = exc
                 err_text = str(exc).lower()
-                _RETRY_MARKERS = (
-                    "incomplete chunked read", "chunked", "peer closed",
-                    "connection reset", "connection error", "connection aborted",
-                    "timed out", "timeout", "broken pipe", "econnreset",
-                    "temporarily unavailable", "remote protocol",
-                )
-                if not any(m in err_text for m in _RETRY_MARKERS):
+                if self._is_rate_limit_error(err_text):
+                    self._last_stream_rate_limited = True
+                if not self._is_connection_like_error(err_text):
                     raise
 
                 # 连接中断：如果已拿到足够内容（>=60%目标），直接使用
@@ -1229,13 +1500,17 @@ class OutlineSectionGenerateMixin:
                     return section_content
 
                 if attempt < self._STREAM_RETRY_MAX - 1:
-                    retry_msg = f"流式传输中断，{self._STREAM_RETRY_DELAY}s 后自动重试（{attempt+1}/{self._STREAM_RETRY_MAX-1}）..."
+                    retry_delay = self._retry_delay_for_error(
+                        exc, attempt, base_delay=self._STREAM_RETRY_DELAY
+                    )
+                    reason = "上游限流" if self._is_rate_limit_error(err_text) else "连接中断"
+                    retry_msg = f"流式传输{reason}，{retry_delay:g}s 后自动重试（{attempt+1}/{self._STREAM_RETRY_MAX-1}）..."
                     logger.warning("stream interrupted: %s, retrying...", str(exc)[:80])
                     try:
                         self._ui(self.status.set, retry_msg)
                     except Exception:
                         pass
-                    time.sleep(self._STREAM_RETRY_DELAY)
+                    time.sleep(retry_delay)
                     # 清除之前的半截内容
                     if section_content:
                         try:
@@ -1264,7 +1539,10 @@ class OutlineSectionGenerateMixin:
                 total_sections = len(self.parsed_sections)
                 current_idx = start_index
 
+                # Preserve the existing one retry for connection drops, while
+                # allowing one additional attempt for a provider throttle.
                 _PER_CHAPTER_RETRY_MAX = 2
+                _RATE_LIMIT_RETRY_MAX = 3
                 _PER_CHAPTER_RETRY_DELAY = 2.0
 
                 for idx in range(start_index, total_sections):
@@ -1273,7 +1551,7 @@ class OutlineSectionGenerateMixin:
                     
                     # 单章重试机制：连接中断时自动重试，不中断整条流水线
                     chapter_ok = False
-                    for ch_attempt in range(_PER_CHAPTER_RETRY_MAX):
+                    for ch_attempt in range(_RATE_LIMIT_RETRY_MAX):
                         try:
                             chapter_contexts = contexts
                             if context_provider is not None:
@@ -1300,22 +1578,23 @@ class OutlineSectionGenerateMixin:
                             break
                         except Exception as ch_exc:
                             err_lower = str(ch_exc).lower()
-                            _CONN_MARKERS = (
-                                "incomplete chunked", "chunked", "peer closed",
-                                "connection reset", "connection error", "timed out",
-                                "timeout", "broken pipe", "econnreset",
-                            )
-                            is_conn_err = any(m in err_lower for m in _CONN_MARKERS)
-                            if not is_conn_err or ch_attempt >= _PER_CHAPTER_RETRY_MAX - 1:
+                            is_retryable = self._is_connection_like_error(err_lower)
+                            is_rate_limited = self._is_rate_limit_error(err_lower)
+                            retry_max = _RATE_LIMIT_RETRY_MAX if is_rate_limited else _PER_CHAPTER_RETRY_MAX
+                            if not is_retryable or ch_attempt >= retry_max - 1:
                                 raise
+                            retry_delay = self._retry_delay_for_error(
+                                ch_exc, ch_attempt, base_delay=_PER_CHAPTER_RETRY_DELAY
+                            )
+                            reason = "上游限流" if is_rate_limited else "连接中断"
                             logger.warning("chapter %d failed (attempt %d): %s, retrying...",
                                            idx + 1, ch_attempt + 1, str(ch_exc)[:80])
                             self._ui(self.output.insert, END,
-                                     f"\n⚠️ 第 {idx+1} 章生成中断，{_PER_CHAPTER_RETRY_DELAY}s 后自动重试...\n\n")
+                                     f"\n⚠️ 第 {idx+1} 章{reason}，{retry_delay:g}s 后自动重试...\n\n")
                             self._ui(self.output.see, END)
                             self._ui(self.status.set,
-                                     f"第 {idx+1} 章连接中断，自动重试中（{ch_attempt+1}/{_PER_CHAPTER_RETRY_MAX-1}）...")
-                            time.sleep(_PER_CHAPTER_RETRY_DELAY)
+                                     f"第 {idx+1} 章{reason}，自动重试中（{ch_attempt+1}/{retry_max-1}）...")
+                            time.sleep(retry_delay)
 
                     if not chapter_ok:
                         continue

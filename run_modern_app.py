@@ -7,6 +7,7 @@ import os
 import sys
 import subprocess
 import shutil
+import ctypes
 from pathlib import Path
 
 # 设置Windows控制台UTF-8编码
@@ -25,6 +26,26 @@ os.environ.setdefault("USE_TF", "0")
 project_root = Path(__file__).resolve().parent
 os.chdir(project_root)
 sys.path.insert(0, str(project_root))
+
+
+def _prepare_tk_runtime() -> None:
+    """Load the bundled Tcl/Tk runtime when the Python distribution omits it."""
+    if sys.platform != "win32":
+        return
+    runtime = project_root / ".tk_runtime"
+    tcl_dir = runtime / "tcl8.6"
+    tk_dir = runtime / "tk8.6"
+    if not (tcl_dir / "init.tcl").exists() or not (tk_dir / "tk.tcl").exists():
+        return
+    os.environ.setdefault("TCL_LIBRARY", str(tcl_dir))
+    os.environ.setdefault("TK_LIBRARY", str(tk_dir))
+    try:
+        os.add_dll_directory(str(runtime))
+        os.add_dll_directory(r"C:\Program Files\Git\mingw64\bin")
+        ctypes.CDLL(str(runtime / "tcl86t.dll"))
+        ctypes.CDLL(str(runtime / "tk86t.dll"))
+    except OSError as exc:
+        print(f"[WARN] Tcl/Tk runtime preload failed: {exc}")
 
 
 def _can_import_tkinter(py_bin: str) -> bool:
@@ -110,6 +131,7 @@ def _maybe_reexec_safe_python_on_macos() -> None:
 def main():
     """主函数"""
     _maybe_reexec_safe_python_on_macos()
+    _prepare_tk_runtime()
     try:
         # 尝试导入现代化UI
         from src.gui.modern_app import ModernApp

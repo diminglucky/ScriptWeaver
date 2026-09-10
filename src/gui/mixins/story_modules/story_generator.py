@@ -18,6 +18,7 @@ except Exception:  # pragma: no cover - fallback for minimal environments
 
 from src.clients.deepseek_client import DeepSeekClient  # backward-compat for test monkey-patching
 from src.utils.text import sanitize as _sanitize
+from src.gui.helpers.story_quality import should_polish
 from src.gui.mixins.story_modules.story_infra import log_print as print  # noqa: A001
 
 logger = logging.getLogger(__name__)
@@ -189,10 +190,100 @@ class StoryGeneratorMixin:
 			logger.debug("full-story preview fallback failed: %s", e)
 			return "accept", story
 
+	def _review_and_polish_full_story(self, client, story: str, query: str, category: str, target_chars: int) -> str:
+		"""Give single-shot stories the same review gate as chapter-by-chapter runs."""
+		if not hasattr(self, "_post_stream_quality_review"):
+			return story
+		try:
+			review = self._post_stream_quality_review(
+				client=client,
+				section_content=story,
+				section_title="整篇故事",
+				section_index=0,
+				previous_content="",
+				requirement=query,
+				category=category,
+				section_overview_plan="",
+			)
+		except Exception as exc:
+			logger.debug("full-story quality review failed: %s", exc)
+			return story
+		if not isinstance(review, dict):
+			return story
+		if hasattr(self, "_update_chapter_quality_report"):
+			try:
+				self._update_chapter_quality_report(0, "整篇故事", review)
+			except Exception:
+				pass
+		if not hasattr(self, "_is_auto_polish_enabled") or not self._is_auto_polish_enabled():
+			return story
+		try:
+			min_avg, min_dim = self._get_story_quality_thresholds()
+			needs_polish = should_polish(review, min_avg_score=min_avg, min_dimension_score=min_dim)
+		except Exception:
+			needs_polish = True
+		if not needs_polish:
+			return story
+		try:
+			polished = self._polish_section_text(
+				client,
+				"整篇故事",
+				story,
+				review,
+				target_chars,
+				section_index=0,
+				previous_content="",
+			)
+			final_story = str(polished or story).strip() or story
+			# Re-score the actual post-polish text so the report reflects what the
+			# user will publish, not the draft that triggered the rewrite.
+			if final_story != story and hasattr(self, "_post_stream_quality_review"):
+				try:
+					final_review = self._post_stream_quality_review(
+						client=client,
+						section_content=final_story,
+						section_title="整篇故事",
+						section_index=0,
+						previous_content="",
+						requirement=query,
+						category=category,
+						section_overview_plan="",
+					)
+					if isinstance(final_review, dict) and hasattr(self, "_update_chapter_quality_report"):
+						self._update_chapter_quality_report(0, "整篇故事", final_review)
+						if should_polish(final_review, min_avg_score=min_avg, min_dimension_score=min_dim):
+							second = self._polish_section_text(
+								client, "整篇故事", final_story, final_review, target_chars,
+								section_index=0, previous_content="",
+							)
+							if second and len(str(second).strip()) >= max(120, int(len(final_story) * 0.55)):
+								final_story = str(second).strip()
+								try:
+									last_review = self._post_stream_quality_review(
+										client=client, section_content=final_story,
+										section_title="整篇故事", section_index=0,
+										previous_content="", requirement=query,
+										category=category, section_overview_plan="",
+									)
+									if isinstance(last_review, dict) and hasattr(self, "_update_chapter_quality_report"):
+										self._update_chapter_quality_report(0, "整篇故事", last_review)
+								except Exception as exc:
+									logger.debug("final story verification failed: %s", exc)
+					return final_story
+				except Exception as exc:
+					logger.debug("full-story post-polish review failed: %s", exc)
+			return final_story
+		except Exception as exc:
+			logger.debug("full-story polish failed: %s", exc)
+			return story
+
 	def _render_story_output(self, banner_text: str, story_text: str) -> None:
 		"""Render final story text (banner + body) to output area."""
 		self._ui(self.output.delete, "1.0", END)
 		text = str(story_text or "").strip()
+		# Keep a canonical body separate from the visible run banner so persistence
+		# and later chapter prompts never depend on UI diagnostics.
+		self.generated_content = text
 		if banner_text:
 			self._ui(self.output.insert, END, banner_text + "\n\n")
 		if text:
@@ -251,6 +342,9 @@ class StoryGeneratorMixin:
 				target_chars_val,
 				requirement=query,
 				category=category_val,
+			)
+			generated_story = self._review_and_polish_full_story(
+				client, generated_story, query, category_val, target_chars_val
 			)
 			preview_action, final_story = self._preview_story_text_before_finalize(
 				client=client,

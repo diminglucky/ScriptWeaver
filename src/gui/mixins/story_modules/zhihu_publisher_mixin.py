@@ -166,7 +166,11 @@ class ZhihuPublisherMixin:
         return {"provider": "", "key": "", "base_url": "", "model": ""}
 
     def _on_generate_zhihu_title(self) -> None:
-        raw_story_text = self.output.get("1.0", END).strip()
+        raw_story_text = (
+            self._story_text_for_save()
+            if hasattr(self, "_story_text_for_save")
+            else self.output.get("1.0", END).strip()
+        )
         if not raw_story_text:
             messagebox.showwarning("提示", "请先生成故事内容")
             return
@@ -249,7 +253,11 @@ class ZhihuPublisherMixin:
             messagebox.showwarning("提示", "请先输入或生成文章标题")
             return None
 
-        raw_content = self.output.get("1.0", END).strip()
+        raw_content = (
+            self._story_text_for_save()
+            if hasattr(self, "_story_text_for_save")
+            else self.output.get("1.0", END).strip()
+        )
         if not raw_content:
             messagebox.showwarning("提示", "请先生成故事内容")
             return None

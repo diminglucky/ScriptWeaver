@@ -28,6 +28,7 @@ from ...helpers.story_writing_guardrails import (
 )
 from ...helpers.story_texture_rules import build_story_texture_rules
 from ...helpers.zhihu_hook_rules import (
+    build_zhihu_high_score_story_contract,
     build_zhihu_hook_opening_rules,
     build_zhihu_section_opening_rules,
 )
@@ -98,6 +99,12 @@ class StoryPromptGenerationMixin:
             chapter_title_max_len=chapter_title_max_len,
         )
         outline_output_example = get_outline_output_example_text()
+        zhihu_contract = ""
+        if template.get("key") in {"zhihu_realistic", "suspense_thriller"}:
+            zhihu_contract = (
+                "【知乎高赞悬疑结构合同】\n"
+                f"{build_zhihu_high_score_story_contract(stage='outline')}\n\n"
+            )
 
         return (
             f"{outline_intro}\n\n"
@@ -108,6 +115,7 @@ class StoryPromptGenerationMixin:
             f"- 当前模版：{template_label}\n"
             f"- 模版导向：{outline_focus}\n"
             f"{outline_rules}\n\n"
+            f"{zhihu_contract}"
             f"{deep_horror_part}"
             "【标题质量约束】\n"
             f"{outline_guardrails}\n\n"
@@ -187,6 +195,12 @@ class StoryPromptGenerationMixin:
         story_intro = get_story_intro_text()
         story_writing_spec = get_story_writing_spec_text()
         zhihu_hook_rules = build_zhihu_hook_opening_rules(first_section=True)
+        zhihu_contract = ""
+        if template.get("key") in {"zhihu_realistic", "suspense_thriller"}:
+            zhihu_contract = (
+                "【知乎高赞叙事合同】\n"
+                f"{build_zhihu_high_score_story_contract(stage='story')}\n\n"
+            )
         story_reminder = get_story_reminder_text(min_chars=min_chars)
         return (
             f"{story_intro}\n\n"
@@ -206,6 +220,7 @@ class StoryPromptGenerationMixin:
             f"{story_writing_spec}\n\n"
             "【知乎强钩子开头】\n"
             f"{zhihu_hook_rules}\n\n"
+            f"{zhihu_contract}"
             "【去模板腔与专业度】\n"
             f"{writing_guardrails}\n\n"
             "【情感弧线与真人感】\n"
@@ -335,6 +350,12 @@ class StoryPromptGenerationMixin:
         section_intro = get_section_intro_text(section_no=section_index + 1, total_sections=total_sections)
         section_writing_spec = get_section_writing_spec_text()
         section_hook_rules = build_zhihu_section_opening_rules(section_index=section_index)
+        zhihu_contract = ""
+        if template.get("key") in {"zhihu_realistic", "suspense_thriller"}:
+            zhihu_contract = (
+                "【知乎高赞分节合同】\n"
+                f"{build_zhihu_high_score_story_contract(stage='section', section_index=section_index, total_sections=total_sections)}\n\n"
+            )
         section_reminder = get_section_reminder_text(min_chars=min_chars)
         global_overview = ""
         if hasattr(self, "_get_story_global_overview_text"):
@@ -388,6 +409,7 @@ class StoryPromptGenerationMixin:
             f"{section_writing_spec}\n\n"
             "【知乎强钩子开头】\n"
             f"{section_hook_rules}\n\n"
+            f"{zhihu_contract}"
             f"【本章剧情合同（硬约束）】\n{plot_contract}\n\n"
             f"【跨章衔接一致性】\n{transition_guardrails}\n\n"
             f"【去模板腔与专业度】\n{writing_guardrails}\n\n"

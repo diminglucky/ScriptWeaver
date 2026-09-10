@@ -11,6 +11,7 @@ from typing import Optional
 from src.gui.helpers.story_pipeline_profile import (
     build_memory_ledger_prompt,
     build_polish_prompt,
+    build_quality_critic_prompt,
     build_quality_review_prompt,
     build_structure_rewrite_prompt,
     get_polish_fallback_fix,
@@ -26,12 +27,26 @@ from src.gui.helpers.story_quality import (
     should_polish,
     strip_duplicate_lines,
 )
+from src.gui.helpers.zhihu_story_quality import (
+    inspect_zhihu_story_shape,
+    merge_local_quality_report,
+)
 
 logger = logging.getLogger(__name__)
 
 
 class OutlineQualityMixin:
     """Quality review, polishing, and alignment repair helpers."""
+
+    @staticmethod
+    def _should_run_zhihu_shape_check(category: str, section_title: str = "", requirement: str = "") -> bool:
+        """Apply the deterministic structure gate to suspense-oriented output."""
+        signal = f"{category or ''} {section_title or ''} {requirement or ''}".lower()
+        markers = (
+            "知乎", "悬疑", "惊悚", "灵异", "推理", "侦探", "失踪", "死亡",
+            "恐怖", "诡案", "秘闻", "suspense", "thriller", "mystery",
+        )
+        return any(marker in signal for marker in markers)
 
     def _is_section_tail_complete(self, text: str) -> bool:
         tail = (text or "").strip()
@@ -335,6 +350,34 @@ class OutlineQualityMixin:
                 ).strip()
             except Exception:
                 continuity_contract = ""
+        critic_report = ""
+        try:
+            passes = int(os.getenv("STORY_QUALITY_AI_PASSES", "2") or "2")
+        except (TypeError, ValueError):
+            passes = 2
+        if passes >= 2:
+            critic_prompt = build_quality_critic_prompt(
+                requirement=requirement,
+                category=category,
+                section_title=section_title,
+                preview=preview,
+                continuity_contract=continuity_contract,
+                scene_card_contract=section_overview_plan,
+            )
+            try:
+                candidate_critic = str(client.chat(
+                    [{"role": "user", "content": critic_prompt}],
+                    temperature=0.2,
+                    max_tokens=650,
+                ) or "").strip()
+                # Only feed a response back into the judge when it resembles
+                # the critic schema; malformed/final-review-shaped output is
+                # ignored instead of polluting the second prompt.
+                if '"observations"' in candidate_critic or '"causal_chain"' in candidate_critic:
+                    critic_report = candidate_critic
+            except Exception as exc:
+                logger.debug("AI critic review failed: %s", exc)
+
         prompt = build_quality_review_prompt(
             requirement=requirement,
             category=category,
@@ -342,6 +385,7 @@ class OutlineQualityMixin:
             preview=preview,
             continuity_contract=continuity_contract,
             scene_card_contract=section_overview_plan,
+            critic_report=critic_report,
         )
         try:
             raw = client.chat(
@@ -351,7 +395,7 @@ class OutlineQualityMixin:
             )
         except Exception as exc:
             logger.debug("quality review failed: %s", exc)
-            return {
+            review = {
                 "scores": {"realism": 5.0, "detail": 5.0, "coherence": 5.0, "continuity": 5.0,
                             "escalation": 5.0, "hook_density": 5.0, "naturalness": 5.0},
                 "avg_score": 5.0,
@@ -359,7 +403,30 @@ class OutlineQualityMixin:
                 "issues": ["质量评审不可用，触发保守精修"],
                 "key_fix": "增强危机升级与钩子密度",
             }
-        return parse_quality_review(raw)
+        else:
+            review = parse_quality_review(raw)
+        template_signal = ""
+        try:
+            template_var = getattr(self, "story_template_key", None)
+            template_signal = str(template_var.get() if hasattr(template_var, "get") else template_var or "")
+        except Exception:
+            template_signal = ""
+        zhihu_shape_enabled = self._should_run_zhihu_shape_check(
+            category,
+            section_title,
+            f"{requirement} {template_signal}",
+        ) or template_signal in {"zhihu_realistic", "suspense_thriller"}
+        if zhihu_shape_enabled:
+            try:
+                local_report = inspect_zhihu_story_shape(
+                    section_content,
+                    require_opening=section_index == 0,
+                    require_ending="整篇" in str(section_title or ""),
+                )
+                review = merge_local_quality_report(review, local_report)
+            except Exception as exc:
+                logger.debug("local Zhihu shape check failed: %s", exc)
+        return review
 
     def _polish_section_text(
         self,
@@ -544,8 +611,37 @@ class OutlineQualityMixin:
             "avg_score": review.get("avg_score", 0.0),
             "issues": review.get("issues", []),
             "key_fix": review.get("key_fix", ""),
+            "quality_gate_passed": review.get("quality_gate_passed"),
+            "local_quality_issues": review.get("local_quality_issues", []),
+            "verdict": review.get("verdict", ""),
+            "evidence": review.get("evidence", []),
+            "missing_evidence": review.get("missing_evidence", []),
+            "confidence": review.get("confidence", 0.0),
+            "review_complete": review.get("review_complete"),
         }
         self.chapter_quality_reports[section_index] = report
+
+    def _invalidate_story_state_after_section(self, section_index: int) -> None:
+        """Drop derived state after a chapter is replaced by a new branch."""
+        try:
+            idx = max(0, int(section_index))
+        except (TypeError, ValueError):
+            idx = 0
+        for attr in ("story_memory_ledger", "chapter_quality_reports"):
+            rows = getattr(self, attr, None)
+            if isinstance(rows, list) and len(rows) > idx + 1:
+                del rows[idx + 1 :]
+        if hasattr(self, "_invalidate_chapter_blueprints"):
+            try:
+                self._invalidate_chapter_blueprints()
+            except Exception:
+                logger.debug("chapter blueprint invalidation failed", exc_info=True)
+        revision = getattr(self, "story_branch_revision", 0)
+        try:
+            revision = int(revision)
+        except (TypeError, ValueError):
+            revision = 0
+        self.story_branch_revision = revision + 1
 
     def _extract_memory_entry(self, client, section_index: int, section_title: str, section_content: str) -> dict:
         preview = section_content[-2200:]

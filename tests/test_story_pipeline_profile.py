@@ -10,6 +10,7 @@ from src.gui.helpers.story_pipeline_profile import (
     build_polish_prompt,
     build_plot_contract_guidelines,
     build_quality_review_prompt,
+    build_quality_critic_prompt,
     build_section_transition_guidelines,
     build_structure_rewrite_prompt,
     get_polish_fallback_fix,
@@ -49,6 +50,12 @@ class StoryPipelineProfileTests(unittest.TestCase):
         self.assertIn("当众证明证据被调包", review_prompt)
         self.assertIn("escalation/hook_density/coherence 必须低于7", review_prompt)
         self.assertIn("章节标题：被迫站队", review_prompt)
+
+        critic_prompt = build_quality_critic_prompt(
+            requirement="职场逆袭", category="职场", section_title="被迫站队", preview="他盯着电梯门。"
+        )
+        self.assertIn("不打分，不夸赞", critic_prompt)
+        self.assertIn("目标-阻力-选择-结果", critic_prompt)
 
         transition_rules = build_section_transition_guidelines()
         self.assertIn("承接", transition_rules)
