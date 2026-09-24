@@ -2,6 +2,7 @@ import re
 import unittest
 
 from src.gui.mixins.project_mixin import ProjectMixin
+from src.gui.mixins.story_modules.outline_section_utils_mixin import OutlineSectionUtilsMixin
 
 
 class _Selector:
@@ -41,6 +42,7 @@ class _DummyRestore(ProjectMixin):
         self.generated_content = ""
         self.story_memory_ledger = []
         self.chapter_quality_reports = []
+        self.story_branch_revision = 0
         self.section_selector = _Selector()
         self.current_section_index = _Var(0)
         self.selector_update_count = 0
@@ -94,6 +96,16 @@ class _DummyReset(ProjectMixin):
         self._chapter_blueprints_outline_sig = ""
 
 
+class _PipeRestore(ProjectMixin, OutlineSectionUtilsMixin):
+    def __init__(self):
+        self.section_selector = _Selector()
+        self.current_section_index = _Var(0)
+        self.selector_update_count = 0
+
+    def _update_section_selector(self):
+        self.selector_update_count += 1
+
+
 class _ProjectManagerStartupStub:
     def __init__(self, last_project=None, projects=None):
         self._last_project = last_project
@@ -123,6 +135,23 @@ class _DummyStartup(ProjectMixin):
 
 
 class ProjectMixinRestoreTests(unittest.TestCase):
+    def test_restore_reparses_pipe_delimited_briefs_when_saved_items_are_empty(self):
+        obj = _PipeRestore()
+        obj._restore_story_structure_from_project(
+            "",
+            {
+                "outline": "1. 棉袄异常 | 主角发现异常包裹\n2. 镇民否认 | 镇民集体否认",
+                "parsed_sections": [
+                    {"title": "棉袄异常", "items": []},
+                    {"title": "镇民否认", "items": []},
+                ],
+            },
+        )
+
+        self.assertEqual(obj.parsed_sections[0]["title"], "棉袄异常")
+        self.assertEqual(obj.parsed_sections[0]["items"], ["主角发现异常包裹"])
+        self.assertEqual(obj.parsed_sections[1]["items"], ["镇民集体否认"])
+
     def test_reset_story_workspace_clears_project_scoped_state(self):
         obj = _DummyReset()
 
@@ -185,8 +214,16 @@ class ProjectMixinRestoreTests(unittest.TestCase):
                     "scores": {"realism": 7.5},
                     "issues": ["细节不足"],
                     "key_fix": "补细节",
+                    "quality_gate_passed": False,
+                    "local_quality_issues": ["缺少可核验细节"],
+                    "verdict": "polish",
+                    "evidence": ["监控记录"],
+                    "missing_evidence": ["动机"],
+                    "confidence": 0.82,
+                    "review_complete": False,
                 }
             ],
+            "story_branch_revision": 7,
             "section_index": 1,
         }
 
@@ -207,6 +244,13 @@ class ProjectMixinRestoreTests(unittest.TestCase):
         self.assertEqual(obj.story_memory_ledger[0]["open_threads"][0], "匿名信来源未确认")
         self.assertEqual(len(obj.chapter_quality_reports), 1)
         self.assertEqual(obj.chapter_quality_reports[0]["key_fix"], "补细节")
+        self.assertFalse(obj.chapter_quality_reports[0]["quality_gate_passed"])
+        self.assertEqual(obj.chapter_quality_reports[0]["verdict"], "polish")
+        self.assertEqual(obj.chapter_quality_reports[0]["evidence"], ["监控记录"])
+        self.assertEqual(obj.chapter_quality_reports[0]["missing_evidence"], ["动机"])
+        self.assertAlmostEqual(obj.chapter_quality_reports[0]["confidence"], 0.82)
+        self.assertFalse(obj.chapter_quality_reports[0]["review_complete"])
+        self.assertEqual(obj.story_branch_revision, 7)
         self.assertEqual(obj.selector_update_count, 1)
 
     def test_restore_falls_back_to_story_text_and_detects_last_chapter(self):

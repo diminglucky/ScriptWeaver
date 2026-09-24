@@ -4,9 +4,13 @@
 
 from tkinter import DISABLED, NORMAL, END, messagebox
 import threading
+import logging
 
 from ...models.character import Character, CharacterProfile
 from ...services.ai_service import create_ai_service
+
+
+logger = logging.getLogger(__name__)
 
 
 class CharacterExtractMixin:
@@ -37,7 +41,8 @@ class CharacterExtractMixin:
         selected_api = api_config.get("provider", "")
         selected_model = api_config.get("model", "")
         if selected_model:
-            print(f"🤖 使用模型: {selected_model}")
+            # Avoid writing emoji directly to a GBK console on Windows.
+            logger.info("using model: %s", selected_model)
         
         ai_service = create_ai_service({"__route__": api_config}, "__route__")
         if not ai_service:

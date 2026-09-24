@@ -9,6 +9,11 @@ import hashlib
 DEFAULT_STORY_TEMPLATE_KEY = "zhihu_realistic"
 DEFAULT_STORY_TEMPLATE_STRATEGY = "fixed"
 
+_SUSPENSE_SIGNALS = (
+    "悬疑", "惊悚", "灵异", "鬼故事", "推理", "诡异", "闹鬼", "失踪",
+    "死亡通知", "凶案", "命案", "密室", "监控异常", "身份错位", "恐怖故事",
+)
+
 
 STORY_TEMPLATE_STRATEGIES: dict[str, dict[str, str]] = {
     "fixed": {
@@ -86,11 +91,17 @@ STORY_TEMPLATES: dict[str, dict] = {
             "开篇即出现一个小到可以被忽略、但越想越不对劲的日常异常。",
             "中段加入误导信息，但误导必须改变主角对某个亲密关系或自身记忆的判断。",
             "结尾解释关键因果，不留硬性逻辑漏洞，同时保留对日常生活的余悸。",
+            "每个关键场景都必须让主角做出选择并承担后果；异常不能只负责吓人，必须改变人物关系或行动路线。",
+            "全篇同时推进一条可验证的外在线索和一条心理暗线；每章最多保留一个主钩子和一个次钩子，避免连续堆叠灵异道具。",
+            "核心谜底必须在结尾前明确，开放结尾只保留余味，不得用故弄玄虚替代因果解释。",
+            "涉及监控、手机、报警、医疗或法律程序时，先保证现实细节自洽，再使用超自然效果。",
         ],
         "section_rules": [
             "本节新增至少一条有效线索或一条日常错位疑点，并让人物因此怀疑自己的判断。",
             "对话中包含潜台词，不直接把谜底说透；恐惧优先来自关系、记忆和证据互相冲突。",
             "禁止用手术刀、审讯室、血浆、白大褂、地下室囚禁等道具替代真正的心理压迫，除非用户明确要求。",
+            "本节只能有一个主钩子和一个次钩子；每个钩子都要在后续给出回收路径，不能靠新增谜语拖延。",
+            "本节结尾前必须完成一次不可逆选择或关系变化，并明确它给下一节带来的具体代价。",
         ],
         "outline_system_prompt": "你是擅长心理惊悚和日常异化的中文编辑，请生成可执行的章节目录。",
         "story_system_prompt": "你是心理惊悚小说作者，擅长用熟悉生活的轻微错位制造深层恐惧，避免廉价血腥、道具恐怖和逻辑断裂。",
@@ -225,6 +236,15 @@ def resolve_story_template(
     strategy_key = normalize_story_template_strategy(strategy)
     base_profile = get_story_template(template_key)
     base_key = str(base_profile.get("key", DEFAULT_STORY_TEMPLATE_KEY)).strip() or DEFAULT_STORY_TEMPLATE_KEY
+
+    # The default Zhihu-realistic profile is intentionally adaptive: a user can
+    # leave the default selected and still get suspense-specific constraints
+    # when the request clearly asks for mystery/horror. Explicitly selected
+    # templates remain untouched.
+    if base_key == DEFAULT_STORY_TEMPLATE_KEY:
+        signal_text = f"{requirement or ''} {category or ''}"
+        if any(signal in signal_text for signal in _SUSPENSE_SIGNALS):
+            base_key = "suspense_thriller"
 
     all_keys = list(STORY_TEMPLATES.keys())
     if not all_keys:

@@ -133,7 +133,9 @@ class FileOperationsMixin:
 					pass
 			return
 
-		if hasattr(self, '_ui_get'):
+		if hasattr(self, "_story_text_for_save"):
+			story_content = self._story_text_for_save()
+		elif hasattr(self, '_ui_get'):
 			story_content = (self._ui_get(self.output.get, "1.0", END) or "").strip()
 		else:
 			story_content = self.output.get("1.0", END).strip()
@@ -187,6 +189,7 @@ class FileOperationsMixin:
 		parsed_sections = getattr(self, "parsed_sections", []) or []
 		story_memory_ledger = getattr(self, "story_memory_ledger", []) or []
 		chapter_quality_reports = getattr(self, "chapter_quality_reports", []) or []
+		story_branch_revision = getattr(self, "story_branch_revision", 0)
 		section_index = 0
 		if hasattr(self, "section_selector"):
 			try:
@@ -205,6 +208,7 @@ class FileOperationsMixin:
 			"parsed_sections": parsed_sections,
 			"story_memory_ledger": story_memory_ledger,
 			"chapter_quality_reports": chapter_quality_reports,
+			"story_branch_revision": story_branch_revision,
 			"section_index": section_index,
 		}
 

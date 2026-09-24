@@ -154,6 +154,9 @@ class StoryPromptContextMixin:
         hooks: list[str] = []
         states: list[str] = []
         timeline: list[str] = []
+        confirmed_facts: list[str] = []
+        evidence: list[str] = []
+        resolved_hooks: list[str] = []
         for row in recent:
             try:
                 chapter_no = int(row.get("chapter_index", 0)) + 1
@@ -183,11 +186,16 @@ class StoryPromptContextMixin:
                     text = str(item or "").strip()
                     if text:
                         states.append(f"{prefix}人物：{text[:100]}")
+            resolved_set = {
+                str(item or "").strip()
+                for item in (row.get("resolved_hooks", []) if isinstance(row.get("resolved_hooks", []), list) else [])
+                if str(item or "").strip()
+            }
             unresolved_hooks = row.get("unresolved_hooks", [])
             if isinstance(unresolved_hooks, list):
                 for item in unresolved_hooks[:3]:
                     text = str(item or "").strip()
-                    if text:
+                    if text and text not in resolved_set:
                         hooks.append(f"{prefix}未解：{text[:100]}")
             open_threads = row.get("open_threads", [])
             if isinstance(open_threads, list):
@@ -195,6 +203,24 @@ class StoryPromptContextMixin:
                     text = str(item or "").strip()
                     if text:
                         hooks.append(f"{prefix}待处理：{text[:100]}")
+            fact_items = row.get("facts", [])
+            if isinstance(fact_items, list):
+                for item in fact_items[:8]:
+                    text = str(item or "").strip()
+                    if text:
+                        confirmed_facts.append(f"{prefix}事实核对：{text[:110]}")
+            evidence_items = row.get("evidence", [])
+            if isinstance(evidence_items, list):
+                for item in evidence_items[:6]:
+                    text = str(item or "").strip()
+                    if text:
+                        evidence.append(f"{prefix}证据状态：{text[:110]}")
+            resolved_items = row.get("resolved_hooks", [])
+            if isinstance(resolved_items, list):
+                for item in resolved_items[:5]:
+                    text = str(item or "").strip()
+                    if text:
+                        resolved_hooks.append(f"{prefix}已解决：{text[:100]}")
             timeline_events = row.get("timeline_events", [])
             if isinstance(timeline_events, list):
                 for item in timeline_events[:5]:
@@ -224,6 +250,15 @@ class StoryPromptContextMixin:
         if timeline:
             lines.append("【时间线约束】")
             lines.extend(f"- {x}" for x in timeline[-4:])
+        if confirmed_facts:
+            lines.append("【原文核对事实】")
+            lines.extend(f"- {x}" for x in confirmed_facts[-10:])
+        if evidence:
+            lines.append("【证据状态】")
+            lines.extend(f"- {x}" for x in evidence[-8:])
+        if resolved_hooks:
+            lines.append("【已解决伏笔（不得重复当作未解）】")
+            lines.extend(f"- {x}" for x in resolved_hooks[-6:])
 
         lines.append("【本章连续性硬规则】")
         lines.append("- 不得改写已发生事实，不得让关系/立场无因复原。")
@@ -312,10 +347,20 @@ class StoryPromptContextMixin:
                 if isinstance(issues, list) and issues:
                     issue = str(issues[0] or "").strip()
                 key_fix = str(last_report.get("key_fix", "") or "").strip()
+                gate_failed = last_report.get("quality_gate_passed") is False
+                verdict = str(last_report.get("verdict", "") or "").strip()
+                confidence = last_report.get("confidence", 0.0)
+                try:
+                    confidence_text = f"把握{float(confidence):.0%}"
+                except (TypeError, ValueError):
+                    confidence_text = ""
                 title = str(last_report.get("chapter_title", "") or "").strip()
                 self.story_quality_summary_var.set(
                     f"质量评审：{title or '最近章节'} | 平均{avg:.1f} | 真实{realism:.1f} 细节{detail:.1f}"
                     f" 高潮{escalation:.1f} 钩子{hook_density:.1f}"
+                    f"{' | 规则提醒' if gate_failed else ''}"
+                    f"{' | 判定: ' + verdict if verdict else ''}"
+                    f"{' | ' + confidence_text if confidence_text else ''}"
                     f"{' | 修复: ' + (key_fix or issue) if (key_fix or issue) else ''}"
                 )
             else:

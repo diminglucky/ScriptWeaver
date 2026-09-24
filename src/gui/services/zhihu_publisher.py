@@ -5,6 +5,7 @@ Zhihu publish service based on Playwright.
 from __future__ import annotations
 
 import asyncio
+import os
 import time
 from pathlib import Path
 from typing import Callable, Optional
@@ -18,30 +19,61 @@ class ZhihuPublisher:
         self.browser = None
         self.page = None
         self.playwright = None
-        self.user_data_dir = Path.home() / ".zhihu_publisher"
+        # The home-directory profile can be created with restrictive ACLs by a
+        # launcher. Keep the automation profile in the project's ignored cache.
+        self.user_data_dir = Path(__file__).resolve().parents[3] / "cache" / "zhihu_publisher_browser"
+        self.initialization_error = ""
+
+    @staticmethod
+    def _find_system_chrome() -> Optional[Path]:
+        """Return an installed Chrome executable for Playwright fallback."""
+        candidates = [
+            Path(os.environ.get("PROGRAMFILES", "")) / "Google/Chrome/Application/chrome.exe",
+            Path(os.environ.get("PROGRAMFILES(X86)", "")) / "Google/Chrome/Application/chrome.exe",
+            Path(os.environ.get("LOCALAPPDATA", "")) / "Google/Chrome/Application/chrome.exe",
+        ]
+        return next((path for path in candidates if path.is_file()), None)
+
+    def _launch_options(self, executable_path: Optional[Path] = None) -> dict:
+        options = {
+            "user_data_dir": str(self.user_data_dir),
+            "headless": self.headless,
+            "viewport": {"width": 1280, "height": 800},
+            "locale": "zh-CN",
+            "args": [
+                "--disable-blink-features=AutomationControlled",
+                "--disable-dev-shm-usage",
+                "--no-sandbox",
+                "--disable-setuid-sandbox",
+            ],
+            "user_agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/120.0.0.0 Safari/537.36"
+            ),
+        }
+        if executable_path:
+            options["executable_path"] = str(executable_path)
+        return options
 
     async def initialize(self) -> bool:
         try:
             from playwright.async_api import async_playwright
 
+            self.user_data_dir.mkdir(parents=True, exist_ok=True)
             self.playwright = await async_playwright().start()
-            self.browser = await self.playwright.chromium.launch_persistent_context(
-                user_data_dir=str(self.user_data_dir),
-                headless=self.headless,
-                viewport={"width": 1280, "height": 800},
-                locale="zh-CN",
-                args=[
-                    "--disable-blink-features=AutomationControlled",
-                    "--disable-dev-shm-usage",
-                    "--no-sandbox",
-                    "--disable-setuid-sandbox",
-                ],
-                user_agent=(
-                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                    "AppleWebKit/537.36 (KHTML, like Gecko) "
-                    "Chrome/120.0.0.0 Safari/537.36"
-                ),
-            )
+            try:
+                self.browser = await self.playwright.chromium.launch_persistent_context(
+                    **self._launch_options()
+                )
+            except Exception as bundled_error:
+                system_chrome = self._find_system_chrome()
+                if not system_chrome:
+                    raise bundled_error
+                print(f"[WARN] Playwright Chromium unavailable, falling back to {system_chrome}")
+                self.browser = await self.playwright.chromium.launch_persistent_context(
+                    **self._launch_options(system_chrome)
+                )
             await self.browser.add_init_script(
                 """
                 Object.defineProperty(navigator, 'webdriver', {
@@ -59,6 +91,7 @@ class ZhihuPublisher:
             self.page = await self.browser.new_page()
             return True
         except Exception as e:
+            self.initialization_error = str(e).strip() or e.__class__.__name__
             print(f"[ERROR] 初始化浏览器失败: {e}")
             return False
 
@@ -375,7 +408,8 @@ def publish_to_zhihu_sync(
         publisher = ZhihuPublisher(headless=headless)
         try:
             if not await publisher.initialize():
-                return False, "初始化浏览器失败"
+                detail = publisher.initialization_error or "未知错误"
+                return False, f"初始化浏览器失败：{detail}"
             result = await publisher.publish_article(title, content, progress_callback)
             # 不关闭浏览器，让用户自行操作后关闭
             return result

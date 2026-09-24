@@ -10,12 +10,56 @@ from tkinter import BOTH, LEFT, RIGHT, DISABLED, NORMAL, END, messagebox, filedi
 import tkinter as tk
 from tkinter import ttk
 
+from ..helpers.story_output import build_story_from_chapters, clean_story_text
+
 logger = logging.getLogger(__name__)
 
 
 class ProjectMixin:
 	"""Project管理功能"""
 
+	def _story_text_for_save(self) -> str:
+		"""Return publishable story text, excluding UI banners and generation logs."""
+		# Completed chapter blocks are the most reliable source during regeneration:
+		# they let us discard candidate versions and runtime footers deterministically.
+		try:
+			output_text = str(self._ui_get(self.output.get, "1.0", END) or "") if hasattr(self, "_ui_get") else str(self.output.get("1.0", END) or "")
+		except Exception:
+			output_text = ""
+		chapters = []
+		if hasattr(self, "_iter_completed_chapter_blocks"):
+			try:
+				blocks = self._iter_completed_chapter_blocks(output_text) or []
+				latest: dict[int, dict] = {}
+				for block in blocks:
+					latest[int(block.get("chapter", 0))] = block
+				chapters = [latest[key] for key in sorted(latest)]
+			except Exception:
+				chapters = []
+		if chapters:
+			return build_story_from_chapters(chapters)
+
+		cleaned = clean_story_text(output_text)
+		generated = clean_story_text(str(getattr(self, "generated_content", "") or ""))
+		# Section runs contain a directory/separator/status scaffold. In that case
+		# the canonical snapshot is authoritative; for a normal full-story view,
+		# prefer the cleaned visible text so manual edits are preserved.
+		section_scaffold = (
+			"目录（共" in output_text
+			or "目录(共" in output_text
+			or "【正在生成" in output_text
+			or bool(re.search(r"={20,}", output_text))
+		)
+		if generated and section_scaffold:
+			return generated
+		if cleaned:
+			chapter_match = re.search(r"【第\s*\d+\s*/\s*\d+\s*章：", cleaned)
+			if chapter_match:
+				cleaned = cleaned[chapter_match.start():]
+			return cleaned
+		if generated:
+			return generated
+		return cleaned
 	def _extract_outline_from_story_content(self, story_content: str) -> str:
 		"""从已保存的 story.txt 中提取目录文本（兼容老项目）"""
 		text = (story_content or "").strip()
@@ -134,6 +178,9 @@ class ProjectMixin:
 			character_states = item.get("character_states", [])
 			timeline_events = item.get("timeline_events", [])
 			open_threads = item.get("open_threads", [])
+			facts = item.get("facts", [])
+			evidence = item.get("evidence", [])
+			resolved_hooks = item.get("resolved_hooks", [])
 			if not isinstance(plot_points, list):
 				plot_points = []
 			if not isinstance(relation_changes, list):
@@ -146,6 +193,12 @@ class ProjectMixin:
 				timeline_events = []
 			if not isinstance(open_threads, list):
 				open_threads = []
+			if not isinstance(facts, list):
+				facts = []
+			if not isinstance(evidence, list):
+				evidence = []
+			if not isinstance(resolved_hooks, list):
+				resolved_hooks = []
 			rows.append(
 				{
 					"chapter_index": max(0, chapter_index),
@@ -158,6 +211,9 @@ class ProjectMixin:
 					"character_states": [str(x).strip() for x in character_states if str(x).strip()],
 					"timeline_events": [str(x).strip() for x in timeline_events if str(x).strip()],
 					"open_threads": [str(x).strip() for x in open_threads if str(x).strip()],
+					"facts": [str(x).strip() for x in facts if str(x).strip()],
+					"evidence": [str(x).strip() for x in evidence if str(x).strip()],
+					"resolved_hooks": [str(x).strip() for x in resolved_hooks if str(x).strip()],
 				}
 			)
 		return rows
@@ -186,6 +242,23 @@ class ProjectMixin:
 			if not isinstance(issues, list):
 				issues = []
 			key_fix = str(item.get("key_fix", "") or "").strip()
+			local_quality_issues = item.get("local_quality_issues", [])
+			if not isinstance(local_quality_issues, list):
+				local_quality_issues = []
+			evidence = item.get("evidence", [])
+			if not isinstance(evidence, list):
+				evidence = []
+			missing_evidence = item.get("missing_evidence", [])
+			if not isinstance(missing_evidence, list):
+				missing_evidence = []
+			review_complete = item.get("review_complete")
+			if review_complete is not None:
+				review_complete = bool(review_complete)
+			verdict = str(item.get("verdict", "") or "").strip().lower()
+			try:
+				confidence = max(0.0, min(1.0, float(item.get("confidence", 0.0) or 0.0)))
+			except (TypeError, ValueError):
+				confidence = 0.0
 			rows.append(
 				{
 					"chapter_index": max(0, chapter_index),
@@ -194,6 +267,13 @@ class ProjectMixin:
 					"scores": scores,
 					"issues": [str(x).strip() for x in issues if str(x).strip()],
 					"key_fix": key_fix,
+					"quality_gate_passed": item.get("quality_gate_passed"),
+					"local_quality_issues": [str(x).strip() for x in local_quality_issues if str(x).strip()],
+					"verdict": verdict if verdict in {"pass", "polish", "rewrite", "reject"} else "",
+					"evidence": [str(x).strip() for x in evidence if str(x).strip()],
+					"missing_evidence": [str(x).strip() for x in missing_evidence if str(x).strip()],
+					"confidence": confidence,
+					"review_complete": review_complete,
 				}
 			)
 		return rows
@@ -208,11 +288,20 @@ class ProjectMixin:
 
 		if not outline:
 			outline = self._extract_outline_from_story_content(story_content)
-		if not parsed_sections and outline and hasattr(self, "_parse_outline_sections"):
+		# Older project snapshots stored only chapter titles. Reparse the
+		# current outline when all saved item lists are empty so chapter briefs
+		# are not silently lost after restoring the project.
+		saved_items_missing = bool(parsed_sections) and all(
+			not section.get("items") for section in parsed_sections if isinstance(section, dict)
+		)
+		if outline and (not parsed_sections or saved_items_missing) and hasattr(self, "_parse_outline_sections"):
 			try:
-				parsed_sections = self._parse_outline_sections(outline) or []
+				reparsed = self._parse_outline_sections(outline) or []
+				if reparsed and (not parsed_sections or len(reparsed) == len(parsed_sections)):
+					parsed_sections = reparsed
 			except Exception:
-				parsed_sections = []
+				if not parsed_sections:
+					parsed_sections = []
 
 		self.current_outline = outline or None
 		self.parsed_sections = parsed_sections
@@ -224,6 +313,10 @@ class ProjectMixin:
 		).strip()
 		self.story_memory_ledger = self._normalize_story_memory_ledger(meta.get("story_memory_ledger"))
 		self.chapter_quality_reports = self._normalize_chapter_quality_reports(meta.get("chapter_quality_reports"))
+		try:
+			self.story_branch_revision = max(0, int(meta.get("story_branch_revision", 0) or 0))
+		except (TypeError, ValueError):
+			self.story_branch_revision = 0
 
 		if hasattr(self, "_update_section_selector"):
 			self._update_section_selector()
@@ -283,6 +376,7 @@ class ProjectMixin:
 		self.story_global_overview_signature = ""
 		self.story_memory_ledger = []
 		self.chapter_quality_reports = []
+		self.story_branch_revision = 0
 
 		if hasattr(self, "_invalidate_chapter_blueprints"):
 			try:
@@ -548,7 +642,7 @@ class ProjectMixin:
 			messagebox.showwarning("提示", "请先创建或加载一个项目")
 			return
 		
-		story_content = self.output.get("1.0", END).strip()
+		story_content = self._story_text_for_save()
 		if not story_content:
 			messagebox.showwarning("提示", "输出区域没有内容可保存")
 			return
@@ -567,6 +661,7 @@ class ProjectMixin:
 				parsed_sections=(self.parsed_sections or []),
 				story_memory_ledger=(getattr(self, "story_memory_ledger", []) or []),
 				chapter_quality_reports=(getattr(self, "chapter_quality_reports", []) or []),
+				story_branch_revision=getattr(self, "story_branch_revision", 0),
 				section_index=self.section_selector.current() if hasattr(self, "section_selector") else 0,
 			)
 			self._remember_last_project_path()

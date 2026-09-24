@@ -39,7 +39,9 @@ DEFAULT_STORY_PIPELINE_PROFILE: dict[str, Any] = {
         ],
         "json_schema": (
             "{\"scores\":{\"realism\":0,\"detail\":0,\"coherence\":0,\"continuity\":0,\"escalation\":0,\"hook_density\":0,\"naturalness\":0},"
-            "\"strengths\":[\"\"],\"issues\":[\"\"],\"key_fix\":\"\"}"
+            "\"strengths\":[\"\"],\"issues\":[\"\"],\"key_fix\":\"\","
+            "\"verdict\":\"pass|polish|rewrite|reject\",\"evidence\":[\"原文中的证据短引\"],"
+            "\"missing_evidence\":[\"缺失的关键证据\"],\"confidence\":0.0}"
         ),
         "rules": [
             "若章节没有明确危机升级、不可逆事件或新钩子，escalation/hook_density 必须低于7；",
@@ -48,6 +50,10 @@ DEFAULT_STORY_PIPELINE_PROFILE: dict[str, Any] = {
             "若存在前后事实、人物动机、钩子回收冲突，continuity/coherence 必须低于7；",
             "issues 至少给1条且可执行；",
             "key_fix 20字以内；",
+            "每个低于7分的维度必须在 issues 或 missing_evidence 中指出原文缺口，并引用不超过20字的原文证据；",
+            "不得因为语言通顺、氛围好或题材有趣给结构空洞的章节高分；没有完成目标/阻力/后果链时 verdict 必须为 rewrite 或 reject；",
+            "verdict=pass 仅允许所有核心维度（coherence/escalation/hook_density）>=7.5且没有硬伤；",
+            "confidence 表示你对评分的把握程度，范围0-1；无法确认时降低 confidence，不要用高分掩盖不确定性；",
             "禁止输出 JSON 以外内容。",
         ],
     },
@@ -109,7 +115,8 @@ DEFAULT_STORY_PIPELINE_PROFILE: dict[str, Any] = {
         "json_schema": (
             "{\"summary\":\"\",\"plot_points\":[\"\"],\"relation_changes\":[\"\"],"
             "\"unresolved_hooks\":[\"\"],\"state_shift\":\"\","
-            "\"character_states\":[\"\"],\"timeline_events\":[\"\"],\"open_threads\":[\"\"]}"
+            "\"character_states\":[\"\"],\"timeline_events\":[\"\"],\"open_threads\":[\"\"],"
+            "\"facts\":[\"\"],\"evidence\":[\"\"],\"resolved_hooks\":[\"\"]}"
         ),
         "rules": [
             "summary 40-120字；",
@@ -122,6 +129,9 @@ DEFAULT_STORY_PIPELINE_PROFILE: dict[str, Any] = {
             "character_states 最多5条，格式为“人物：当前立场/知道的信息/身体或情绪状态/行动限制”；",
             "timeline_events 最多5条，按发生顺序记录本章关键时间点、地点变化或因果后果；",
             "open_threads 最多5条，记录仍会影响后文的任务、承诺、威胁、证据、倒计时或待回收伏笔；",
+            "facts 最多8条，每条只写一个可核对的事实，必须能在本章原文找到依据；",
+            "evidence 最多6条，记录证据的来源/状态/归属，不得把推测写成事实；",
+            "resolved_hooks 最多5条，记录本章明确解决或推翻的旧伏笔；已解决伏笔不得继续放入 unresolved_hooks；",
             "禁止输出 JSON 以外内容。",
         ],
     },
@@ -196,7 +206,10 @@ def _ensure_memory_ledger_defaults(cfg: dict[str, Any]) -> None:
     if not isinstance(memory_cfg, dict):
         return
     schema = str(memory_cfg.get("json_schema", "") or "").strip()
-    required_keys = ("character_states", "timeline_events", "open_threads")
+    required_keys = (
+        "character_states", "timeline_events", "open_threads",
+        "facts", "evidence", "resolved_hooks",
+    )
     if any(key not in schema for key in required_keys):
         memory_cfg["json_schema"] = str(DEFAULT_STORY_PIPELINE_PROFILE["memory_ledger"]["json_schema"])
 
@@ -357,6 +370,7 @@ def build_quality_review_prompt(
     preview: str,
     continuity_contract: str = "",
     scene_card_contract: str = "",
+    critic_report: str = "",
 ) -> str:
     cfg = get_story_pipeline_profile()
     quality_cfg = cfg.get("quality_review", {})
@@ -395,6 +409,14 @@ def build_quality_review_prompt(
             "- 若正文输出的事件顺序与执行卡因果链相反或跳过关键阻力，coherence 必须低于7。\n\n"
         )
 
+    critic_block = ""
+    if str(critic_report or "").strip():
+        critic_block = (
+            "【第一轮 AI 批评（只作为证据，不盲从）】\n"
+            f"{str(critic_report).strip()}\n"
+            "请核对批评是否准确；若批评与原文不符，以原文为准。\n\n"
+        )
+
     return (
         "你是严格的中文小说编辑，请评估以下章节文本质量，并仅返回 JSON。\n"
         f"评分维度（1-10）：{dims_text}。\n"
@@ -404,10 +426,36 @@ def build_quality_review_prompt(
         f"{rules_text}\n\n"
         f"{contract_block}"
         f"{scene_card_block}"
+        f"{critic_block}"
         f"主题：{requirement}\n"
         f"题材：{category}\n"
         f"章节标题：{section_title}\n"
         f"章节文本：\n{preview}\n"
+    )
+
+
+def build_quality_critic_prompt(
+    *,
+    requirement: str,
+    category: str,
+    section_title: str,
+    preview: str,
+    continuity_contract: str = "",
+    scene_card_contract: str = "",
+) -> str:
+    """Ask an adversarial AI reader for concrete evidence before scoring."""
+    return (
+        "你是中文小说的挑剔试读者，不打分，不夸赞，只找会让读者弃读的具体问题。\n"
+        "请只返回 JSON："
+        '{"observations":[{"quote":"原文短引","problem":"问题","impact":"对读者体验的影响"}],'
+        '"causal_chain":{"goal":"","obstacle":"","choice":"","result":"","new_question":""},'
+        '"missing":["缺失的证据/动机/后果"],"recommended_verdict":"pass|polish|rewrite|reject"}\n'
+        "规则：每条 observation 必须引用原文中确实存在的短语；找不到证据就不要写。"
+        "重点检查目标-阻力-选择-结果是否形成因果链，反转是否有铺垫，结尾是否改变下一步行动。"
+        "不要因为文风漂亮、气氛到位或题材讨喜而放宽标准。\n\n"
+        f"主题：{requirement}\n题材：{category}\n章节：{section_title}\n"
+        f"连续性资料：{continuity_contract or '无'}\n场景执行卡：{scene_card_contract or '无'}\n"
+        f"正文：\n{preview}\n"
     )
 
 

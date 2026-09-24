@@ -30,6 +30,7 @@ class ZhihuTitleRulesTests(unittest.TestCase):
         self.assertIn("8 个候选标题", prompt)
         self.assertIn("反常事实", prompt)
         self.assertIn("具体钩子", prompt)
+        self.assertIn("具体对象、时间点或亲密关系", prompt)
         self.assertIn("只输出最终标题", prompt)
         self.assertIn("14-30字", prompt)
 

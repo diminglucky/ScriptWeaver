@@ -84,6 +84,13 @@ def parse_quality_review(raw: str) -> dict[str, Any]:
     strengths = _ensure_str_list(payload.get("strengths"), max_items=3)
     issues = _ensure_str_list(payload.get("issues"), max_items=3)
     key_fix = str(payload.get("key_fix", "") or "").strip()
+    verdict = str(payload.get("verdict", "") or "").strip().lower()
+    evidence = _ensure_str_list(payload.get("evidence"), max_items=5)
+    missing_evidence = _ensure_str_list(payload.get("missing_evidence"), max_items=5)
+    try:
+        confidence = max(0.0, min(1.0, float(payload.get("confidence", 0.0) or 0.0)))
+    except (TypeError, ValueError):
+        confidence = 0.0
 
     return {
         "scores": scores,
@@ -91,6 +98,15 @@ def parse_quality_review(raw: str) -> dict[str, Any]:
         "strengths": strengths,
         "issues": issues,
         "key_fix": key_fix,
+        "verdict": verdict if verdict in {"pass", "polish", "rewrite", "reject"} else "",
+        "evidence": evidence,
+        "missing_evidence": missing_evidence,
+        "confidence": confidence,
+        "review_complete": bool(
+            payload
+            and isinstance(payload.get("scores"), dict)
+            and any(key in payload.get("scores", {}) for key in QUALITY_DIM_KEYS)
+        ),
     }
 
 
@@ -102,13 +118,23 @@ def should_polish(
 ) -> bool:
     if not isinstance(review, dict):
         return True
-    try:
-        avg = float(review.get("avg_score", 0.0))
-    except Exception:
-        avg = 0.0
+    if review.get("review_complete") is False:
+        return True
+    verdict = str(review.get("verdict", "") or "").lower()
+    if verdict in {"rewrite", "reject", "polish"}:
+        return True
     scores = review.get("scores", {})
     if not isinstance(scores, dict):
         scores = {}
+    try:
+        avg_value = review.get("avg_score", None)
+        if avg_value is None:
+            numeric_scores = [float(scores.get(key, 0.0)) for key in QUALITY_DIM_KEYS]
+            avg = sum(numeric_scores) / float(len(numeric_scores))
+        else:
+            avg = float(avg_value)
+    except Exception:
+        avg = 0.0
 
     if avg < min_avg_score:
         return True
@@ -119,6 +145,13 @@ def should_polish(
             dim = 0.0
         if dim < min_dimension_score:
             return True
+    if verdict == "pass":
+        for key in ("coherence", "escalation", "hook_density"):
+            try:
+                if float(scores.get(key, 0.0)) < 7.5:
+                    return True
+            except (TypeError, ValueError):
+                return True
     return False
 
 
@@ -136,6 +169,9 @@ def parse_memory_entry(raw: str) -> dict[str, Any]:
     character_states = _ensure_str_list(payload.get("character_states"), max_items=5)
     timeline_events = _ensure_str_list(payload.get("timeline_events"), max_items=5)
     open_threads = _ensure_str_list(payload.get("open_threads"), max_items=5)
+    facts = _ensure_str_list(payload.get("facts"), max_items=8)
+    evidence = _ensure_str_list(payload.get("evidence"), max_items=6)
+    resolved_hooks = _ensure_str_list(payload.get("resolved_hooks"), max_items=5)
 
     return {
         "summary": summary,
@@ -146,6 +182,9 @@ def parse_memory_entry(raw: str) -> dict[str, Any]:
         "character_states": character_states,
         "timeline_events": timeline_events,
         "open_threads": open_threads,
+        "facts": facts,
+        "evidence": evidence,
+        "resolved_hooks": resolved_hooks,
     }
 
 
@@ -161,6 +200,9 @@ def normalize_memory_entry(entry: dict[str, Any], *, chapter_index: int, chapter
     character_states = _ensure_str_list(entry.get("character_states"), max_items=5)
     timeline_events = _ensure_str_list(entry.get("timeline_events"), max_items=5)
     open_threads = _ensure_str_list(entry.get("open_threads"), max_items=5)
+    facts = _ensure_str_list(entry.get("facts"), max_items=8)
+    evidence = _ensure_str_list(entry.get("evidence"), max_items=6)
+    resolved_hooks = _ensure_str_list(entry.get("resolved_hooks"), max_items=5)
 
     return {
         "chapter_index": max(0, int(chapter_index)),
@@ -173,6 +215,9 @@ def normalize_memory_entry(entry: dict[str, Any], *, chapter_index: int, chapter
         "character_states": character_states,
         "timeline_events": timeline_events,
         "open_threads": open_threads,
+        "facts": facts,
+        "evidence": evidence,
+        "resolved_hooks": resolved_hooks,
     }
 
 
@@ -206,6 +251,15 @@ def format_memory_context(entries: list[dict[str, Any]], max_entries: int = 3) -
         open_threads = row.get("open_threads", [])
         if isinstance(open_threads, list) and open_threads:
             lines.append(f"  待处理线索：{'；'.join(str(x) for x in open_threads[:2])}")
+        facts = row.get("facts", [])
+        if isinstance(facts, list) and facts:
+            lines.append(f"  已确认事实：{'；'.join(str(x) for x in facts[:3])}")
+        evidence = row.get("evidence", [])
+        if isinstance(evidence, list) and evidence:
+            lines.append(f"  证据：{'；'.join(str(x) for x in evidence[:2])}")
+        resolved = row.get("resolved_hooks", [])
+        if isinstance(resolved, list) and resolved:
+            lines.append(f"  已解决伏笔：{'；'.join(str(x) for x in resolved[:2])}")
     return "\n".join(lines).strip()
 
 

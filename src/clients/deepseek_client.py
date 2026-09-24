@@ -5,6 +5,7 @@ from typing import List, Optional
 
 from openai import OpenAI
 from src.clients.custom_openai_client import create_compatible_client
+from src.clients.chat_response import extract_chat_content
 
 
 class DeepSeekClient:
@@ -43,7 +44,7 @@ class DeepSeekClient:
 			presence_penalty=presence_penalty,
 			frequency_penalty=frequency_penalty,
 		)
-		return resp.choices[0].message.content or ""
+		return extract_chat_content(resp)
 
 	def stream(
 		self,

@@ -14,7 +14,18 @@ from __future__ import annotations
 import logging
 import threading
 import tkinter as tk
-import tkinter.font as tkfont
+try:
+    import tkinter.font as tkfont
+except (ImportError, ModuleNotFoundError):
+    # Headless test doubles may expose ``tkinter`` without its font submodule.
+    class _FallbackFont:
+        def __init__(self, *args, **kwargs):
+            pass
+
+    class _FallbackTkFont:
+        Font = _FallbackFont
+
+    tkfont = _FallbackTkFont()
 from tkinter import messagebox, scrolledtext
 from typing import Callable, Optional
 

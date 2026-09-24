@@ -16,6 +16,7 @@ if "PIL" not in sys.modules:
     sys.modules["PIL.ImageFont"] = pil_mod.ImageFont
 
 from src.gui.helpers.zhihu_hook_rules import (
+    build_zhihu_high_score_story_contract,
     build_zhihu_hook_opening_rules,
     build_zhihu_section_opening_rules,
 )
@@ -45,6 +46,8 @@ class ZhihuHookRulesTests(unittest.TestCase):
         self.assertIn("反常事实", text)
         self.assertIn("前 150 字禁止写天气", text)
         self.assertIn("前 300 字必须完成", text)
+        self.assertIn("可验证的生活证据", text)
+        self.assertIn("短段落、动作或对话", text)
 
     def test_later_section_rules_preserve_continuity_without_soft_restart(self):
         text = build_zhihu_section_opening_rules(section_index=2)
@@ -81,6 +84,13 @@ class ZhihuHookRulesTests(unittest.TestCase):
         self.assertIn("【知乎强钩子开头】", prompt)
         self.assertIn("第一句必须直接抛出强钩子", prompt)
         self.assertIn("前 300 字必须完成", prompt)
+
+    def test_high_score_contract_requires_evidence_and_consequences(self):
+        text = build_zhihu_high_score_story_contract(stage="story")
+
+        self.assertIn("异常证据", text)
+        self.assertIn("亲密关系失真", text)
+        self.assertIn("回扣开头", text)
 
 
 if __name__ == "__main__":

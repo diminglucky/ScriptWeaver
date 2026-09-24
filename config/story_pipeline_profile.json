@@ -26,14 +26,22 @@
       { "key": "hook_density", "label": "钩子密度" },
       { "key": "naturalness", "label": "语言自然度" }
     ],
-    "json_schema": "{\"scores\":{\"realism\":0,\"detail\":0,\"coherence\":0,\"continuity\":0,\"escalation\":0,\"hook_density\":0,\"naturalness\":0},\"strengths\":[\"\"],\"issues\":[\"\"],\"key_fix\":\"\"}",
+    "json_schema": "{\"scores\":{\"realism\":0,\"detail\":0,\"coherence\":0,\"continuity\":0,\"escalation\":0,\"hook_density\":0,\"naturalness\":0},\"strengths\":[\"\"],\"issues\":[\"\"],\"key_fix\":\"\",\"verdict\":\"pass|polish|rewrite|reject\",\"evidence\":[\"原文中的证据短引\"],\"missing_evidence\":[\"缺失的关键证据\"],\"confidence\":0.0}",
     "rules": [
       "若章节没有明确危机升级、不可逆事件或新钩子，escalation/hook_density 必须低于7；",
       "若开头前两句话或前两段没有异常信息、危险信号、关系爆雷、具体悬念或即时压力，hook_density 必须低于6.5；",
+      "若异常没有落到照片、电话、监控、时间点、门锁、病历或关系中的具体证据，而只是‘感觉诡异’，detail/hook_density 必须低于7；",
+      "若主角没有采取验证动作，或证据没有改变下一步选择，coherence/escalation 必须低于7；",
+      "若反转无法从前文细节、人物动机或已建立规则推导，coherence 必须低于6.5，并在 issues 指出缺失的铺垫；",
+      "若结尾没有回扣开头的物件/时间点/一句话，或没有让主角承担真实代价，escalation/naturalness 必须低于7；",
       "若章节只是在解释、铺垫、回忆或平稳过渡，必须指出为核心问题；",
       "若存在前后事实、人物动机、钩子回收冲突，continuity/coherence 必须低于7；",
       "issues 至少给1条且可执行；",
       "key_fix 20字以内；",
+      "每个低于7分的维度必须在 issues 或 missing_evidence 中指出原文缺口，并引用不超过20字的原文证据；",
+      "不得因为语言通顺、氛围好或题材有趣给结构空洞的章节高分；没有完成目标/阻力/后果链时 verdict 必须为 rewrite 或 reject；",
+      "verdict=pass 仅允许所有核心维度（coherence/escalation/hook_density）>=7.5且没有硬伤；",
+      "confidence 表示你对评分的把握程度，范围0-1；无法确认时降低 confidence，不要用高分掩盖不确定性；",
       "禁止输出 JSON 以外内容。"
     ]
   },
@@ -47,6 +55,9 @@
       "增强危机升级：把平稳过渡改成具体阻力、失败后果、关系破裂、秘密揭露或不可逆选择；",
       "补足钩子接力：回收上一章至少一个未解问题，并在结尾制造更强的新问题；",
       "若开头平淡，必须重写前两句话或前两段：直接切入异常、危险、关系爆雷、证据出现或不可逆后果，禁止天气/背景/履历开场；",
+      "把抽象恐惧改成可验证证据和验证动作：先让人物看到/听到/核对，再让其解释；",
+      "把连续说明拆成1-3句短段落，用对话、停顿和动作承载信息，不要每段都以‘我意识到/我感到’开头；",
+      "每次反转都补一处前文可回看的细节，每次升级都明确改变主角下一步行动；",
       "若原文缺少高潮，请在不改主线事实的前提下把关键场景改为“目标受阻→反击失败/成功有代价→新威胁出现”；",
       "不得为了刺激而制造逻辑跳跃；新增反转必须能从前文细节、人物动机或已知规则推导出来；",
       "增加可感知细节（动作/环境/心理），减少空泛评价句；",
@@ -56,7 +67,7 @@
     ]
   },
   "memory_ledger": {
-    "json_schema": "{\"summary\":\"\",\"plot_points\":[\"\"],\"relation_changes\":[\"\"],\"unresolved_hooks\":[\"\"],\"state_shift\":\"\"}",
+    "json_schema": "{\"summary\":\"\",\"plot_points\":[\"\"],\"relation_changes\":[\"\"],\"unresolved_hooks\":[\"\"],\"state_shift\":\"\",\"character_states\":[\"\"],\"timeline_events\":[\"\"],\"open_threads\":[\"\"],\"facts\":[\"\"],\"evidence\":[\"\"],\"resolved_hooks\":[\"\"]}",
     "rules": [
       "summary 40-120字；",
       "plot_points 最多4条，聚焦事实事件；",
@@ -65,6 +76,9 @@
       "unresolved_hooks 必须记录会影响下一章行动的具体威胁/谜团，不能写泛泛的情绪悬念；",
       "plot_points 必须包含本章不可逆事件或关键代价，若没有则写明“本章缺少不可逆事件”；",
       "state_shift 30字以内；",
+      "facts 最多8条，每条只写一个能在本章原文核对的事实；",
+      "evidence 最多6条，写清证据来源、归属和当前状态，不得把推测当事实；",
+      "resolved_hooks 最多5条，记录本章明确解决或推翻的旧伏笔，不能同时放入 unresolved_hooks；",
       "禁止输出 JSON 以外内容。"
     ]
   }

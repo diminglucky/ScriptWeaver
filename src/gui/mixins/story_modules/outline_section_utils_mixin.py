@@ -131,8 +131,11 @@ class OutlineSectionUtilsMixin:
                 title = re.sub(r'^\d+[.、]\s*', '', title)
                 title = re.sub(r'^[一二三四五六七八九十]+[.、]\s*', '', title)
                 title = re.sub(r'^[-•*]\s*', '', title)
-                current_section = normalize_chapter_title(title.strip())
-                current_items = []
+                # Keep the compact title for the selector, but preserve a
+                # pipe-delimited chapter brief as prompt material.
+                title_parts = re.split(r'\s*[|｜]\s*', title, maxsplit=1)
+                current_section = normalize_chapter_title(title_parts[0].strip())
+                current_items = [title_parts[1].strip()] if len(title_parts) > 1 and title_parts[1].strip() else []
             else:
                 # 子项
                 if current_section:

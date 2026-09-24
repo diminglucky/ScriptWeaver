@@ -26,6 +26,19 @@ class StoryQualityTests(unittest.TestCase):
         self.assertIn("hook_density", review["scores"])
         self.assertEqual(review["issues"][0], "细节偏少")
         self.assertTrue(review["avg_score"] > 0)
+        self.assertTrue(review["review_complete"])
+        self.assertEqual(review["verdict"], "")
+
+    def test_parse_quality_review_keeps_ai_verdict_and_evidence(self):
+        review = parse_quality_review(
+            '{"scores":{"realism":8,"detail":8,"coherence":8,"continuity":8,'
+            '"escalation":8,"hook_density":8,"naturalness":8},"verdict":"rewrite",'
+            '"evidence":["监控里的人没有抬头"],"missing_evidence":["动机"],"confidence":0.82}'
+        )
+        self.assertEqual(review["verdict"], "rewrite")
+        self.assertEqual(review["evidence"][0], "监控里的人没有抬头")
+        self.assertEqual(review["missing_evidence"], ["动机"])
+        self.assertAlmostEqual(review["confidence"], 0.82)
 
     def test_should_polish(self):
         review_ok = parse_quality_review(
@@ -41,6 +54,15 @@ class StoryQualityTests(unittest.TestCase):
         self.assertFalse(should_polish(review_ok, min_avg_score=7.0, min_dimension_score=6.8))
         self.assertTrue(should_polish(review_bad, min_avg_score=7.2, min_dimension_score=6.8))
         self.assertTrue(should_polish(review_flat, min_avg_score=7.0, min_dimension_score=6.8))
+
+        self.assertTrue(should_polish(parse_quality_review(
+            '{"scores":{"realism":9,"detail":9,"coherence":9,"continuity":9,'
+            '"escalation":9,"hook_density":9,"naturalness":9},"verdict":"rewrite"}'
+        )))
+        self.assertTrue(should_polish(parse_quality_review(
+            '{"scores":{"realism":9,"detail":9,"coherence":7.2,"continuity":9,'
+            '"escalation":9,"hook_density":9,"naturalness":9},"verdict":"pass"}'
+        )))
 
     def test_memory_entry_and_format_context(self):
         parsed = parse_memory_entry(
@@ -59,6 +81,20 @@ class StoryQualityTests(unittest.TestCase):
         self.assertIn("晚八点会议室", text)
         self.assertIn("待处理线索", text)
         self.assertIn("录音原件", text)
+
+    def test_memory_entry_preserves_fact_evidence_and_resolved_hooks(self):
+        entry = normalize_memory_entry(
+            parse_memory_entry(
+                '{"summary":"拿到录音","facts":["录音来自三楼机房"],'
+                '"evidence":["录音：已复制两份"],"resolved_hooks":["匿名信来源"]}'
+            ),
+            chapter_index=0,
+            chapter_title="录音",
+        )
+        text = format_memory_context([entry])
+        self.assertIn("录音来自三楼机房", text)
+        self.assertIn("已复制两份", text)
+        self.assertIn("匿名信来源", text)
 
     def test_strip_duplicate_lines(self):
         text = "第一句。\n第二句。\n第二句。\n\n第三句。"
