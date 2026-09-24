@@ -1,4 +1,4 @@
-﻿"""GUI-side async client for story-service.
+"""GUI-side async client for story-service.
 
 See docs/technical_architecture.md.2.
 """
@@ -19,7 +19,7 @@ class StoryClient:
         self.base_url = base_url.rstrip("/")
         self.token = token
 
-    # 鈹€鈹€ workflows 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+    # -- workflows --------------------------------------------------------
     async def generate_novel(self, project_id: str, request: dict) -> RunHandle:
         data = await request_json(
             "POST",
@@ -38,7 +38,7 @@ class StoryClient:
         )
         return self._run_handle(data["run_id"])
 
-    # 鈹€鈹€ reads 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+    # -- reads ------------------------------------------------------------
     async def get_storybible(self, project_id: str) -> StoryBible | None:
         data = await request_json(
             "GET",
@@ -66,7 +66,7 @@ class StoryClient:
         )
         return str(data.get("text", ""))
 
-    # 鈹€鈹€ HITL 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+    # -- HITL --------------------------------------------------------------
     async def review(self, run_id: str, decision: dict) -> dict:
         return await request_json(
             "POST",
@@ -90,7 +90,7 @@ class StoryClient:
             token=self.token,
         )
 
-    # 鈹€鈹€ settings 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+    # -- settings ----------------------------------------------------------
     async def get_routing(self) -> dict:
         return await request_json("GET", f"{self.base_url}/v1/routing", token=self.token)
 

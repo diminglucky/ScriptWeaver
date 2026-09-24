@@ -87,7 +87,7 @@ jobs:
               "src",
           ])
 
-          for package in ("chromadb", "sentence_transformers", "transformers", "langgraph"):
+          for package in ("chromadb", "sentence_transformers", "transformers"):
               args.extend(["--collect-submodules", package, "--collect-data", package])
 
           data_paths = [

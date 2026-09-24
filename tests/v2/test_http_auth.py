@@ -7,12 +7,12 @@ import asyncio
 import pytest
 
 from src.shared.domain.errors import AuthError
-from src.shared.http.auth import bearer_required
+from src.shared.http.auth import bearer_required, service_auth_dependency
 
 fastapi = pytest.importorskip("fastapi")
 
 
-def _make_dep(token: str, *, allow_empty: bool = False):
+def _make_dep(token, *, allow_empty: bool = False):
     return bearer_required(lambda: token, allow_empty=allow_empty)()
 
 
@@ -47,3 +47,49 @@ def test_bearer_dep_allow_empty_skips_when_no_expected_token():
     dep = _make_dep("", allow_empty=True)
     asyncio.run(dep(None))
     asyncio.run(dep("Bearer whatever"))
+
+
+def test_bearer_dep_accepts_any_configured_token():
+    dep = _make_dep(["backend", "service"])
+    asyncio.run(dep("Bearer backend"))
+    asyncio.run(dep("Bearer service"))
+
+
+def test_service_app_enforces_configured_backend_token(monkeypatch):
+    from fastapi.testclient import TestClient
+    from src.services.rag_service.main import create_app
+
+    monkeypatch.setenv("WSF_BACKEND_TOKEN", "backend-token")
+    monkeypatch.delenv("WSF_SERVICE_TOKEN", raising=False)
+    monkeypatch.delenv("WSF_NO_AUTH", raising=False)
+    client = TestClient(create_app())
+
+    assert client.get("/v1/health").status_code == 401
+    assert client.get(
+        "/v1/health",
+        headers={"Authorization": "Bearer backend-token"},
+    ).status_code == 200
+
+
+def test_service_app_accepts_service_token(monkeypatch):
+    from fastapi.testclient import TestClient
+    from src.services.rag_service.main import create_app
+
+    monkeypatch.delenv("WSF_BACKEND_TOKEN", raising=False)
+    monkeypatch.setenv("WSF_SERVICE_TOKEN", "service-token")
+    monkeypatch.delenv("WSF_NO_AUTH", raising=False)
+    client = TestClient(create_app())
+
+    assert client.get(
+        "/v1/health",
+        headers={"Authorization": "Bearer service-token"},
+    ).status_code == 200
+
+
+def test_service_auth_dependency_allows_empty_configuration(monkeypatch):
+    monkeypatch.delenv("WSF_BACKEND_TOKEN", raising=False)
+    monkeypatch.delenv("WSF_SERVICE_TOKEN", raising=False)
+    monkeypatch.delenv("WSF_NO_AUTH", raising=False)
+    dep = service_auth_dependency()
+
+    asyncio.run(dep(None))

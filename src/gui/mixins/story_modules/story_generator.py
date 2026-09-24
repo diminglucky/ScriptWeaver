@@ -357,14 +357,15 @@ class StoryGeneratorMixin:
 	
 	def on_auto_generate_all(self) -> None:
 		"""自动连续生成所有章节"""
-		if not self.parsed_sections:
-			messagebox.showwarning("提示", "请先生成目录")
-			return
-		self._persist_target_chars_preference()
-		
 		query = self._get_prompt_content()
 		if not query:
 			messagebox.showwarning("提示", "请先输入创作需求/主题")
+			return
+		self._persist_target_chars_preference()
+		if not self.parsed_sections:
+			self._ensure_simple_story_plan(query)
+		if not self.parsed_sections:
+			messagebox.showwarning("提示", "无法创建章节计划")
 			return
 		try:
 			import time
@@ -384,20 +385,35 @@ class StoryGeneratorMixin:
 		total_chapters = len(self.parsed_sections)
 		current_index = self.section_selector.current()
 		start_index = max(0, current_index)
-		
-		confirm = messagebox.askyesno(
-			"确认自动生成",
-			f"将从第 {start_index + 1} 章开始，自动连续生成到第 {total_chapters} 章。\n\n"
-			f"共需生成 {total_chapters - start_index} 章，可能需要较长时间。\n\n"
-			f"期间请勿关闭窗口，是否继续？"
-		)
+
+		if not self._try_begin_auto_generation():
+			self.status.set("自动生成已在进行中，请等待当前任务完成")
+			return
+
+		lean_mode = self._is_story_lean_mode()
+		if lean_mode:
+			confirm = True
+		else:
+			confirm = messagebox.askyesno(
+				"确认自动生成",
+				f"将从第 {start_index + 1} 章开始，自动连续生成到第 {total_chapters} 章。\n\n"
+				f"共需生成 {total_chapters - start_index} 章，可能需要较长时间。\n\n"
+				f"期间请勿关闭窗口，是否继续？"
+			)
 		
 		if not confirm:
+			self._end_auto_generation()
 			return
 		
 		# 启动自动生成
-		if self.model_only.get():
-			self._auto_generate_all_sections(query, [], start_index)
+		if self.model_only.get() or lean_mode:
+			if not self._auto_generate_all_sections(
+				query,
+				[],
+				start_index,
+				_generation_claimed=True,
+			):
+				self._end_auto_generation()
 		else:
 			# 带知识库检索
 			need_build = False
@@ -406,12 +422,14 @@ class StoryGeneratorMixin:
 				if messagebox.askyesno("提示", "未找到索引，是否现在构建？"):
 					need_build = True
 				else:
+					self._end_auto_generation()
 					return
 			
 			data_dir_val = self.data_dir.get()
 			index_dir_val = self.index_dir.get()
 			top_k_val = self.top_k.get()
 			def task():
+				handed_off = False
 				try:
 					self._ui(self.set_busy, True)
 					load_dotenv()
@@ -446,15 +464,22 @@ class StoryGeneratorMixin:
 						contexts, _rag_rows = self._coerce_context_provider_result(context_provider(start_index))
 					else:
 						contexts = context_provider(start_index)
-					# 修复：调用 _auto_generate_all_sections 而非未定义的方法
-					self._auto_generate_all_sections(query, contexts, start_index, context_provider=context_provider)
+					handed_off = self._auto_generate_all_sections(
+						query,
+						contexts,
+						start_index,
+						context_provider=context_provider,
+						_generation_claimed=True,
+					)
 				except Exception as e:
 					logger.exception("auto generate all with rag failed")
 					brief = _sanitize(str(e)) or e.__class__.__name__
 					self._ui(self.output.insert, END, f"\n❌ 自动生成失败：{brief}\n")
 					self._ui(messagebox.showerror, "错误", brief)
 				finally:
-					self._ui(self.set_busy, False)
+					if not handed_off:
+						self._end_auto_generation()
+						self._ui(self.set_busy, False)
 			threading.Thread(target=task, daemon=True).start()
 	
 	

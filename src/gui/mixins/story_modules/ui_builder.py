@@ -368,74 +368,11 @@ class StoryUIBuilderMixin(StoryPromptBuilderMixin):
 				activeforeground="#ffffff",
 			)
 			self.btn_add_style.grid(row=0, column=4, sticky="e")
-			self.chk_story_global_overview_quick = tk.Checkbutton(
-				btn_frame,
-				text="先全书总览",
-				variable=self.story_global_overview_enabled,
-				font=control_font,
-				bg="#1e1e1e",
-				fg="#93c5fd",
-				selectcolor="#111827",
-				activebackground="#1e1e1e",
-				activeforeground="#93c5fd",
-				relief=tk.FLAT,
-				borderwidth=0,
-				padx=6,
-				pady=2,
-				cursor="hand2",
-			)
-			self.chk_story_global_overview_quick.grid(row=0, column=0, sticky="w", padx=(0, 6))
-			self.chk_story_overview_quick = tk.Checkbutton(
-				btn_frame,
-				text="先章节总览",
-				variable=self.story_overview_before_generate,
-				font=control_font,
-				bg="#1e1e1e",
-				fg="#93c5fd",
-				selectcolor="#111827",
-				activebackground="#1e1e1e",
-				activeforeground="#93c5fd",
-				relief=tk.FLAT,
-				borderwidth=0,
-				padx=6,
-				pady=2,
-				cursor="hand2",
-			)
-			self.chk_story_overview_quick.grid(row=0, column=1, sticky="w", padx=(0, 8))
-			self.btn_story_overview = tk.Button(
-				btn_frame,
-				text="🧭 总览预览",
-				command=self.on_generate_story_overview,
-				font=action_font,
-				bg="#000000",
-				fg="#ffffff",
-				relief=tk.FLAT,
-				padx=10,
-				pady=5,
-				cursor="hand2",
-				activebackground="#000000",
-				activeforeground="#ffffff",
-			)
-			self.btn_story_overview.grid(row=0, column=2, sticky="we", padx=3)
-
-		self.btn_outline = tk.Button(btn_frame, text="📋 生成目录", command=self.on_generate_outline,
-									  font=action_font, bg="#000000", fg="#ffffff", relief=tk.FLAT,
-									  padx=10, pady=5, cursor="hand2",
-									  activebackground="#000000", activeforeground="#ffffff")
-		self.btn_outline.grid(row=0, column=3, sticky="we", padx=3)
-		self.btn_blueprint = tk.Button(
-			btn_frame, text="🗺️ 生成蓝图",
-			command=self.generate_chapter_blueprints_async,
-			font=action_font, bg="#000000", fg="#ffffff",
-			relief=tk.FLAT, padx=10, pady=5, cursor="hand2",
-			activebackground="#000000", activeforeground="#ffffff",
-		)
-		self.btn_blueprint.grid(row=0, column=4, sticky="we", padx=3)
-		self.btn_generate = tk.Button(btn_frame, text="🚀 生成故事", command=self.on_generate,
+		self.btn_generate = tk.Button(btn_frame, text="🚀 一键生成故事", command=self.on_auto_generate_all,
 									   font=action_font, bg="#000000", fg="#ffffff", relief=tk.FLAT,
 									   padx=12, pady=5, cursor="hand2",
 									   activebackground="#000000", activeforeground="#ffffff")
-		self.btn_generate.grid(row=0, column=5, sticky="we", padx=3)
+		self.btn_generate.grid(row=0, column=0, sticky="we", padx=3)
 		self.btn_save_as = tk.Button(
 			btn_frame,
 			text="💾 保存为…",
@@ -450,8 +387,8 @@ class StoryUIBuilderMixin(StoryPromptBuilderMixin):
 			activebackground="#000000",
 			activeforeground="#ffffff",
 		)
-		self.btn_save_as.grid(row=0, column=6, sticky="we", padx=(3, 0))
-		for col in range(7):
+		self.btn_save_as.grid(row=0, column=1, sticky="we", padx=(3, 0))
+		for col in range(2):
 			btn_frame.columnconfigure(col, weight=1, uniform="story_actions")
 
 		# 第二行：创作需求（改为多行文本框）

@@ -7,7 +7,8 @@ ScriptWeaver 是一个面向知乎短篇、长篇连载和图文内容生产的�
 - **GUI 入口**：使用 `run_modern_app.py` 启动现代化 UI。
 - **不要使用旧入口**：不要用旧 `main.py` 启动，它会进入旧版 GUI。
 - **v2 后端**：已提供 RAG、故事生成、图片生成的 FastAPI skeleton 与 deterministic workflow，可在无真实 API Key 的情况下跑通测试和基本流程。
-- **测试状态**：当前全量回归通过，覆盖 GUI backend、RAG、Story workflow、Image API、配置、SSE、运行管理等模块。
+- **运行边界**：现代 GUI 当前仍以传统 `src/kb`、`AIService`、`ImageService` 调用链为默认路径；v2 服务通过 `src/gui/backend/` facade 独立运行和管理，尚未替换整个 GUI 创作流程。
+- **故事生成**：默认使用 `lean` 精简模式。输入需求和目标字数后直接分章生成，不需要先生成目录、全书总览或章节蓝图。
 
 ## 功能概览
 
@@ -50,6 +51,11 @@ ScriptWeaver 是一个面向知乎短篇、长篇连载和图文内容生产的�
 
 当前实现优先保证 API contract 和端到端测试可运行；真实图片 provider、真实发布能力可在后续替换 deterministic adapter。
 
+可选真实执行开关：
+
+- `WSF_IMAGE_REAL=1`：调用 OpenAI-compatible 图片接口。另需 `WSF_IMAGE_API_KEY`、`WSF_IMAGE_BASE_URL`、`WSF_IMAGE_MODEL`。
+- `WSF_ZHIHU_PUBLISH=1`：调用现有 Playwright 知乎发布器；未开启时保持 dry-run。
+
 ### 5. GUI Backend Client
 
 `src/gui/backend/` 是 GUI 与 v2 微服务之间的 facade，包含 `BackendClient`、`RagClient`、`StoryClient`、`ImageClient`、`ServiceSupervisor`、SSE event parsing、ports/runtime 管理和 HTTP error envelope 转换。
@@ -73,6 +79,14 @@ python3.11 run_modern_app.py
 ```bash
 ./start_with_work_env.sh
 ```
+
+### 在现代 GUI 中启用 v2 服务
+
+```bash
+WSF_AUTOSTART=1 python3.11 run_modern_app.py
+```
+
+启用后 GUI 会通过 `ServiceSupervisor` 启动 RAG、Story、Image 三个本地服务，并创建 `BackendClient`。关闭 GUI 时对应子进程会一并停止。默认不自动启动，避免不需要 v2 时加载 ChromaDB 和模型依赖。
 
 ### 启动 v2 微服务
 
@@ -101,7 +115,7 @@ export WSF_IMAGE_BASE_URL=http://127.0.0.1:8103
 python3.11 -m pip install -r requirements.txt
 ```
 
-主要依赖包括 FastAPI、uvicorn、httpx、Pydantic v2、LangGraph、ChromaDB、transformers、sentence-transformers、requests、Pillow、tqdm、playwright。
+主要依赖包括 FastAPI、uvicorn、httpx、Pydantic v2、ChromaDB、transformers、sentence-transformers、requests、Pillow、tqdm、playwright。当前工作流由 `SimpleCompiledGraph` 执行，不依赖 LangGraph runtime。
 
 ## GitHub 打包
 
@@ -167,8 +181,8 @@ python3.11 -m pip install -r requirements.txt
 ### rag-service
 
 - `GET /v1/health`
-- `POST /v1/kb/{kb_type}/ingest`
-- `DELETE /v1/kb/{kb_type}/sources/{source_id}`
+- `POST /v1/kb/{kb_type}/documents`
+- `DELETE /v1/kb/{kb_type}/documents/{source_id}`
 - `POST /v1/kb/{kb_type}/search`
 - `POST /v1/projects/{project_id}/memory`
 - `GET /v1/projects/{project_id}/memory`

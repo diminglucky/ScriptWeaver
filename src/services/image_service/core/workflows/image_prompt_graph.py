@@ -1,14 +1,14 @@
-﻿"""image_prompt_graph LangGraph. See docs/technical_architecture.md.3.
+"""image_prompt_graph LangGraph. See docs/technical_architecture.md.3.
 
 Nodes:
     load_chapter_or_section
-    鈫?retrieve_visual_context
-    鈫?load_character_anchors
-    鈫?extract_shots
-    鈫?generate_shot_prompts
-    鈫?translate_prompts*
-    鈫?review_prompt_safety
-    鈫?save_shot_prompts
+    ->retrieve_visual_context
+    ->load_character_anchors
+    ->extract_shots
+    ->generate_shot_prompts
+    ->translate_prompts*
+    ->review_prompt_safety
+    ->save_shot_prompts
 """
 
 from __future__ import annotations

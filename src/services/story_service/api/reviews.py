@@ -1,4 +1,4 @@
-﻿"""POST /v1/runs/{run_id}/review 鈥?human review decision. See docs/technical_architecture.md.4."""
+"""POST /v1/runs/{run_id}/review -human review decision. See docs/technical_architecture.md.4."""
 
 from __future__ import annotations
 

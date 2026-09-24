@@ -110,7 +110,17 @@ def test_shutdown_is_idempotent(tmp_path: Path):
     sup.shutdown(timeout=1)
 
 
-def test_restart_validates_name_and_stops_existing(tmp_path: Path):
+def test_restart_validates_name_and_starts_replacement(monkeypatch, tmp_path: Path):
+    created: list[_FakeProc] = []
+
+    def fake_popen(*args, **kwargs):
+        proc = _FakeProc(*args, **kwargs)
+        created.append(proc)
+        return proc
+
+    monkeypatch.setattr("src.gui.backend.supervisor.subprocess.Popen", fake_popen)
+    monkeypatch.setattr("src.gui.backend.supervisor.ServiceSupervisor._wait_healthy", lambda self, name, timeout: None)
+
     sup = ServiceSupervisor(tmp_path)
     proc = _FakeProc()
     sup.processes["rag"] = proc
@@ -121,5 +131,6 @@ def test_restart_validates_name_and_stops_existing(tmp_path: Path):
 
     sup.restart("rag")
     assert proc.terminated is True
-    assert "rag" not in sup.processes
+    assert sup.processes["rag"] is created[0]
+    assert sup.processes["rag"] is not proc
     assert sup.ports["rag"] == 12345

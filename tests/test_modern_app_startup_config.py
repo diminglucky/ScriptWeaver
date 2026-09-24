@@ -1,4 +1,6 @@
+import os
 import unittest
+from unittest.mock import patch
 
 from src.gui.modern_app import ModernApp
 
@@ -32,6 +34,43 @@ class ModernAppStartupConfigTests(unittest.TestCase):
         obj._api_config_from_file_loaded = True
         ModernApp._startup_load_configs(obj)
         self.assertEqual(obj.calls, ["load_env", "load_story_api", "restore_project"])
+
+    def test_backend_runtime_is_disabled_by_default(self):
+        obj = _DummyStartup()
+        with patch.dict(os.environ, {}, clear=True):
+            ModernApp._init_backend_runtime(obj)
+
+        self.assertIsNone(obj.backend_supervisor)
+        self.assertIsNone(obj.backend_client)
+
+    def test_backend_runtime_starts_and_connects_when_enabled(self):
+        calls = []
+
+        class DummySupervisor:
+            def __init__(self, project_root):
+                calls.append(("init", project_root))
+
+            def start_all(self, *, dev_mode=False):
+                calls.append(("start", dev_mode))
+
+            def shutdown(self):
+                calls.append(("shutdown",))
+
+        class DummyClient:
+            @classmethod
+            def from_runtime(cls):
+                calls.append(("client",))
+                return "client"
+
+        obj = _DummyStartup()
+        with patch.dict(os.environ, {"WSF_AUTOSTART": "1", "WSF_DEV": "1"}, clear=True), \
+             patch("src.gui.backend.supervisor.ServiceSupervisor", DummySupervisor), \
+             patch("src.gui.backend.client.BackendClient", DummyClient):
+            ModernApp._init_backend_runtime(obj)
+
+        self.assertIsInstance(obj.backend_supervisor, DummySupervisor)
+        self.assertEqual(obj.backend_client, "client")
+        self.assertEqual([call[0] for call in calls], ["init", "start", "client"])
 
 
 if __name__ == "__main__":

@@ -1,4 +1,4 @@
-﻿"""GET /v1/models, GET/PUT /v1/routing. See docs/technical_architecture.md.2 / 搂12.3."""
+"""GET /v1/models, GET/PUT /v1/routing. See docs/technical_architecture.md.2 / section12.3."""
 
 from __future__ import annotations
 

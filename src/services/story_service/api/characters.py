@@ -1,6 +1,6 @@
-﻿"""POST /v1/projects/{id}/characters:design 鈥?character workflow.
+"""POST /v1/projects/{id}/characters:design -character workflow.
 
-See docs/technical_architecture.md.6, 搂7.2.
+See docs/technical_architecture.md.6, section7.2.
 """
 
 from __future__ import annotations

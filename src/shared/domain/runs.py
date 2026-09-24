@@ -1,4 +1,4 @@
-﻿"""Run-id / cancellation protocol. See docs/technical_architecture.md.4 / 搂8.3."""
+"""Run-id / cancellation protocol. See docs/technical_architecture.md.4 / section8.3."""
 
 from __future__ import annotations
 

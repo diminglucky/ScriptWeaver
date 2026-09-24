@@ -1,21 +1,31 @@
-﻿"""Zhihu publishing endpoints. See docs/technical_architecture.md.6 / 搂7.4."""
+"""Zhihu publishing endpoints. See docs/technical_architecture.md.6 / section7.4."""
 
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends
 
-from src.services.image_service.api._helpers import project_paths, read_json, start_image_run, write_json
-from src.services.image_service.deps import get_event_bus, get_run_registry
+from src.services.image_service.api._helpers import project_paths, read_json, start_image_run
+from src.services.image_service.deps import get_event_bus, get_publisher_service, get_run_registry
 
 router = APIRouter(prefix="/v1/projects", tags=["publish"])
 
 
 @router.post("/{project_id}/zhihu:publish")
-async def publish_zhihu(project_id: str, body: dict, bus=Depends(get_event_bus), runs=Depends(get_run_registry)) -> dict:
+async def publish_zhihu(
+    project_id: str,
+    body: dict,
+    bus=Depends(get_event_bus),
+    runs=Depends(get_run_registry),
+    service=Depends(get_publisher_service),
+) -> dict:
     async def work(_: str) -> dict:
-        result = {"project_id": project_id, "title": body.get("title") or project_id, "status": "dry_run"}
-        write_json(project_paths(project_id).root / "zhihu_last_result.json", result)
-        return result
+        return await service.publish_to_zhihu(
+            project_id,
+            title=str(body.get("title") or ""),
+            content=str(body.get("content") or ""),
+            headless=bool(body.get("headless", False)),
+            neutralize_mentions=bool(body.get("neutralize_mentions", True)),
+        )
 
     run_id = await start_image_run(kind="zhihu_publish", project_id=project_id, bus=bus, runs=runs, work=work)
     return {"run_id": run_id, "status": "running"}

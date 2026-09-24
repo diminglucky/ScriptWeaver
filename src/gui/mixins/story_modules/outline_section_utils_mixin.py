@@ -10,6 +10,62 @@ from src.gui.helpers.story_writing_guardrails import normalize_chapter_title
 
 class OutlineSectionUtilsMixin:
     """Utilities for section selector and outline parsing."""
+
+    def _ensure_simple_story_plan(self, requirement: str) -> bool:
+        """Create an internal lean chapter plan without an outline API call."""
+        if self.parsed_sections:
+            return True
+
+        try:
+            target_chars = int(self.target_chars.get())
+        except Exception:
+            target_chars = 1800
+        target_chars = max(500, min(30000, target_chars))
+        chapter_count = max(1, min(12, round(target_chars / 1800)))
+        if chapter_count == 1:
+            stages = ["完整故事"]
+        else:
+            stages = []
+            for index in range(chapter_count):
+                progress = index / max(1, chapter_count - 1)
+                if index == 0:
+                    stages.append("异常开场")
+                elif index == chapter_count - 1:
+                    stages.append("代价与收束")
+                elif progress < 0.35:
+                    stages.append("冲突升级")
+                elif progress < 0.7:
+                    stages.append("反转与失控")
+                else:
+                    stages.append("最坏处境")
+
+        sections: list[dict[str, str]] = []
+        for index, stage in enumerate(stages):
+            chapter_no = index + 1
+            event_promise = (
+                "本章必须发生一次改变后续选择空间的不可逆事件，"
+                "并留下下一章必须处理的直接后果。"
+            )
+            sections.append({
+                "title": f"第{chapter_no}章 {stage}",
+                "items": [
+                    f"围绕创作需求推进：{str(requirement or '').strip()[:120]}",
+                    "延续上一章实际结尾，不重复已经发生的事件。",
+                    "本章至少完成一次目标、阻力、行动、结果和新问题闭环。",
+                ],
+                "event_promise": event_promise,
+            })
+
+        self.parsed_sections = sections
+        self.current_outline = "\n".join(
+            f"{index + 1}. {section['title']} | {section['event_promise']}"
+            for index, section in enumerate(sections)
+        )
+        self.chapter_blueprints = []
+        self._chapter_blueprints_outline_sig = ""
+        self._update_section_selector()
+        return bool(self.parsed_sections)
+
     def _update_section_selector(self) -> None:
         """更新章节选择器"""
         if not self.parsed_sections:

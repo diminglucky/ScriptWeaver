@@ -1,6 +1,6 @@
-﻿"""CreativeRetriever: query multiple shards and merge results.
+"""CreativeRetriever: query multiple shards and merge results.
 
-See docs/technical_architecture.md.3 / 搂4.6.
+See docs/technical_architecture.md.3 / section4.6.
 """
 
 from __future__ import annotations

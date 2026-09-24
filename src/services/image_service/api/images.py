@@ -1,4 +1,4 @@
-﻿"""POST /v1/images:generate 鈥?synchronous single-image generation.
+"""POST /v1/images:generate -synchronous single-image generation.
 
 See docs/technical_architecture.md.4.
 """

@@ -503,8 +503,7 @@ class TestFullFlowSmoke(unittest.TestCase):
              patch("tkinter.messagebox.showinfo", lambda *a, **k: None), \
              patch("tkinter.messagebox.askyesno", lambda *a, **k: True):
 
-            with patch("src.gui.mixins.story_modules.outline_generator.DeepSeekClient", DummyDeepSeekClient):
-                app.on_generate_outline()
+            app._ensure_simple_story_plan("写一个故事")
             self.assertGreater(len(app.parsed_sections), 0)
 
             with patch("src.gui.mixins.story_modules.story_generator.DeepSeekClient", DummyDeepSeekClient):

@@ -1,6 +1,6 @@
-﻿"""Sole writer for `projects/<id>/` (StoryBible, ChapterDraft, story.txt).
+"""Sole writer for `projects/<id>/` (StoryBible, ChapterDraft, story.txt).
 
-See docs/technical_architecture.md.9 / 搂11.
+See docs/technical_architecture.md.9 / section11.
 """
 
 from __future__ import annotations
@@ -19,7 +19,7 @@ class ProjectStore:
         root = projects_root or get_repo_paths().projects_root
         self.paths = ProjectPaths(root, project_id)
 
-    # 鈹€鈹€ StoryBible 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+    # -- StoryBible --------------------------------------------------------
     def save_storybible(self, bible: StoryBible) -> None:
         self.paths.ensure_dirs()
         tmp = self.paths.storybible_json.with_suffix(".json.tmp")
@@ -32,7 +32,7 @@ class ProjectStore:
             return None
         return StoryBible.model_validate_json(fp.read_text(encoding="utf-8"))
 
-    # 鈹€鈹€ Chapters 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+    # -- Chapters ----------------------------------------------------------
     def save_chapter(self, draft: ChapterDraft) -> None:
         self.paths.ensure_dirs()
         target = self.paths.chapter_file(draft.section_index)
@@ -58,7 +58,7 @@ class ProjectStore:
                 continue
         return out
 
-    # 鈹€鈹€ Final story.txt 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+    # -- Final story.txt --------------------------------------------------
     def save_final_story(self, text: str) -> None:
         self.paths.ensure_dirs()
         target = self.paths.story_txt
@@ -70,10 +70,10 @@ class ProjectStore:
         fp = self.paths.story_txt
         return fp.read_text(encoding="utf-8") if fp.exists() else ""
 
-    # 鈹€鈹€ Migration 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+    # -- Migration --------------------------------------------------------
     @classmethod
     def migrate_legacy(cls, project_id: str) -> StoryBible:
-        """Build a minimal StoryBible from legacy project.json fields. See 搂11.6."""
+        """Build a minimal StoryBible from legacy project.json fields. See section11.6."""
         return cls.migrate_legacy_with_root(project_id)
 
     @classmethod

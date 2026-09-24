@@ -1,6 +1,6 @@
-﻿"""Translate HTTP error envelopes back into CreativeError subclasses.
+"""Translate HTTP error envelopes back into CreativeError subclasses.
 
-See docs/technical_architecture.md.5 / 搂14.1.
+See docs/technical_architecture.md.5 / section14.1.
 """
 
 from __future__ import annotations

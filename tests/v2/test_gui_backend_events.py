@@ -1,4 +1,4 @@
-﻿"""SSE response decoder. See docs/technical_architecture.md.2 / 搂7.5."""
+"""SSE response decoder. See docs/technical_architecture.md.2 / section7.5."""
 
 from __future__ import annotations
 

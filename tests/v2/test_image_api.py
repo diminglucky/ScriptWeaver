@@ -1,10 +1,15 @@
 from __future__ import annotations
 
+import asyncio
+from types import SimpleNamespace
 from pathlib import Path
 
 from fastapi.testclient import TestClient
+from PIL import Image
 
 from src.services.image_service import deps
+from src.services.image_service.core.services.image_pipeline import ImagePipeline
+from src.services.image_service.core.services.publisher_service import PublisherService
 from src.services.image_service.main import create_app
 from src.shared.config import paths as paths_module
 
@@ -79,3 +84,66 @@ def test_single_image_and_cancel_unknown_run(monkeypatch, tmp_path: Path):
         cancel = client.post("/v1/runs/missing/cancel")
         assert cancel.status_code == 200
         assert cancel.json() == {"run_id": "missing", "cancelled": False}
+
+
+def test_real_image_pipeline_opt_in_saves_provider_output(monkeypatch, tmp_path: Path):
+    paths_module.get_repo_paths.cache_clear()
+    monkeypatch.setenv("WSF_REPO_ROOT", str(tmp_path))
+    monkeypatch.setenv("WSF_IMAGE_REAL", "1")
+    monkeypatch.setenv("WSF_IMAGE_MODEL", "image-model")
+
+    class DummyImageClient:
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+
+        def generate(self, prompt, *, size, n):
+            image = Image.new("RGB", (2, 2), color=(10, 20, 30))
+            return [SimpleNamespace(image=image, seed=None, provider="dummy", model="image-model")]
+
+    monkeypatch.setattr("src.clients.image_client.OpenAIImageClient", DummyImageClient)
+    try:
+        result = asyncio.run(
+            ImagePipeline().render_single(
+                prompt="rainy night",
+                aspect_ratio="16:9",
+            )
+        )
+    finally:
+        paths_module.get_repo_paths.cache_clear()
+
+    assert result["status"] == "succeeded"
+    assert result["url"].startswith("file://")
+    assert Path(result["path"]).exists()
+    assert Path(result["path"]).parent == tmp_path / ".runtime" / "generated_images"
+
+
+def test_real_publisher_opt_in_uses_playwright_adapter(monkeypatch, tmp_path: Path):
+    paths_module.get_repo_paths.cache_clear()
+    monkeypatch.setenv("WSF_REPO_ROOT", str(tmp_path))
+    monkeypatch.setenv("WSF_ZHIHU_PUBLISH", "1")
+    calls = []
+
+    def fake_publish(title, content, headless=False, progress_callback=None):
+        calls.append((title, content, headless))
+        return True, "filled"
+
+    monkeypatch.setattr(
+        "src.gui.services.zhihu_publisher.publish_to_zhihu_sync",
+        fake_publish,
+    )
+    try:
+        result = asyncio.run(
+            PublisherService().publish_to_zhihu(
+                "p-real",
+                title="标题",
+                content="正文",
+                headless=True,
+            )
+        )
+    finally:
+        paths_module.get_repo_paths.cache_clear()
+
+    assert result["status"] == "succeeded"
+    assert result["message"] == "filled"
+    assert calls == [("标题", "正文", True)]
+    assert (tmp_path / "projects" / "p-real" / "zhihu_last_result.json").exists()

@@ -1,4 +1,4 @@
-﻿"""project_memory CRUD. See docs/technical_architecture.md.7 / 搂7.3."""
+"""project_memory CRUD. See docs/technical_architecture.md.7 / section7.3."""
 
 from __future__ import annotations
 

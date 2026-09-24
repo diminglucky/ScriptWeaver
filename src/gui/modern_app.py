@@ -82,6 +82,7 @@ class ModernApp(
         # 初始化所有必需的变量（原有功能需要）
         self._init_variables()
         self._setup_target_chars_autosave()
+        self._init_backend_runtime()
         
         # 应用现代化样式
         self._setup_modern_styles()
@@ -344,7 +345,35 @@ class ModernApp(
             self._persist_story_preferences_to_env()
         except Exception as e:
             logger.debug("persist on close failed: %s", e)
+        try:
+            if self.backend_supervisor is not None:
+                self.backend_supervisor.shutdown()
+        except Exception as e:
+            logger.debug("v2 backend shutdown failed: %s", e)
         self.destroy()
+
+    def _init_backend_runtime(self) -> None:
+        """Optionally start and connect the v2 FastAPI services."""
+        self.backend_supervisor = None
+        self.backend_client = None
+        enabled = (os.getenv("WSF_AUTOSTART", "") or "").strip().lower()
+        if enabled not in {"1", "true", "yes", "on"}:
+            return
+        try:
+            from .backend.client import BackendClient
+            from .backend.supervisor import ServiceSupervisor
+
+            project_root = Path(__file__).resolve().parents[2]
+            self.backend_supervisor = ServiceSupervisor(project_root)
+            self.backend_supervisor.start_all(
+                dev_mode=(os.getenv("WSF_DEV", "") or "").strip().lower()
+                in {"1", "true", "yes", "on"}
+            )
+            self.backend_client = BackendClient.from_runtime()
+        except Exception as e:
+            logger.warning("v2 backend startup failed: %s", e)
+            self.backend_supervisor = None
+            self.backend_client = None
 
     def _startup_load_configs(self):
         """启动时统一加载配置"""

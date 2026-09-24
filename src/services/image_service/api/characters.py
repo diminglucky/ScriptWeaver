@@ -1,4 +1,4 @@
-﻿"""Character turnaround / photo endpoints. See docs/technical_architecture.md.4 / 搂7.4."""
+"""Character turnaround / photo endpoints. See docs/technical_architecture.md.4 / section7.4."""
 
 from __future__ import annotations
 

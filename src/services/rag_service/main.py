@@ -3,7 +3,7 @@
 Build-out steps (Phase 2):
     1. wire EmbeddingHub + IndexHub singletons in `deps.py`
     2. implement each router under `api/`
-    3. add exception handler that maps CreativeError 鈫?JSON envelope (搂14.1)
+    3. add exception handler that maps CreativeError to a JSON envelope
 """
 
 from __future__ import annotations
@@ -11,13 +11,18 @@ from __future__ import annotations
 
 def create_app():
     """Construct the FastAPI app lazily so import is cheap before deps install."""
-    from fastapi import FastAPI
+    from fastapi import Depends, FastAPI
     from fastapi.responses import JSONResponse
 
     from src.services.rag_service.api import health, kb, memory, reindex, search
     from src.shared.domain.errors import CreativeError
+    from src.shared.http.auth import service_auth_dependency
 
-    app = FastAPI(title="ScriptWeaver rag-service", version="2.0.0")
+    app = FastAPI(
+        title="ScriptWeaver rag-service",
+        version="2.0.0",
+        dependencies=[Depends(service_auth_dependency())],
+    )
 
     @app.exception_handler(CreativeError)
     async def creative_error_handler(_request, exc: CreativeError):

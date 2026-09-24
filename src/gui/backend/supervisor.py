@@ -36,63 +36,22 @@ class ServiceSupervisor:
         self.service_token: str = secrets.token_urlsafe(32)
         self.ports: dict[str, int] = {}
 
-    # 鈹€鈹€ lifecycle 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+    # Lifecycle
     def start_all(self, *, dev_mode: bool = False) -> dict[str, str]:
-        """Spawn services in order (rag 鈫?story 鈫?image). Returns base_url map."""
+        """Spawn services in order (rag, story, image). Returns base_url map."""
         if self.processes:
             return {name: f"http://127.0.0.1:{port}" for name, port in self.ports.items()}
 
         self.ports = {name: self._free_port() for name in _SERVICES}
-        base_urls = {name: f"http://127.0.0.1:{self.ports[name]}" for name in _SERVICES}
-
-        env = os.environ.copy()
-        env.update({
-            "WSF_BACKEND_TOKEN": self.token,
-            "WSF_SERVICE_TOKEN": self.service_token,
-            "WSF_RAG_BASE_URL": base_urls["rag"],
-            "WSF_STORY_BASE_URL": base_urls["story"],
-            "WSF_IMAGE_BASE_URL": base_urls["image"],
-            "WSF_REPO_ROOT": str(self.project_root),
-            "WSF_DEV": "1" if dev_mode else "0",
-            "TRANSFORMERS_NO_TF": "1",
-        })
-
-        logs_dir = self.project_root / ".runtime" / "logs"
-        logs_dir.mkdir(parents=True, exist_ok=True)
+        base_urls = self._base_urls()
+        env = self._service_env(dev_mode=dev_mode)
+        logs_dir = self._logs_dir()
 
         try:
             for name in _SERVICES:
-                log = (logs_dir / f"{name}.log").open("ab")
-                cmd = [
-                    sys.executable,
-                    "-m",
-                    "uvicorn",
-                    f"{self._module_for(name)}:app",
-                    "--host",
-                    "127.0.0.1",
-                    "--port",
-                    str(self.ports[name]),
-                ]
-                proc = subprocess.Popen(
-                    cmd,
-                    cwd=self.project_root,
-                    env=env,
-                    stdout=log,
-                    stderr=subprocess.STDOUT,
-                    close_fds=True,
-                )
-                self.processes[name] = proc
+                self._spawn_service(name, env=env, logs_dir=logs_dir)
 
-            write_ports(PortsFile(
-                token=self.token,
-                service_token=self.service_token,
-                story_port=self.ports["story"],
-                rag_port=self.ports["rag"],
-                image_port=self.ports["image"],
-                pid_story=self.processes["story"].pid,
-                pid_rag=self.processes["rag"].pid,
-                pid_image=self.processes["image"].pid,
-            ))
+            self._write_ports_file()
 
             for name in _SERVICES:
                 self._wait_healthy(name, timeout=15.0)
@@ -136,15 +95,85 @@ class ServiceSupervisor:
         self.processes.pop(name, None)
         port = self.ports.get(name) or self._free_port()
         self.ports[name] = port
+        env = self._service_env(dev_mode=False)
+        self._spawn_service(name, env=env, logs_dir=self._logs_dir())
+        self._write_ports_file()
+        self._wait_healthy(name, timeout=15.0)
 
-    # 鈹€鈹€ helpers 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+    # Helpers
+    def _base_urls(self) -> dict[str, str]:
+        return {
+            name: f"http://127.0.0.1:{self.ports[name]}"
+            for name in _SERVICES
+            if name in self.ports
+        }
+
+    def _service_env(self, *, dev_mode: bool) -> dict[str, str]:
+        env = os.environ.copy()
+        base_urls = self._base_urls()
+        env.update({
+            "WSF_BACKEND_TOKEN": self.token,
+            "WSF_SERVICE_TOKEN": self.service_token,
+            "WSF_RAG_BASE_URL": base_urls.get("rag", ""),
+            "WSF_STORY_BASE_URL": base_urls.get("story", ""),
+            "WSF_IMAGE_BASE_URL": base_urls.get("image", ""),
+            "WSF_REPO_ROOT": str(self.project_root),
+            "WSF_DEV": "1" if dev_mode else "0",
+            "TRANSFORMERS_NO_TF": "1",
+        })
+        return env
+
+    def _logs_dir(self) -> Path:
+        logs_dir = self.project_root / ".runtime" / "logs"
+        logs_dir.mkdir(parents=True, exist_ok=True)
+        return logs_dir
+
+    def _spawn_service(self, name: str, *, env: dict[str, str], logs_dir: Path) -> None:
+        log = (logs_dir / f"{name}.log").open("ab")
+        cmd = [
+            sys.executable,
+            "-m",
+            "uvicorn",
+            f"{self._module_for(name)}:app",
+            "--host",
+            "127.0.0.1",
+            "--port",
+            str(self.ports[name]),
+        ]
+        self.processes[name] = subprocess.Popen(
+            cmd,
+            cwd=self.project_root,
+            env=env,
+            stdout=log,
+            stderr=subprocess.STDOUT,
+            close_fds=True,
+        )
+
+    def _write_ports_file(self) -> None:
+        if not all(name in self.ports for name in _SERVICES):
+            return
+        write_ports(PortsFile(
+            token=self.token,
+            service_token=self.service_token,
+            story_port=self.ports["story"],
+            rag_port=self.ports["rag"],
+            image_port=self.ports["image"],
+            pid_story=self.processes["story"].pid,
+            pid_rag=self.processes["rag"].pid,
+            pid_image=self.processes["image"].pid,
+        ))
+
     def health(self, name: str, *, timeout: float = 2.0) -> dict:
         if name not in _SERVICES:
             raise KeyError(name)
         port = self.ports.get(name)
         if not port:
             raise RuntimeError(f"service not started: {name}")
-        with urllib.request.urlopen(f"http://127.0.0.1:{port}/v1/health", timeout=timeout) as resp:
+        request = urllib.request.Request(
+            f"http://127.0.0.1:{port}/v1/health",
+            headers={"Authorization": f"Bearer {self.token}"},
+        )
+        with urllib.request.urlopen(request, timeout=timeout) as resp:
             import json
 
             return json.loads(resp.read().decode("utf-8"))

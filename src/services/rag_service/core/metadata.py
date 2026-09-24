@@ -1,4 +1,4 @@
-﻿"""DocumentMeta + ChunkMeta. See docs/technical_architecture.md.2 / 搂4.4."""
+"""DocumentMeta + ChunkMeta. See docs/technical_architecture.md.2 / section4.4."""
 
 from __future__ import annotations
 

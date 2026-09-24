@@ -4,7 +4,7 @@ from __future__ import annotations
 
 
 def create_app():
-    from fastapi import FastAPI
+    from fastapi import Depends, FastAPI
     from fastapi.responses import JSONResponse
 
     from src.services.image_service.api import (
@@ -18,8 +18,13 @@ def create_app():
         shots,
     )
     from src.shared.domain.errors import CreativeError
+    from src.shared.http.auth import service_auth_dependency
 
-    app = FastAPI(title="ScriptWeaver image-service", version="2.0.0")
+    app = FastAPI(
+        title="ScriptWeaver image-service",
+        version="2.0.0",
+        dependencies=[Depends(service_auth_dependency())],
+    )
 
     @app.exception_handler(CreativeError)
     async def creative_error_handler(_, exc: CreativeError):

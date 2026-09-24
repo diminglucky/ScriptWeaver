@@ -3,10 +3,25 @@
 from __future__ import annotations
 
 
-DEFAULT_STORY_GENERATION_MODE = "balanced"
+DEFAULT_STORY_GENERATION_MODE = "lean"
 
 
 STORY_GENERATION_MODES: dict[str, dict[str, object]] = {
+    "lean": {
+        "label": "精简（推荐）",
+        "description": "输入需求后直接分章写作，不生成目录、蓝图和章节总览。",
+        "settings": {
+            "story_quality_review_enabled": True,
+            "story_auto_polish_enabled": True,
+            "story_global_overview_enabled": False,
+            "story_overview_before_generate": False,
+            "story_preview_before_apply": False,
+            "story_outline_alignment_strict": False,
+            "story_outline_alignment_max_attempts": 1,
+            "story_quality_min_avg": 7.0,
+            "story_quality_min_dim": 6.5,
+        },
+    },
     "fast": {
         "label": "快速（低延迟）",
         "description": "关闭预览与评审，优先最快速度出稿。",
